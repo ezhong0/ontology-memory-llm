@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL with pgvector extension
   postgres:
-    image: ankane/pgvector:latest
+    image: ankane/pgvector:v0.5.1
     container_name: memory-system-postgres
     environment:
       POSTGRES_USER: memoryuser
@@ -38,7 +38,7 @@ services:
 
   # Test database (separate from development)
   postgres-test:
-    image: ankane/pgvector:latest
+    image: ankane/pgvector:v0.5.1
     container_name: memory-system-postgres-test
     environment:
       POSTGRES_USER: testuser

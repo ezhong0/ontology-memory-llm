@@ -44,7 +44,7 @@ class ChatEvent(Base):
     role = Column(Text, CheckConstraint("role IN ('user', 'assistant', 'system')"), nullable=False)
     content = Column(Text, nullable=False)
     content_hash = Column(Text, nullable=False)
-    metadata = Column(JSONB)
+    event_metadata = Column(JSONB)  # Renamed from metadata (reserved by SQLAlchemy)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
 
@@ -87,7 +87,7 @@ class EntityAlias(Base):
     user_id = Column(Text)  # NULL = global, not-null = user-specific
     confidence = Column(Float, nullable=False, default=1.0)
     use_count = Column(Integer, nullable=False, default=1)
-    metadata = Column(JSONB)
+    alias_metadata = Column(JSONB)  # Renamed from metadata (reserved by SQLAlchemy)
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
 

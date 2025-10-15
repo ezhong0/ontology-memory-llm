@@ -8,12 +8,1020 @@
 
 ## Table of Contents
 
-1. [Implementation Status Overview](#implementation-status-overview)
-2. [System Architecture](#system-architecture)
-3. [Database Schema (IMPLEMENTED)](#database-schema-implemented)
-4. [End-to-End Request Flow (PLANNED)](#end-to-end-request-flow-planned)
-5. [Subsystem Flows](#subsystem-flows)
-6. [Technology Stack & Configuration](#technology-stack--configuration)
+1. [Complete Request Flow - ASCII Flowchart](#complete-request-flow---ascii-flowchart)
+2. [Implementation Status Overview](#implementation-status-overview)
+3. [System Architecture](#system-architecture)
+4. [Database Schema (IMPLEMENTED)](#database-schema-implemented)
+5. [End-to-End Request Flow (PLANNED)](#end-to-end-request-flow-planned)
+6. [Subsystem Flows](#subsystem-flows)
+7. [Technology Stack & Configuration](#technology-stack--configuration)
+
+---
+
+## Complete Request Flow - ASCII Flowchart
+
+### End-to-End Request Flow with Hybrid Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            USER REQUEST                                      │
+│               "What did Gai Media order last month?"                         │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     STAGE 1: INGEST RAW EVENT (~5ms)                         │
+│                         Status: ⏳ To Implement                              │
+│                                                                              │
+│  Store Immutable Audit Trail:                                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ INSERT INTO app.chat_events (                                          │ │
+│  │   event_id, session_id, user_id, role,                                 │ │
+│  │   content, content_hash, metadata, created_at                          │ │
+│  │ ) VALUES (                                                             │ │
+│  │   gen_random_uuid(),                                                   │ │
+│  │   'session_abc',                                                       │ │
+│  │   'user_123',                                                          │ │
+│  │   'user',                                                              │ │
+│  │   'What did Gai Media order last month?',                             │ │
+│  │   sha256(content),  -- Deduplication                                   │ │
+│  │   '{"client": "web", "ip": "192.168.1.1"}',                           │ │
+│  │   NOW()                                                                │ │
+│  │ )                                                                      │ │
+│  │                                                                        │ │
+│  │ Result: event_id = 1042                                                │ │
+│  │                                                                        │ │
+│  │ Purpose:                                                               │ │
+│  │  • Complete provenance chain (every interaction traced)               │ │
+│  │  • Compliance & audit requirements                                     │ │
+│  │  • Debugging conversation context                                     │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STAGE 2: HYBRID ENTITY RESOLUTION (~50ms)                       │
+│                    Status: ⏳ To Implement                                   │
+│             Cost: $0.00015 avg (95% free, 5% LLM)                           │
+│                                                                              │
+│  Design Philosophy: Deterministic Fast Path + LLM Coreference               │
+│                                                                              │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│  FAST PATH (Handles 95% of cases - Deterministic, <30ms)                    │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│                                                                              │
+│  STEP 1: Extract Mentions (Pattern-Based, ~5ms)                             │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Input: "What did Gai Media order last month?"                          │ │
+│  │                                                                        │ │
+│  │ Pattern Extraction (No LLM):                                           │ │
+│  │  • Capitalized sequences: "Gai Media"                                  │ │
+│  │  • Pronouns tracked separately: "they", "it", "them"                  │ │
+│  │  • Temporal phrases: "last month" → 2024-09-01 to 2024-10-01         │ │
+│  │                                                                        │ │
+│  │ Output: {                                                              │ │
+│  │   mentions: ["Gai Media"],                                             │ │
+│  │   temporal_filter: {start: "2024-09-01", end: "2024-10-01"},         │ │
+│  │   intent: "factual_query"                                              │ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 2A: Exact Match (PostgreSQL, ~5ms)                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ SELECT entity_id, canonical_name, entity_type                          │ │
+│  │ FROM app.canonical_entities                                            │ │
+│  │ WHERE canonical_name = 'Gai Media'  -- Case-sensitive                 │ │
+│  │                                                                        │ │
+│  │ Result: ❌ Not found                                                   │ │
+│  │ Confidence: Would be 1.0 if matched                                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 2B: User-Specific Alias (PostgreSQL, ~10ms)                           │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ SELECT ea.canonical_entity_id, ea.confidence, ce.canonical_name        │ │
+│  │ FROM app.entity_aliases ea                                             │ │
+│  │ JOIN app.canonical_entities ce                                         │ │
+│  │   ON ea.canonical_entity_id = ce.entity_id                             │ │
+│  │ WHERE ea.alias_text = 'Gai Media'                                      │ │
+│  │   AND ea.user_id = 'user_123'  -- User-specific first                 │ │
+│  │ ORDER BY ea.use_count DESC, ea.confidence DESC                         │ │
+│  │ LIMIT 1                                                                │ │
+│  │                                                                        │ │
+│  │ Result: ✅ FOUND!                                                      │ │
+│  │   entity_id: customer:gai_123                                          │ │
+│  │   canonical_name: "Gai Media Entertainment"                            │ │
+│  │   confidence: 0.95                                                     │ │
+│  │   alias_source: user_stated                                            │ │
+│  │                                                                        │ │
+│  │ Update Popularity:                                                     │ │
+│  │   UPDATE app.entity_aliases                                            │ │
+│  │   SET use_count = use_count + 1                                        │ │
+│  │   WHERE alias_id = 42                                                  │ │
+│  │                                                                        │ │
+│  │ SUCCESS: Skip remaining stages (fuzzy, coreference, domain DB)        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              │                                               │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│  ALTERNATIVE PATHS (Not Taken This Time)                                    │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│                              │                                               │
+│  If Alias Failed → STEP 2C: Fuzzy Match (pg_trgm, ~15ms)                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ SELECT ce.entity_id, ce.canonical_name,                                │ │
+│  │        similarity(ea.alias_text, 'Gai Media') as score                │ │
+│  │ FROM app.canonical_entities ce                                         │ │
+│  │ JOIN app.entity_aliases ea ON ea.canonical_entity_id = ce.entity_id   │ │
+│  │ WHERE similarity(ea.alias_text, 'Gai Media') > 0.70  -- Threshold     │ │
+│  │ ORDER BY score DESC                                                    │ │
+│  │ LIMIT 5                                                                │ │
+│  │                                                                        │ │
+│  │ Decision Logic:                                                        │ │
+│  │  • If 1 match with score > 0.85 → Auto-resolve, learn alias          │ │
+│  │  • If multiple with gap < 0.15 → Ask user (Stage 2E)                 │ │
+│  │  • If no match → Try Stage 2D (LLM coreference)                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│  LLM PATH (Handles 5% of cases - Coreference, ~300ms)                       │
+│  ═══════════════════════════════════════════════════════════════════════    │
+│                              │                                               │
+│  If Mention is Pronoun → STEP 2D: LLM Coreference (~300ms, $0.003)          │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Triggers: "they", "it", "them", "that customer", "the company"        │ │
+│  │                                                                        │ │
+│  │ Context Retrieval:                                                     │ │
+│  │   SELECT entity_id, canonical_name FROM context.recent_entities       │ │
+│  │   WHERE session_id = 'session_abc'                                     │ │
+│  │   ORDER BY last_mentioned DESC LIMIT 5                                 │ │
+│  │                                                                        │ │
+│  │ Prompt to LLM (GPT-4o-mini):                                          │ │
+│  │   "Conversation:                                                       │ │
+│  │    [Turn 1] User: Tell me about Gai Media Entertainment               │ │
+│  │    [Turn 2] Asst: [Details about customer:gai_123]                    │ │
+│  │    [Turn 3] User: What did they order last month?                     │ │
+│  │                                                                        │ │
+│  │    Recent entities:                                                    │ │
+│  │    1. Gai Media Entertainment (customer:gai_123) - 2 turns ago        │ │
+│  │    2. Delta Industries (customer:delta_456) - 8 turns ago             │ │
+│  │                                                                        │ │
+│  │    Does 'they' in Turn 3 refer to:                                    │ │
+│  │    A) Gai Media Entertainment                                          │ │
+│  │    B) Delta Industries                                                 │ │
+│  │    C) Neither/Unknown                                                  │ │
+│  │                                                                        │ │
+│  │    Return: {choice: 'A', confidence: 0.95, reasoning: '...'}"        │ │
+│  │                                                                        │ │
+│  │ LLM Response:                                                          │ │
+│  │   entity_id: customer:gai_123                                          │ │
+│  │   confidence: 0.95                                                     │ │
+│  │   reasoning: "Most recent mention, discussed in detail Turn 2"        │ │
+│  │                                                                        │ │
+│  │ Learn Alias (Session-Specific):                                       │ │
+│  │   INSERT INTO app.entity_aliases (                                     │ │
+│  │     canonical_entity_id, alias_text, alias_source,                    │ │
+│  │     user_id, confidence, metadata                                     │ │
+│  │   ) VALUES (                                                           │ │
+│  │     'customer:gai_123', 'they', 'coreference',                        │ │
+│  │     'user_123', 0.70, '{"session": "session_abc"}'                    │ │
+│  │   )                                                                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 2E: User Disambiguation (Only if ambiguous)                            │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Trigger: Multiple fuzzy matches with confidence_gap < 0.15             │ │
+│  │                                                                        │ │
+│  │ Present to User:                                                       │ │
+│  │   "I found multiple matches for 'Gai':                                │ │
+│  │    1. Gai Media Entertainment (customer, last seen Sept 20)           │ │
+│  │    2. Gai Corporation (customer, last seen March 15)                  │ │
+│  │    3. Create new entity                                                │ │
+│  │    Which did you mean?"                                                │ │
+│  │                                                                        │ │
+│  │ User Selection: Option 1                                               │ │
+│  │                                                                        │ │
+│  │ Actions:                                                               │ │
+│  │  1. Return entity_id with confidence: 0.85 (user-confirmed)           │ │
+│  │  2. Create high-confidence alias:                                     │ │
+│  │     INSERT INTO app.entity_aliases (                                   │ │
+│  │       alias_text, canonical_entity_id, alias_source,                  │ │
+│  │       user_id, confidence                                             │ │
+│  │     ) VALUES (                                                         │ │
+│  │       'Gai', 'customer:gai_123', 'user_stated',                       │ │
+│  │       'user_123', 0.95                                                │ │
+│  │     )                                                                  │ │
+│  │  3. Next time "Gai" mentioned → Fast path (Stage 2B)                 │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  FINAL RESOLUTION RESULT:                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "mention": "Gai Media",                                              │ │
+│  │   "entity_id": "customer:gai_123",                                     │ │
+│  │   "canonical_name": "Gai Media Entertainment",                         │ │
+│  │   "entity_type": "customer",                                           │ │
+│  │   "confidence": 0.95,                                                  │ │
+│  │   "resolution_method": "user_alias",                                   │ │
+│  │   "stage": 2,  // Stage 2B: User-Specific Alias                       │ │
+│  │   "latency_ms": 15                                                     │ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│           STAGE 3: DOMAIN DATABASE ENRICHMENT (~50ms)                        │
+│                    Status: ⏳ To Implement                                   │
+│         (Ontology-Aware Graph Traversal - "Dual Truth")                     │
+│                                                                              │
+│  Philosophy: Database = Correspondence Truth, Memory = Contextual Truth     │
+│                                                                              │
+│  STEP 3A: Fetch Entity Properties (Direct Query, ~20ms)                     │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- External Domain Database (Read-Only Connection)                     │ │
+│  │                                                                        │ │
+│  │ SELECT customer_id, company_name, payment_terms,                       │ │
+│  │        delivery_preference, status, created_at                         │ │
+│  │ FROM customers                                                         │ │
+│  │ WHERE customer_id = 123  -- From external_ref in canonical_entity     │ │
+│  │                                                                        │ │
+│  │ Result:                                                                │ │
+│  │   customer_id: 123                                                     │ │
+│  │   company_name: "Gai Media Entertainment"                              │ │
+│  │   payment_terms: "NET30"                                               │ │
+│  │   delivery_preference: "Friday"                                        │ │
+│  │   status: "active"                                                     │ │
+│  │   created_at: "2023-03-15"  (18-month customer)                       │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 3B: Ontology-Aware Graph Traversal (~15ms)                            │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Query Memory Database for Ontology Rules                           │ │
+│  │                                                                        │ │
+│  │ SELECT relation_type, to_entity_type, cardinality, join_spec          │ │
+│  │ FROM app.domain_ontology                                               │ │
+│  │ WHERE from_entity_type = 'customer'                                    │ │
+│  │                                                                        │ │
+│  │ Found Relations:                                                       │ │
+│  │   1. customer HAS orders (1:many)                                      │ │
+│  │      join_spec: {                                                      │ │
+│  │        "from_table": "customers",                                      │ │
+│  │        "to_table": "orders",                                           │ │
+│  │        "join_on": "customers.customer_id = orders.customer_id"        │ │
+│  │      }                                                                  │ │
+│  │                                                                        │ │
+│  │   2. customer HAS invoices (1:many)                                    │ │
+│  │      join_spec: {...}                                                  │ │
+│  │                                                                        │ │
+│  │   3. customer HAS contacts (1:many)                                    │ │
+│  │      join_spec: {...}                                                  │ │
+│  │                                                                        │ │
+│  │ Decision: Query "orders" based on temporal filter ("last month")      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 3C: Fetch Related Entities with Temporal Filter (~15ms)               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Dynamically constructed from ontology join_spec                     │ │
+│  │                                                                        │ │
+│  │ SELECT order_id, order_number, order_date,                             │ │
+│  │        total_amount, status, line_items                                │ │
+│  │ FROM orders                                                            │ │
+│  │ WHERE customer_id = 123                                                │ │
+│  │   AND order_date >= '2024-09-01'                                       │ │
+│  │   AND order_date < '2024-10-01'                                        │ │
+│  │ ORDER BY order_date DESC                                               │ │
+│  │                                                                        │ │
+│  │ Results (3 orders):                                                    │ │
+│  │  [                                                                     │ │
+│  │    {                                                                   │ │
+│  │      order_id: 1009,                                                   │ │
+│  │      order_number: "SO-1009",                                          │ │
+│  │      order_date: "2024-09-05",                                         │ │
+│  │      total_amount: 1200.00,                                            │ │
+│  │      status: "completed",                                              │ │
+│  │      line_items: [                                                     │ │
+│  │        {"product": "Widget Pro", "qty": 10, "price": 120.00}         │ │
+│  │      ]                                                                  │ │
+│  │    },                                                                  │ │
+│  │    {                                                                   │ │
+│  │      order_id: 1015,                                                   │ │
+│  │      order_number: "SO-1015",                                          │ │
+│  │      order_date: "2024-09-12",                                         │ │
+│  │      total_amount: 850.00,                                             │ │
+│  │      status: "completed",                                              │ │
+│  │      line_items: [...]                                                 │ │
+│  │    },                                                                  │ │
+│  │    {                                                                   │ │
+│  │      order_id: 1023,                                                   │ │
+│  │      order_number: "SO-1023",                                          │ │
+│  │      order_date: "2024-09-26",                                         │ │
+│  │      total_amount: 2100.00,                                            │ │
+│  │      status: "in_progress",                                            │ │
+│  │      line_items: [...]                                                 │ │
+│  │    }                                                                   │ │
+│  │  ]                                                                     │ │
+│  │                                                                        │ │
+│  │ Summary Statistics:                                                    │ │
+│  │   • Total orders: 3                                                    │ │
+│  │   • Total amount: $4,150.00                                            │ │
+│  │   • Average order value: $1,383.33                                     │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  DOMAIN FACTS COLLECTED (Correspondence Truth):                             │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "entity": {                                                          │ │
+│  │     "customer_id": 123,                                                │ │
+│  │     "name": "Gai Media Entertainment",                                 │ │
+│  │     "payment_terms": "NET30",                                          │ │
+│  │     "delivery_preference": "Friday",                                   │ │
+│  │     "status": "active",                                                │ │
+│  │     "customer_since": "2023-03-15"  (18 months)                       │ │
+│  │   },                                                                   │ │
+│  │   "orders_last_month": [                                               │ │
+│  │     {order_id: 1009, date: "2024-09-05", amount: 1200.00},           │ │
+│  │     {order_id: 1015, date: "2024-09-12", amount: 850.00},            │ │
+│  │     {order_id: 1023, date: "2024-09-26", amount: 2100.00}            │ │
+│  │   ],                                                                   │ │
+│  │   "summary": {                                                         │ │
+│  │     "order_count": 3,                                                  │ │
+│  │     "total_amount": 4150.00,                                           │ │
+│  │     "avg_order_value": 1383.33                                         │ │
+│  │   }                                                                    │ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│          STAGE 4: MEMORY RETRIEVAL (~100ms)                                  │
+│                    Status: ⏳ To Implement                                   │
+│         (Multi-Signal Scoring - Deterministic, NO LLM)                      │
+│                                                                              │
+│  Philosophy: Deterministic formula (too slow for LLM per candidate)         │
+│                                                                              │
+│  STEP 4A: Query Understanding & Strategy Selection (~10ms)                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Input: "What did Gai Media order last month?"                          │ │
+│  │                                                                        │ │
+│  │ Intent Classification (Pattern-Based):                                 │ │
+│  │  • Type: Question (contains "?")                                       │ │
+│  │  • Category: Factual (specific entity + data query)                    │ │
+│  │  • Temporal: Yes ("last month")                                        │ │
+│  │  • Entities: [customer:gai_123]                                        │ │
+│  │                                                                        │ │
+│  │ Select Retrieval Strategy:                                             │ │
+│  │   Intent: Factual + Entity-focused                                     │ │
+│  │   → Strategy: "factual_entity_focused"                                 │ │
+│  │                                                                        │ │
+│  │ Load Strategy Weights (from heuristics.py):                           │ │
+│  │   {                                                                    │ │
+│  │     "semantic_similarity": 0.25,                                       │ │
+│  │     "entity_overlap": 0.40,      ← Primary signal                      │ │
+│  │     "temporal_relevance": 0.20,                                        │ │
+│  │     "importance": 0.10,                                                │ │
+│  │     "reinforcement": 0.05                                              │ │
+│  │   }                                                                    │ │
+│  │                                                                        │ │
+│  │ Generate Query Embedding (~5ms cached, ~50ms if new):                 │ │
+│  │   embedding = openai.embeddings.create(                                │ │
+│  │     model="text-embedding-3-small",                                    │ │
+│  │     input="What did Gai Media order last month?"                       │ │
+│  │   )                                                                    │ │
+│  │   → vector(1536)                                                       │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 4B: PARALLEL Candidate Generation (~60ms)                             │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                        │ │
+│  │  ╔═══════════════════════╗      ╔══════════════════════════╗         │ │
+│  │  ║ Source 1:             ║      ║ Source 2:                ║         │ │
+│  │  ║ Semantic Search       ║      ║ Entity-Based             ║         │ │
+│  │  ║ (pgvector)            ║      ║ (JSONB Contains)         ║         │ │
+│  │  ║ ~30ms                 ║      ║ ~20ms                    ║         │ │
+│  │  ╚═══════════════════════╝      ╚══════════════════════════╝         │ │
+│  │           │                               │                           │ │
+│  │           ▼                               ▼                           │ │
+│  │  ┌──────────────────────┐      ┌────────────────────────────┐       │ │
+│  │  │ SELECT memory_id,    │      │ SELECT memory_id, summary, │       │ │
+│  │  │   summary, embedding,│      │   entities, created_at,    │       │ │
+│  │  │   importance,        │      │   importance               │       │ │
+│  │  │   reinforcement,     │      │ FROM episodic_memories     │       │ │
+│  │  │   created_at,        │      │ WHERE user_id = 'user_123' │       │ │
+│  │  │   embedding <=>      │      │   AND entities @>          │       │ │
+│  │  │   $1::vector AS dist │      │    '[{"id":"customer:gai"}]'      │ │
+│  │  │ FROM episodic_memories│      │ ORDER BY created_at DESC   │       │ │
+│  │  │ WHERE user_id='user_123'    │ LIMIT 30                    │       │ │
+│  │  │ ORDER BY dist        │      │                            │       │ │
+│  │  │ LIMIT 50             │      │ Result: 30 memories        │       │ │
+│  │  │                      │      │   mentioning entity        │       │ │
+│  │  │ Result: 50 semantic  │      └────────────────────────────┘       │ │
+│  │  │   similar memories   │                                            │ │
+│  │  └──────────────────────┘                                            │ │
+│  │                                                                        │ │
+│  │  ╔═══════════════════════╗      ╔══════════════════════════╗         │ │
+│  │  ║ Source 3:             ║      ║ Source 4:                ║         │ │
+│  │  ║ Temporal Window       ║      ║ Memory Summaries         ║         │ │
+│  │  ║ (Time Range)          ║      ║ (Consolidated)           ║         │ │
+│  │  ║ ~20ms                 ║      ║ ~15ms                    ║         │ │
+│  │  ╚═══════════════════════╝      ╚══════════════════════════╝         │ │
+│  │           │                               │                           │ │
+│  │           ▼                               ▼                           │ │
+│  │  ┌──────────────────────┐      ┌────────────────────────────┐       │ │
+│  │  │ SELECT memory_id,    │      │ SELECT summary_id,         │       │ │
+│  │  │   summary, importance│      │   summary_text, key_facts, │       │ │
+│  │  │ FROM episodic_memories│      │   confidence, embedding    │       │ │
+│  │  │ WHERE user_id='user_123'    │ FROM memory_summaries      │       │ │
+│  │  │   AND created_at     │      │ WHERE user_id = 'user_123' │       │ │
+│  │  │     >= '2024-09-01'  │      │   AND scope_identifier     │       │ │
+│  │  │   AND created_at     │      │     = 'customer:gai_123'   │       │ │
+│  │  │     < '2024-10-01'   │      │ ORDER BY confidence DESC   │       │ │
+│  │  │ ORDER BY importance  │      │ LIMIT 5                    │       │ │
+│  │  │ LIMIT 30             │      │                            │       │ │
+│  │  │                      │      │ Result: 2 summaries        │       │ │
+│  │  │ Result: 30 temporal  │      │   (15% scoring boost)      │       │ │
+│  │  │   memories           │      └────────────────────────────┘       │ │
+│  │  └──────────────────────┘                                            │ │
+│  │                                                                        │ │
+│  │ Deduplication: UNION → 85 unique candidates                          │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 4C: Multi-Signal Scoring (Deterministic Formula, ~30ms)               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ For Each of 85 Candidates:                                             │ │
+│  │                                                                        │ │
+│  │ Signal 1: Semantic Similarity                                          │ │
+│  │   score = 1 - (cosine_distance / 2)                                    │ │
+│  │   Example: distance=0.18 → score=0.91                                  │ │
+│  │                                                                        │ │
+│  │ Signal 2: Entity Overlap (Jaccard)                                     │ │
+│  │   query_entities = {customer:gai_123}                                  │ │
+│  │   memory_entities = extract_ids(memory.entities)                      │ │
+│  │   score = |intersection| / |union|                                     │ │
+│  │   Example: {gai_123} ∩ {gai_123, order:1009} → 1/2 = 0.50            │ │
+│  │                                                                        │ │
+│  │ Signal 3: Temporal Relevance                                           │ │
+│  │   IF temporal_filter:                                                  │ │
+│  │     days_diff = |memory.created_at - filter_midpoint|                 │ │
+│  │     score = exp(-days_diff / 30)                                       │ │
+│  │   ELSE:                                                                │ │
+│  │     score = 1.0                                                        │ │
+│  │                                                                        │ │
+│  │ Signal 4: Importance (Stored)                                          │ │
+│  │   score = memory.importance                                            │ │
+│  │   Example: 0.70                                                        │ │
+│  │                                                                        │ │
+│  │ Signal 5: Reinforcement                                                │ │
+│  │   score = min(memory.reinforcement_count / 10, 1.0)                   │ │
+│  │   Example: 3 validations → 0.30                                        │ │
+│  │                                                                        │ │
+│  │ ═══════════════════════════════════════════════════════════════        │ │
+│  │ Weighted Combination (Strategy: factual_entity_focused)                │ │
+│  │ ═══════════════════════════════════════════════════════════════        │ │
+│  │                                                                        │ │
+│  │ final_score = 0.25 * semantic_similarity                               │ │
+│  │             + 0.40 * entity_overlap          ← Dominant                │ │
+│  │             + 0.20 * temporal_relevance                                │ │
+│  │             + 0.10 * importance                                        │ │
+│  │             + 0.05 * reinforcement                                     │ │
+│  │                                                                        │ │
+│  │ Example Calculation (memory_id=512):                                   │ │
+│  │   0.25 * 0.91 = 0.2275  (semantic)                                     │ │
+│  │   0.40 * 0.50 = 0.2000  (entity) ← Strong match                        │ │
+│  │   0.20 * 0.95 = 0.1900  (temporal)                                     │ │
+│  │   0.10 * 0.70 = 0.0700  (importance)                                   │ │
+│  │   0.05 * 0.30 = 0.0150  (reinforcement)                                │ │
+│  │   ─────────────────────                                                │ │
+│  │   TOTAL:        0.7025                                                 │ │
+│  │                                                                        │ │
+│  │ Apply Boosts:                                                          │ │
+│  │  • Summary boost: 15% if from memory_summaries                        │ │
+│  │                                                                        │ │
+│  │ Apply Passive Decay (Semantic Memories Only):                         │ │
+│  │   days_since_validation = (now - memory.last_validated_at).days       │ │
+│  │   effective_confidence =                                               │ │
+│  │     memory.confidence * exp(-days * DECAY_RATE_PER_DAY)               │ │
+│  │   final_score *= effective_confidence                                  │ │
+│  │                                                                        │ │
+│  │   Example:                                                             │ │
+│  │     Stored confidence: 0.85                                            │ │
+│  │     Days since validation: 45                                          │ │
+│  │     DECAY_RATE_PER_DAY: 0.01                                          │ │
+│  │     Effective: 0.85 * exp(-45 * 0.01) = 0.85 * 0.64 = 0.544          │ │
+│  │     Final score: 0.7025 * 0.544 = 0.382                               │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 4D: Selection & Context Budget (~10ms)                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Sort all 85 candidates by final_score DESC                             │ │
+│  │                                                                        │ │
+│  │ Token Budget Allocation (max_context_tokens = 3000):                   │ │
+│  │   Domain facts:    40% = 1200 tokens (reserved)                       │ │
+│  │   Summaries:       20% =  600 tokens                                   │ │
+│  │   Semantic facts:  20% =  600 tokens                                   │ │
+│  │   Episodic:        15% =  450 tokens                                   │ │
+│  │   Procedural:       5% =  150 tokens                                   │ │
+│  │                                                                        │ │
+│  │ Available for memories: 60% = 1800 tokens                              │ │
+│  │                                                                        │ │
+│  │ Selection Process:                                                     │ │
+│  │   Start with top-scored memory                                         │ │
+│  │   Estimate tokens: summary_length * 0.25  (4 chars per token)         │ │
+│  │   Add to context if within budget                                      │ │
+│  │   Continue until budget exhausted or max 15 memories                   │ │
+│  │                                                                        │ │
+│  │ Selected Memories (top 12, fitting in 1800 tokens):                    │ │
+│  │   1. memory_id=512, score=0.881, tokens=120 (episodic)                │ │
+│  │   2. memory_id=145, score=0.856, tokens=80 (semantic)                 │ │
+│  │   3. memory_id=89,  score=0.843, tokens=200 (summary) ← boosted       │ │
+│  │   4. memory_id=301, score=0.812, tokens=95 (episodic)                 │ │
+│  │   5. memory_id=422, score=0.798, tokens=110 (semantic)                │ │
+│  │   ...                                                                  │ │
+│  │   12. memory_id=423, score=0.612, tokens=90 (episodic)                │ │
+│  │                                                                        │ │
+│  │ Total tokens used: 1750 / 1800                                         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  MEMORIES COLLECTED (Contextual Truth):                                     │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "summaries": [                                                       │ │
+│  │     {                                                                  │ │
+│  │       "text": "Gai Media: 18-month customer, consistent growth,      │ │
+│  │                prefers Friday deliveries, NET30 payment terms",       │ │
+│  │       "confidence": 0.85,                                              │ │
+│  │       "source": "consolidated_4_sessions"                              │ │
+│  │     }                                                                  │ │
+│  │   ],                                                                   │ │
+│  │   "semantic_facts": [                                                  │ │
+│  │     {                                                                  │ │
+│  │       "subject": "customer:gai_123",                                   │ │
+│  │       "predicate": "delivery_preference",                              │ │
+│  │       "object": "Friday afternoons",                                   │ │
+│  │       "confidence": 0.85,                                              │ │
+│  │       "reinforcement_count": 3                                         │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "subject": "customer:gai_123",                                   │ │
+│  │       "predicate": "communication_preference",                         │ │
+│  │       "object": "email_only_no_calls",                                │ │
+│  │       "confidence": 0.78,                                              │ │
+│  │       "reinforcement_count": 2                                         │ │
+│  │     }                                                                  │ │
+│  │   ],                                                                   │ │
+│  │   "episodic": [                                                        │ │
+│  │     {                                                                  │ │
+│  │       "summary": "User asked about Gai Media invoice timing on Sept 10",│ │
+│  │       "created_at": "2024-09-10",                                      │ │
+│  │       "entities": ["customer:gai_123", "invoice:INV-1009"]           │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "summary": "User mentioned Gai Media expansion in July",        │ │
+│  │       "created_at": "2024-07-22",                                      │ │
+│  │       "entities": ["customer:gai_123"]                                │ │
+│  │     }                                                                  │ │
+│  │   ]                                                                    │ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STAGE 5: CONTEXT ASSEMBLY (~20ms)                               │
+│                    Status: ⏳ To Implement                                   │
+│              (Merge Domain Facts + Memories)                                 │
+│                                                                              │
+│  Combine Dual Truth Sources:                                                 │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "resolved_entity": {                                                 │ │
+│  │     "mention": "Gai Media",                                            │ │
+│  │     "entity_id": "customer:gai_123",                                   │ │
+│  │     "canonical_name": "Gai Media Entertainment",                       │ │
+│  │     "confidence": 0.95,                                                │ │
+│  │     "resolution_method": "user_alias"                                  │ │
+│  │   },                                                                   │ │
+│  │                                                                        │ │
+│  │   "domain_facts": {                                                    │ │
+│  │     "customer": {                                                      │ │
+│  │       "customer_id": 123,                                              │ │
+│  │       "name": "Gai Media Entertainment",                               │ │
+│  │       "payment_terms": "NET30",                                        │ │
+│  │       "delivery_preference": "Friday",                                 │ │
+│  │       "status": "active",                                              │ │
+│  │       "customer_since": "2023-03-15"                                   │ │
+│  │     },                                                                 │ │
+│  │     "orders_last_month": [                                             │ │
+│  │       {order_id: 1009, date: "2024-09-05", amount: 1200.00,          │ │
+│  │        products: ["Widget Pro x10"]},                                  │ │
+│  │       {order_id: 1015, date: "2024-09-12", amount: 850.00,           │ │
+│  │        products: ["Gadget Lite x5"]},                                  │ │
+│  │       {order_id: 1023, date: "2024-09-26", amount: 2100.00,          │ │
+│  │        products: ["Widget Pro x15", "Connector x50"]}                 │ │
+│  │     ],                                                                 │ │
+│  │     "summary": {                                                       │ │
+│  │       "order_count": 3,                                                │ │
+│  │       "total_amount": 4150.00,                                         │ │
+│  │       "avg_order_value": 1383.33                                       │ │
+│  │     }                                                                  │ │
+│  │   },                                                                   │ │
+│  │                                                                        │ │
+│  │   "memories": {                                                        │ │
+│  │     "summaries": [                                                     │ │
+│  │       "Gai Media: 18-month customer, prefers Friday delivery..."      │ │
+│  │     ],                                                                 │ │
+│  │     "semantic_facts": [                                                │ │
+│  │       {"fact": "Prefers Friday deliveries", "confidence": 0.85},      │ │
+│  │       {"fact": "Email communication only", "confidence": 0.78}        │ │
+│  │     ],                                                                 │ │
+│  │     "episodic": [                                                      │ │
+│  │       {"summary": "Asked about invoice INV-1009 on Sept 10"},         │ │
+│  │       {"summary": "Mentioned expansion in July"}                      │ │
+│  │     ]                                                                  │ │
+│  │   },                                                                   │ │
+│  │                                                                        │ │
+│  │   "temporal_filter": {                                                 │ │
+│  │     "phrase": "last month",                                            │ │
+│  │     "start": "2024-09-01",                                             │ │
+│  │     "end": "2024-10-01"                                                │ │
+│  │   },                                                                   │ │
+│  │                                                                        │ │
+│  │   "conversation_context": {                                            │ │
+│  │     "session_id": "session_abc",                                       │ │
+│  │     "turn_count": 1,                                                   │ │
+│  │     "recent_entities": ["customer:gai_123"]                           │ │
+│  │   }                                                                    │ │
+│  │ }                                                                      │ │
+│  │                                                                        │ │
+│  │ Token Estimation:                                                      │ │
+│  │   Domain facts: ~1100 tokens                                           │ │
+│  │   Memories: ~1750 tokens                                               │ │
+│  │   System prompt: ~200 tokens                                           │ │
+│  │   Total context: ~3050 tokens (fits in budget)                        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STAGE 6: LLM SYNTHESIS (~1500ms)                                │
+│                    Status: ⏳ To Implement                                   │
+│              (OpenAI GPT-4o or Claude Sonnet 4.5)                           │
+│              Cost: ~$0.002 per request                                       │
+│                                                                              │
+│  STEP 6A: Build Prompt                                                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ System Prompt:                                                         │ │
+│  │ "You are an experienced business intelligence assistant with access    │ │
+│  │ to authoritative database facts (correspondence truth) and contextual  │ │
+│  │ memory (learned patterns and preferences).                             │ │
+│  │                                                                        │ │
+│  │ When answering:                                                        │ │
+│  │  1. Prioritize database facts for objective data                      │ │
+│  │  2. Use memories for context, preferences, patterns                   │ │
+│  │  3. If memory conflicts with DB, trust DB but note discrepancy       │ │
+│  │  4. Cite specific sources (which order, which memory)                 │ │
+│  │  5. Be concise but thorough                                            │ │
+│  │  6. Admit uncertainty if data is ambiguous"                           │ │
+│  │                                                                        │ │
+│  │ User Query:                                                            │ │
+│  │ "What did Gai Media order last month?"                                 │ │
+│  │                                                                        │ │
+│  │ Context:                                                               │ │
+│  │ [Full assembled context from Stage 5]                                  │ │
+│  │                                                                        │ │
+│  │ Instructions:                                                          │ │
+│  │ Answer the user's question. Include:                                   │ │
+│  │  • Order details (numbers, dates, amounts, products)                  │ │
+│  │  • Relevant context from memories                                     │ │
+│  │  • Any notable patterns or insights                                   │ │
+│  │  • Source citations in response                                        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 6B: LLM API Call (~1500ms)                                            │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Call: OpenAI Chat Completions API                                      │ │
+│  │   Model: gpt-4o (or claude-sonnet-4.5)                                 │ │
+│  │   Temperature: 0.3  (focused, consistent)                              │ │
+│  │   Max tokens: 800                                                      │ │
+│  │   Response format: JSON with structure                                 │ │
+│  │                                                                        │ │
+│  │ Fallback Chain (if primary fails):                                     │ │
+│  │   1. GPT-4o (primary, ~1500ms)                                         │ │
+│  │   2. Retry with exponential backoff (3 attempts)                      │ │
+│  │   3. GPT-4o-mini (faster, cheaper, slightly less capable)             │ │
+│  │   4. Template response (data summary without synthesis)                │ │
+│  │                                                                        │ │
+│  │ LLM Processing:                                                        │ │
+│  │  • Analyzes 3 orders from database                                     │ │
+│  │  • Incorporates delivery preference from memory                       │ │
+│  │  • Notes past conversation about invoice                              │ │
+│  │  • Synthesizes cohesive narrative                                     │ │
+│  │  • Cites specific sources                                              │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 6C: LLM Response                                                       │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "answer": "Gai Media Entertainment placed 3 orders in September     │ │
+│  │              2024:\n\n                                                 │ │
+│  │              1. **SO-1009** (Sept 5) - $1,200.00                      │ │
+│  │                 • 10x Widget Pro\n                                     │ │
+│  │              2. **SO-1015** (Sept 12) - $850.00                       │ │
+│  │                 • 5x Gadget Lite\n                                     │ │
+│  │              3. **SO-1023** (Sept 26) - $2,100.00                     │ │
+│  │                 • 15x Widget Pro, 50x Connector\n\n                   │ │
+│  │              **Total: $4,150.00** across 3 orders\n\n                 │ │
+│  │              Note: Based on their delivery preference, these orders   │ │
+│  │              likely shipped on Fridays. I also noticed you previously │ │
+│  │              asked about invoice INV-1009 on Sept 10 - that's from   │ │
+│  │              the first order above.",                                  │ │
+│  │                                                                        │ │
+│  │   "citations": [                                                       │ │
+│  │     {                                                                  │ │
+│  │       "source": "domain_db",                                           │ │
+│  │       "table": "orders",                                               │ │
+│  │       "data": "3 orders from September 2024",                         │ │
+│  │       "confidence": 1.0  // Database = authoritative                  │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "source": "semantic_memory",                                     │ │
+│  │       "memory_id": 145,                                                │ │
+│  │       "fact": "Prefers Friday deliveries",                            │ │
+│  │       "confidence": 0.85                                               │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "source": "episodic_memory",                                     │ │
+│  │       "memory_id": 512,                                                │ │
+│  │       "fact": "User asked about INV-1009 on Sept 10",                 │ │
+│  │       "confidence": 1.0  // Episodic = factual record                 │ │
+│  │     }                                                                  │ │
+│  │   ],                                                                   │ │
+│  │                                                                        │ │
+│  │   "confidence": 0.95,  // High (DB facts + aligned memories)         │ │
+│  │   "conflicts_detected": [],                                            │ │
+│  │   "reasoning": "Combined authoritative order data from database with  │ │
+│  │                 contextual preferences from memory. All sources align."│ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STAGE 7: MEMORY CREATION (Async, ~50ms)                         │
+│                    Status: ⏳ To Implement                                   │
+│              (Background Task - Does NOT Block Response)                     │
+│                                                                              │
+│  Design: Asynchronous task triggered after response sent to user            │
+│                                                                              │
+│  STEP 7A: Create Episodic Memory (~30ms)                                     │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Background Task 1: Store episode                                    │ │
+│  │                                                                        │ │
+│  │ -- Generate embedding (~20ms, can batch)                               │ │
+│  │ embedding = openai.embeddings.create(                                  │ │
+│  │   model="text-embedding-3-small",                                      │ │
+│  │   input="User asked about Gai Media orders from September 2024"       │ │
+│  │ )                                                                      │ │
+│  │                                                                        │ │
+│  │ INSERT INTO app.episodic_memories (                                    │ │
+│  │   memory_id, user_id, session_id, summary, event_type,                │ │
+│  │   source_event_ids, entities, domain_facts_ref,                       │ │
+│  │   importance, embedding, created_at                                    │ │
+│  │ ) VALUES (                                                             │ │
+│  │   gen_random_uuid(),                                                   │ │
+│  │   'user_123',                                                          │ │
+│  │   'session_abc',                                                       │ │
+│  │   'User asked about Gai Media orders from September 2024',            │ │
+│  │   'question',                                                          │ │
+│  │   ARRAY[1042],  -- chat_events.event_id                               │ │
+│  │   '[                                                                   │ │
+│  │     {                                                                  │ │
+│  │       "id": "customer:gai_123",                                        │ │
+│  │       "name": "Gai Media Entertainment",                               │ │
+│  │       "type": "customer",                                              │ │
+│  │       "mentions": [                                                    │ │
+│  │         {"text": "Gai Media", "position": 8, "is_coreference": false}│ │
+│  │       ]                                                                │ │
+│  │     }                                                                  │ │
+│  │   ]',                                                                  │ │
+│  │   '{"tables_queried": ["orders"], "orders_returned": [1009,1015,1023]}',│ │
+│  │   0.6,  -- Importance: question = 0.4 base + 0.2 entity boost         │ │
+│  │   embedding_vector,                                                    │ │
+│  │   NOW()                                                                │ │
+│  │ )                                                                      │ │
+│  │                                                                        │ │
+│  │ Purpose: Historical record for learning and context                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 7B: Extract Semantic Facts (If Applicable, ~20ms)                     │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Background Task 2: Pattern detection                               │ │
+│  │                                                                        │ │
+│  │ Analysis: Query type is "question", not "statement"                    │ │
+│  │ Decision: ❌ No new semantic facts to extract                         │ │
+│  │                                                                        │ │
+│  │ Would Extract If:                                                      │ │
+│  │  • "Remember: Gai prefers Friday deliveries"  (explicit statement)    │ │
+│  │  • "Gai told me they want NET45 terms"        (user correction)       │ │
+│  │  • "Update: Gai changed their delivery day"   (explicit update)       │ │
+│  │                                                                        │ │
+│  │ Extraction Process (when triggered):                                   │ │
+│  │   1. Classify event type (deterministic patterns)                     │ │
+│  │   2. If statement/correction → Call LLM for triple extraction         │ │
+│  │   3. Parse triples: (subject, predicate, object)                      │ │
+│  │   4. Check for existing memory (same subject + predicate)             │ │
+│  │   5. If exists:                                                        │ │
+│  │      • Same value → Reinforce (increment count, boost confidence)     │ │
+│  │      • Different value → Detect conflict, log, resolve                │ │
+│  │   6. If new → Create semantic memory with appropriate confidence      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 7C: Reinforce Existing Memories (~10ms)                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Background Task 3: Passive reinforcement                           │ │
+│  │                                                                        │ │
+│  │ Memories Retrieved and Used:                                           │ │
+│  │  • memory_id=145: "Gai prefers Friday deliveries" (semantic)          │ │
+│  │  • memory_id=512: "User asked about INV-1009 on Sept 10" (episodic)  │ │
+│  │                                                                        │ │
+│  │ Reinforcement Logic:                                                   │ │
+│  │   IF memory.type == 'semantic':                                        │ │
+│  │     current_count = memory.reinforcement_count                         │ │
+│  │     boost = REINFORCEMENT_BOOSTS[min(current_count, 3)]               │ │
+│  │     // [0.15, 0.10, 0.05, 0.02] - Diminishing returns                 │ │
+│  │                                                                        │ │
+│  │ UPDATE app.semantic_memories                                           │ │
+│  │ SET reinforcement_count = reinforcement_count + 1,                     │ │
+│  │     confidence = LEAST(0.95, confidence + 0.05),  -- 3rd boost        │ │
+│  │     last_validated_at = NOW()                                          │ │
+│  │ WHERE memory_id = 145                                                  │ │
+│  │                                                                        │ │
+│  │ Result:                                                                │ │
+│  │   Old: reinforcement_count=2, confidence=0.80                          │ │
+│  │   New: reinforcement_count=3, confidence=0.85                          │ │
+│  │   Decay reset: last_validated_at updated to NOW()                     │ │
+│  │                                                                        │ │
+│  │ Philosophy: Memories that prove useful get stronger over time         │ │
+│  │ Max confidence: 0.95 (epistemic humility - never 100%)                │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                               │
+│                              ▼                                               │
+│  STEP 7D: Conflict Detection (~10ms)                                         │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ -- Background Task 4: Check for contradictions                        │ │
+│  │                                                                        │ │
+│  │ Deterministic Check (99% of conflicts):                                │ │
+│  │   Compare LLM response facts with:                                     │ │
+│  │    • Existing semantic memories (same subject+predicate, diff value)  │ │
+│  │    • Domain database authoritative data                               │ │
+│  │                                                                        │ │
+│  │ Example Conflict (Not in this case):                                   │ │
+│  │   Memory: "Gai prefers Thursday deliveries" (confidence: 0.70)        │ │
+│  │   DB: delivery_preference = "Friday"                                   │ │
+│  │   → Conflict detected: memory_vs_db                                    │ │
+│  │                                                                        │ │
+│  │   Resolution:                                                          │ │
+│  │     1. Trust domain database (correspondence truth)                   │ │
+│  │     2. INSERT INTO app.memory_conflicts (                              │ │
+│  │          conflict_type='memory_vs_db',                                │ │
+│  │          conflict_data='{"memory": ..., "db": ...}',                  │ │
+│  │          resolution_strategy='trust_db'                               │ │
+│  │        )                                                               │ │
+│  │     3. UPDATE semantic_memories SET status='superseded'               │ │
+│  │     4. Note in future responses: "Corrected outdated information"     │ │
+│  │                                                                        │ │
+│  │ This Request: ✅ No conflicts detected                                │ │
+│  │   Database facts align with memories                                   │ │
+│  │   All citations consistent                                             │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STAGE 8: RETURN RESPONSE TO USER (~5ms)                         │
+│                                                                              │
+│  Response Package (JSON):                                                    │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ {                                                                      │ │
+│  │   "response": "Gai Media Entertainment placed 3 orders in September...",│ │
+│  │   "augmentation": {                                                    │ │
+│  │     "entities_resolved": [                                             │ │
+│  │       {                                                                │ │
+│  │         "mention": "Gai Media",                                        │ │
+│  │         "entity_id": "customer:gai_123",                               │ │
+│  │         "canonical_name": "Gai Media Entertainment",                   │ │
+│  │         "resolution_method": "user_alias",                            │ │
+│  │         "confidence": 0.95                                             │ │
+│  │       }                                                                │ │
+│  │     ],                                                                 │ │
+│  │     "domain_facts_used": 4,      // 3 orders + 1 customer detail     │ │
+│  │     "memories_retrieved": 15,     // Total candidates considered      │ │
+│  │     "memories_used": 8,          // Actually included in context      │ │
+│  │     "memories_created": 1,       // New episodic memory               │ │
+│  │     "memories_reinforced": 1     // Updated semantic memory           │ │
+│  │   },                                                                   │ │
+│  │   "citations": [                                                       │ │
+│  │     {                                                                  │ │
+│  │       "source": "domain_db",                                           │ │
+│  │       "table": "orders",                                               │ │
+│  │       "record_ids": [1009, 1015, 1023],                               │ │
+│  │       "confidence": 1.0                                                │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "source": "semantic_memory",                                     │ │
+│  │       "memory_id": 145,                                                │ │
+│  │       "fact": "Prefers Friday deliveries",                            │ │
+│  │       "confidence": 0.85,                                              │ │
+│  │       "reinforcement_count": 3                                         │ │
+│  │     },                                                                 │ │
+│  │     {                                                                  │ │
+│  │       "source": "episodic_memory",                                     │ │
+│  │       "memory_id": 512,                                                │ │
+│  │       "summary": "User asked about INV-1009 on Sept 10",              │ │
+│  │       "confidence": 1.0                                                │ │
+│  │     }                                                                  │ │
+│  │   ],                                                                   │ │
+│  │   "confidence": 0.95,                                                  │ │
+│  │   "conflicts": [],                                                     │ │
+│  │   "metadata": {                                                        │ │
+│  │     "timestamp": "2025-10-15T10:30:42Z",                              │ │
+│  │     "latency_ms": 1770,                                                │ │
+│  │     "model_used": "gpt-4o",                                            │ │
+│  │     "tokens": {                                                        │ │
+│  │       "prompt": 3050,                                                  │ │
+│  │       "completion": 245,                                               │ │
+│  │       "total": 3295                                                    │ │
+│  │     }                                                                  │ │
+│  │   }                                                                    │ │
+│  │ }                                                                      │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  Performance Breakdown:                                                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │   Stage 1: Ingest             5ms                                      │ │
+│  │   Stage 2: Entity Resolution  50ms  (Fast path: user alias)           │ │
+│  │   Stage 3: Domain Enrichment  50ms  (Parallel: props + orders)        │ │
+│  │   Stage 4: Memory Retrieval  100ms  (4 sources parallel + scoring)    │ │
+│  │   Stage 5: Context Assembly   20ms  (Merge dual truth)                │ │
+│  │   Stage 6: LLM Synthesis    1500ms  (OpenAI API call)                 │ │
+│  │   Stage 7: Memory Creation   50ms  (Async, doesn't block)             │ │
+│  │   Stage 8: Response           5ms  (JSON serialization)                │ │
+│  │   ────────────────────────────────                                    │ │
+│  │   TOTAL LATENCY:            1780ms                                     │ │
+│  │   USER-PERCEIVED:           1730ms  (excludes async Stage 7)          │ │
+│  │                                                                        │ │
+│  │   Cost Breakdown:                                                      │ │
+│  │    • Entity resolution: $0.00015 avg (5% LLM, 95% free)               │ │
+│  │    • Memory extraction: $0 (no extraction this turn)                   │ │
+│  │    • LLM synthesis: $0.002 (GPT-4o)                                    │ │
+│  │    • Embeddings: $0.0001 (2 embeddings: query + episodic)             │ │
+│  │    ────────────────────────                                           │ │
+│  │    TOTAL COST: ~$0.0022 per request                                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Performance Targets (Phase 1)
+
+| Component | Target P95 | This Example | Status |
+|-----------|-----------|--------------|--------|
+| Entity Resolution (fast path) | <50ms | 50ms | ✅ |
+| Entity Resolution (LLM path) | <300ms | N/A (not used) | ✅ |
+| Domain Database Query | <100ms | 50ms | ✅✅ |
+| Memory Retrieval | <100ms | 100ms | ✅ |
+| Context Assembly | <50ms | 20ms | ✅✅ |
+| LLM Synthesis | <2000ms | 1500ms | ✅ |
+| **Total User-Perceived** | **<2000ms** | **1730ms** | ✅ |
+
+### Surgical LLM Integration Summary
+
+| Component | Approach | Cost per Use | When Used |
+|-----------|----------|--------------|-----------|
+| Entity Resolution | Deterministic (95%) + LLM (5%) | $0.00015 avg | Coreference only |
+| Memory Extraction | Pattern + LLM triples | $0.002 | Statements only |
+| Retrieval Scoring | Deterministic formula | $0 | Every query |
+| Conflict Detection | Deterministic (99%) + LLM (1%) | $0.00002 avg | Semantic conflicts |
+| LLM Synthesis | Always LLM | $0.002 | Every query |
+
+**Total Average Cost**: ~$0.002 per conversational turn
+
+---
 
 ---
 
