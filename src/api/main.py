@@ -122,11 +122,10 @@ async def internal_error_handler(request, exc):
     )
 
 
-# TODO: Import and include routers once implemented
-# from src.api.routes import chat, memories, entities, health
-# app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
-# app.include_router(memories.router, prefix="/api/v1", tags=["Memories"])
-# app.include_router(entities.router, prefix="/api/v1", tags=["Entities"])
+# Include API routers
+from src.api.routes import chat
+
+app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
 
 
 if __name__ == "__main__":

@@ -2410,9 +2410,9 @@ MEMORY LIFECYCLE: State Transitions & Evolution
 │ CONSOLIDATION (Episodic → Semantic → Summary)                  │
 │                                                                  │
 │ Trigger Conditions (from LIFECYCLE_DESIGN.md):                  │
-│   • Min 10 episodic memories in window                          │
-│   • Min 3 distinct sessions                                     │
-│   • Default window: Last 5 sessions                             │
+│   • 3+ distinct sessions OR 20+ episodic memories               │
+│   • Evaluated per entity/scope                                  │
+│   • Default window: Last 5 sessions for context                 │
 │                                                                  │
 │ Example Scenario:                                                │
 │   User has had 5 conversations about customer "Gai Media"       │
