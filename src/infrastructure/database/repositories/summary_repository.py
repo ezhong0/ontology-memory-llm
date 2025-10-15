@@ -1,35 +1,46 @@
 """Memory summary repository implementation.
 
-Implements memory summary retrieval using SQLAlchemy and PostgreSQL with pgvector.
+Implements memory summary storage and retrieval using SQLAlchemy and PostgreSQL with pgvector.
 """
 
 from typing import List, Optional
 
 import numpy as np
 import structlog
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.exceptions import RepositoryError
+from src.domain.ports.embedding_service import IEmbeddingService
 from src.domain.ports.summary_repository import ISummaryRepository
+from src.domain.value_objects.consolidation import MemorySummary
 from src.domain.value_objects.memory_candidate import MemoryCandidate
+from src.infrastructure.database.models import MemorySummary as MemorySummaryModel
 
 logger = structlog.get_logger(__name__)
 
 
 class SummaryRepository(ISummaryRepository):
-    """SQLAlchemy implementation of memory summary retrieval.
+    """SQLAlchemy implementation of memory summary storage and retrieval.
 
-    Retrieves memory summaries as MemoryCandidate objects for retrieval pipeline.
+    Handles both:
+    1. Storage: Creating and updating memory summaries (consolidation output)
+    2. Retrieval: Finding summaries as MemoryCandidate objects for retrieval pipeline
+
+    Vision alignment: Graceful forgetting through consolidation (VISION.md)
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self, session: AsyncSession, embedding_service: Optional[IEmbeddingService] = None
+    ):
         """Initialize repository.
 
         Args:
             session: SQLAlchemy async session
+            embedding_service: Optional embedding service for create()
         """
         self.session = session
+        self._embedding_service = embedding_service
 
     async def find_similar(
         self,
@@ -194,6 +205,154 @@ class SummaryRepository(ISummaryRepository):
                 error=str(e),
             )
             raise RepositoryError(f"Error finding summary by scope: {e}") from e
+
+    async def create(self, summary: MemorySummary) -> MemorySummary:
+        """Create a new memory summary.
+
+        Args:
+            summary: Memory summary to create (without summary_id)
+
+        Returns:
+            Created summary with assigned summary_id
+
+        Raises:
+            RepositoryError: If creation fails
+        """
+        try:
+            # Generate embedding if not present
+            embedding_vector = summary.embedding
+            if embedding_vector is None:
+                if self._embedding_service is None:
+                    raise RepositoryError(
+                        "Cannot create summary without embedding: "
+                        "embedding_service not provided"
+                    )
+
+                logger.debug(
+                    "generating_summary_embedding",
+                    user_id=summary.user_id,
+                    scope_type=summary.scope_type,
+                )
+
+                embedding_vector = await self._embedding_service.generate_embedding(
+                    summary.summary_text
+                )
+
+            # Create database model
+            model = MemorySummaryModel(
+                user_id=summary.user_id,
+                scope_type=summary.scope_type,
+                scope_identifier=summary.scope_identifier,
+                summary_text=summary.summary_text,
+                key_facts=summary.key_facts,
+                source_data=summary.source_data,
+                confidence=summary.confidence,
+                embedding=embedding_vector,
+                created_at=summary.created_at,
+                supersedes_summary_id=summary.supersedes_summary_id,
+            )
+
+            self.session.add(model)
+            await self.session.flush()  # Get assigned summary_id
+
+            logger.info(
+                "summary_created",
+                summary_id=model.summary_id,
+                user_id=summary.user_id,
+                scope_type=summary.scope_type,
+                scope_identifier=summary.scope_identifier,
+            )
+
+            # Return value object with assigned ID
+            return MemorySummary(
+                summary_id=model.summary_id,
+                user_id=model.user_id,
+                scope_type=model.scope_type,
+                scope_identifier=model.scope_identifier,
+                summary_text=model.summary_text,
+                key_facts=model.key_facts,
+                source_data=model.source_data,
+                confidence=model.confidence,
+                embedding=list(model.embedding) if model.embedding else None,
+                created_at=model.created_at,
+                supersedes_summary_id=model.supersedes_summary_id,
+            )
+
+        except Exception as e:
+            logger.error(
+                "summary_creation_error",
+                user_id=summary.user_id,
+                scope_type=summary.scope_type,
+                error=str(e),
+            )
+            raise RepositoryError(f"Error creating summary: {e}") from e
+
+    async def get_by_id(
+        self,
+        summary_id: int,
+        user_id: Optional[str] = None,
+    ) -> Optional[MemorySummary]:
+        """Get memory summary by ID.
+
+        Args:
+            summary_id: Summary identifier
+            user_id: Optional user ID for security filtering
+
+        Returns:
+            Memory summary if found, None otherwise
+
+        Raises:
+            RepositoryError: If query fails
+        """
+        try:
+            stmt = select(MemorySummaryModel).where(
+                MemorySummaryModel.summary_id == summary_id
+            )
+
+            if user_id:
+                stmt = stmt.where(MemorySummaryModel.user_id == user_id)
+
+            result = await self.session.execute(stmt)
+            model = result.scalar_one_or_none()
+
+            if not model:
+                logger.debug(
+                    "summary_not_found",
+                    summary_id=summary_id,
+                    user_id=user_id,
+                )
+                return None
+
+            logger.debug(
+                "summary_retrieved",
+                summary_id=summary_id,
+                user_id=model.user_id,
+                scope_type=model.scope_type,
+            )
+
+            # Convert to value object
+            return MemorySummary(
+                summary_id=model.summary_id,
+                user_id=model.user_id,
+                scope_type=model.scope_type,
+                scope_identifier=model.scope_identifier,
+                summary_text=model.summary_text,
+                key_facts=model.key_facts,
+                source_data=model.source_data,
+                confidence=model.confidence,
+                embedding=list(model.embedding) if model.embedding else None,
+                created_at=model.created_at,
+                supersedes_summary_id=model.supersedes_summary_id,
+            )
+
+        except Exception as e:
+            logger.error(
+                "summary_retrieval_error",
+                summary_id=summary_id,
+                user_id=user_id,
+                error=str(e),
+            )
+            raise RepositoryError(f"Error retrieving summary: {e}") from e
 
     def _extract_entity_ids(self, key_facts_jsonb: dict) -> List[str]:
         """Extract entity IDs from key_facts JSONB.

@@ -1,0 +1,494 @@
+"""Scenario loading service for demo system.
+
+This service loads scenario data into the database, creating both domain data
+(customers, orders, invoices) and memory data (canonical entities, memories).
+
+Phase 1: Simplified implementation for Scenario 1
+Phase 2: Generalized for all scenarios with production service integration
+"""
+import logging
+from datetime import datetime
+from typing import Dict, List
+from uuid import UUID
+
+from sqlalchemy import delete, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.demo.models.scenario import ScenarioDefinition, ScenarioLoadResult
+from src.demo.services.scenario_registry import ScenarioRegistry
+from src.infrastructure.database.domain_models import (
+    DomainCustomer,
+    DomainInvoice,
+    DomainPayment,
+    DomainSalesOrder,
+    DomainTask,
+    DomainWorkOrder,
+)
+from src.infrastructure.database.models import (
+    CanonicalEntity,
+    EntityAlias,
+    EpisodicMemory,
+    SemanticMemory,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ScenarioLoadError(Exception):
+    """Raised when scenario loading fails."""
+
+    pass
+
+
+class ScenarioLoaderService:
+    """Service for loading scenarios into the system.
+
+    Supports idempotent loading - scenarios can be loaded multiple times safely.
+    """
+
+    def __init__(self, session: AsyncSession, user_id: str = "demo-user"):
+        """Initialize scenario loader.
+
+        Args:
+            session: SQLAlchemy async session for database operations
+            user_id: User ID for memory data (default: "demo-user")
+        """
+        self.session = session
+        self.user_id = user_id
+        # Track created entities for memory creation
+        self._entity_map: Dict[str, UUID] = {}  # name -> domain entity UUID
+        self._canonical_entity_map: Dict[str, str] = {}  # name -> canonical entity_id
+
+    async def load_scenario(self, scenario_id: int) -> ScenarioLoadResult:
+        """Load a scenario into the system.
+
+        Args:
+            scenario_id: ID of scenario to load (1-18)
+
+        Returns:
+            ScenarioLoadResult with counts and status
+
+        Raises:
+            ScenarioLoadError: If scenario loading fails
+        """
+        # Get scenario definition
+        scenario = ScenarioRegistry.get(scenario_id)
+        if not scenario:
+            raise ScenarioLoadError(f"Scenario {scenario_id} not found in registry")
+
+        logger.info(f"Loading scenario {scenario_id}: {scenario.title}")
+
+        try:
+            # Clear tracking dicts
+            self._entity_map = {}
+            self._canonical_entity_map = {}
+
+            # Load domain data
+            customers_count = await self._load_customers(scenario)
+            sales_orders_count = await self._load_sales_orders(scenario)
+            invoices_count = await self._load_invoices(scenario)
+            work_orders_count = await self._load_work_orders(scenario)
+            payments_count = await self._load_payments(scenario)
+            tasks_count = await self._load_tasks(scenario)
+
+            # Create canonical entities for all domain entities
+            await self._create_canonical_entities()
+
+            # Load memories
+            semantic_memories_count = await self._load_semantic_memories(scenario)
+            episodic_memories_count = 0  # Not implemented in Phase 1
+
+            # Commit transaction
+            await self.session.commit()
+
+            result = ScenarioLoadResult(
+                scenario_id=scenario.scenario_id,
+                title=scenario.title,
+                customers_created=customers_count,
+                sales_orders_created=sales_orders_count,
+                invoices_created=invoices_count,
+                work_orders_created=work_orders_count,
+                payments_created=payments_count,
+                tasks_created=tasks_count,
+                semantic_memories_created=semantic_memories_count,
+                episodic_memories_created=episodic_memories_count,
+                message=f"Successfully loaded scenario {scenario_id}",
+            )
+
+            logger.info(f"Scenario {scenario_id} loaded successfully: {result}")
+            return result
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Failed to load scenario {scenario_id}: {e}")
+            raise ScenarioLoadError(f"Failed to load scenario {scenario_id}: {e}") from e
+
+    async def _load_customers(self, scenario: ScenarioDefinition) -> int:
+        """Load customers from scenario (idempotent)."""
+        count = 0
+        for customer_setup in scenario.domain_setup.customers:
+            # Check if customer already exists
+            result = await self.session.execute(
+                select(DomainCustomer).where(DomainCustomer.name == customer_setup.name)
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Customer '%s' already exists, using existing ID", customer_setup.name)
+                self._entity_map[customer_setup.name] = existing.customer_id
+                continue
+
+            # Create new customer
+            customer = DomainCustomer(
+                name=customer_setup.name,
+                industry=customer_setup.industry,
+                notes=customer_setup.notes,
+            )
+            self.session.add(customer)
+            await self.session.flush()  # Get the generated UUID
+
+            # Track for foreign key references
+            self._entity_map[customer.name] = customer.customer_id
+            count += 1
+            logger.debug("Created customer: %s (ID: %s)", customer.name, customer.customer_id)
+
+        return count
+
+    async def _load_sales_orders(self, scenario: ScenarioDefinition) -> int:
+        """Load sales orders from scenario (idempotent)."""
+        count = 0
+        for so_setup in scenario.domain_setup.sales_orders:
+            # Check if sales order already exists
+            result = await self.session.execute(
+                select(DomainSalesOrder).where(DomainSalesOrder.so_number == so_setup.so_number)
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Sales order '%s' already exists, using existing ID", so_setup.so_number)
+                self._entity_map[so_setup.so_number] = existing.so_id
+                continue
+
+            # Look up customer UUID
+            customer_id = self._entity_map.get(so_setup.customer_name)
+            if not customer_id:
+                raise ScenarioLoadError(
+                    f"Customer '{so_setup.customer_name}' not found for sales order {so_setup.so_number}"
+                )
+
+            # Create new sales order
+            sales_order = DomainSalesOrder(
+                customer_id=customer_id,
+                so_number=so_setup.so_number,
+                title=so_setup.title,
+                status=so_setup.status,
+            )
+            self.session.add(sales_order)
+            await self.session.flush()
+
+            # Track for foreign key references
+            self._entity_map[so_setup.so_number] = sales_order.so_id
+            count += 1
+            logger.debug("Created sales order: %s (ID: %s)", sales_order.so_number, sales_order.so_id)
+
+        return count
+
+    async def _load_invoices(self, scenario: ScenarioDefinition) -> int:
+        """Load invoices from scenario (idempotent)."""
+        count = 0
+        for invoice_setup in scenario.domain_setup.invoices:
+            # Check if invoice already exists
+            result = await self.session.execute(
+                select(DomainInvoice).where(DomainInvoice.invoice_number == invoice_setup.invoice_number)
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Invoice '%s' already exists, using existing ID", invoice_setup.invoice_number)
+                self._entity_map[invoice_setup.invoice_number] = existing.invoice_id
+                continue
+
+            # Look up sales order UUID
+            so_id = self._entity_map.get(invoice_setup.sales_order_number)
+            if not so_id:
+                raise ScenarioLoadError(
+                    f"Sales order '{invoice_setup.sales_order_number}' not found for invoice {invoice_setup.invoice_number}"
+                )
+
+            # Create new invoice
+            invoice = DomainInvoice(
+                so_id=so_id,
+                invoice_number=invoice_setup.invoice_number,
+                amount=invoice_setup.amount,
+                due_date=invoice_setup.due_date,
+                status=invoice_setup.status,
+            )
+            self.session.add(invoice)
+            await self.session.flush()
+
+            # Track for foreign key references
+            self._entity_map[invoice_setup.invoice_number] = invoice.invoice_id
+            count += 1
+            logger.debug("Created invoice: %s (ID: %s)", invoice.invoice_number, invoice.invoice_id)
+
+        return count
+
+    async def _load_work_orders(self, scenario: ScenarioDefinition) -> int:
+        """Load work orders from scenario."""
+        count = 0
+        for wo_setup in scenario.domain_setup.work_orders:
+            so_id = self._entity_map.get(wo_setup.sales_order_number)
+            if not so_id:
+                raise ScenarioLoadError(
+                    f"Sales order '{wo_setup.sales_order_number}' not found for work order"
+                )
+
+            work_order = DomainWorkOrder(
+                so_id=so_id,
+                description=wo_setup.description,
+                status=wo_setup.status,
+                technician=wo_setup.technician,
+                scheduled_for=wo_setup.scheduled_for,
+            )
+            self.session.add(work_order)
+            count += 1
+
+        await self.session.flush()
+        return count
+
+    async def _load_payments(self, scenario: ScenarioDefinition) -> int:
+        """Load payments from scenario."""
+        count = 0
+        for payment_setup in scenario.domain_setup.payments:
+            invoice_id = self._entity_map.get(payment_setup.invoice_number)
+            if not invoice_id:
+                raise ScenarioLoadError(
+                    f"Invoice '{payment_setup.invoice_number}' not found for payment"
+                )
+
+            payment = DomainPayment(
+                invoice_id=invoice_id,
+                amount=payment_setup.amount,
+                method=payment_setup.method,
+            )
+            self.session.add(payment)
+            count += 1
+
+        await self.session.flush()
+        return count
+
+    async def _load_tasks(self, scenario: ScenarioDefinition) -> int:
+        """Load tasks from scenario."""
+        count = 0
+        for task_setup in scenario.domain_setup.tasks:
+            customer_id = None
+            if task_setup.customer_name:
+                customer_id = self._entity_map.get(task_setup.customer_name)
+                if not customer_id:
+                    raise ScenarioLoadError(
+                        f"Customer '{task_setup.customer_name}' not found for task"
+                    )
+
+            task = DomainTask(
+                customer_id=customer_id,
+                title=task_setup.title,
+                body=task_setup.body,
+                status=task_setup.status,
+            )
+            self.session.add(task)
+            count += 1
+
+        await self.session.flush()
+        return count
+
+    async def _create_canonical_entities(self) -> None:
+        """Create canonical entities for customers loaded in this scenario (idempotent).
+
+        For Phase 1: Simple approach - create canonical entity for each customer.
+        Phase 2: Integrate with EntityResolutionService.
+        """
+        # Only process customers created/referenced in this load
+        for customer_name, customer_id in self._entity_map.items():
+            # Skip non-customer entities
+            if not isinstance(customer_id, UUID):
+                continue
+
+            # Fetch customer details
+            result = await self.session.execute(
+                select(DomainCustomer).where(DomainCustomer.customer_id == customer_id)
+            )
+            customer = result.scalar_one_or_none()
+            if not customer:
+                continue  # Customer might be a sales order or invoice
+
+            entity_id = f"customer:{customer.customer_id}"
+
+            # Check if canonical entity already exists
+            existing_entity = await self.session.execute(
+                select(CanonicalEntity).where(CanonicalEntity.entity_id == entity_id)
+            )
+            if existing_entity.scalar_one_or_none():
+                logger.debug("Canonical entity %s already exists", entity_id)
+                self._canonical_entity_map[customer.name] = entity_id
+                continue
+
+            # Create canonical entity
+            canonical_entity = CanonicalEntity(
+                entity_id=entity_id,
+                entity_type="customer",
+                canonical_name=customer.name,
+                external_ref={
+                    "table": "domain.customers",
+                    "id": str(customer.customer_id),
+                },
+                properties={"industry": customer.industry, "notes": customer.notes},
+            )
+            self.session.add(canonical_entity)
+
+            # Check if alias already exists
+            existing_alias = await self.session.execute(
+                select(EntityAlias).where(
+                    EntityAlias.canonical_entity_id == entity_id,
+                    EntityAlias.alias_text == customer.name,
+                    EntityAlias.user_id == self.user_id
+                )
+            )
+            if not existing_alias.scalar_one_or_none():
+                # Create primary alias
+                alias = EntityAlias(
+                    canonical_entity_id=entity_id,
+                    alias_text=customer.name,
+                    alias_source="exact",
+                    user_id=self.user_id,
+                    confidence=1.0,
+                    use_count=1,
+                )
+                self.session.add(alias)
+
+            # Track for memory creation
+            self._canonical_entity_map[customer.name] = entity_id
+
+            logger.debug("Created canonical entity: %s for %s", entity_id, customer.name)
+
+        await self.session.flush()
+
+    async def _load_semantic_memories(self, scenario: ScenarioDefinition) -> int:
+        """Load semantic memories from scenario (idempotent).
+
+        For Phase 1: Direct creation.
+        Phase 2: Use SemanticExtractionService.
+        """
+        count = 0
+        for memory_setup in scenario.semantic_memories:
+            # Look up canonical entity
+            entity_id = self._canonical_entity_map.get(memory_setup.subject)
+            if not entity_id:
+                raise ScenarioLoadError(
+                    f"Canonical entity for '{memory_setup.subject}' not found"
+                )
+
+            # Check if memory already exists
+            existing = await self.session.execute(
+                select(SemanticMemory).where(
+                    SemanticMemory.user_id == self.user_id,
+                    SemanticMemory.subject_entity_id == entity_id,
+                    SemanticMemory.predicate == memory_setup.predicate,
+                    SemanticMemory.status == "active"
+                )
+            )
+            if existing.scalar_one_or_none():
+                logger.debug(
+                    "Semantic memory %s -> %s already exists",
+                    memory_setup.subject,
+                    memory_setup.predicate
+                )
+                continue
+
+            # Create semantic memory (without embedding for Phase 1)
+            memory = SemanticMemory(
+                user_id=self.user_id,
+                subject_entity_id=entity_id,
+                predicate=memory_setup.predicate,
+                predicate_type=memory_setup.predicate_type,
+                object_value=memory_setup.object_value,
+                confidence=memory_setup.confidence,
+                confidence_factors={"base": memory_setup.confidence, "source": "scenario_load"},
+                reinforcement_count=1,
+                source_type="scenario_load",
+                status="active",
+                importance=0.5,
+                # embedding will be None for Phase 1
+            )
+            self.session.add(memory)
+            count += 1
+            logger.debug(
+                "Created semantic memory: %s -> %s",
+                memory_setup.subject,
+                memory_setup.predicate
+            )
+
+        await self.session.flush()
+        return count
+
+    async def reset(self) -> None:
+        """Delete all demo data from both domain and app schemas.
+
+        WARNING: This is destructive and cannot be undone.
+        """
+        logger.warning("Resetting all demo data")
+
+        try:
+            # Delete in correct order (respect foreign keys)
+            # Domain schema - delete all demo data
+            await self.session.execute(delete(DomainPayment))
+            await self.session.execute(delete(DomainInvoice))
+            await self.session.execute(delete(DomainWorkOrder))
+            await self.session.execute(delete(DomainSalesOrder))
+            await self.session.execute(delete(DomainTask))
+            await self.session.execute(delete(DomainCustomer))
+
+            # App schema - delete demo data
+            # Get all customer canonical entity IDs first
+            customer_entities_result = await self.session.execute(
+                select(CanonicalEntity.entity_id).where(
+                    CanonicalEntity.entity_id.like('customer:%')
+                )
+            )
+            customer_entity_ids = [row[0] for row in customer_entities_result]
+
+            if customer_entity_ids:
+                # Delete memories that reference customer entities
+                await self.session.execute(
+                    delete(SemanticMemory).where(
+                        SemanticMemory.subject_entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+                # Delete episodic memories for demo users
+                await self.session.execute(
+                    delete(EpisodicMemory).where(
+                        EpisodicMemory.user_id.in_([self.user_id, 'demo-user', 'demo-user-001'])
+                    )
+                )
+
+                # Delete aliases that reference customer entities
+                await self.session.execute(
+                    delete(EntityAlias).where(
+                        EntityAlias.canonical_entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+                # Delete canonical entities
+                await self.session.execute(
+                    delete(CanonicalEntity).where(
+                        CanonicalEntity.entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+            await self.session.commit()
+            logger.info("All demo data reset successfully")
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error("Failed to reset demo data: %s", str(e))
+            raise ScenarioLoadError(f"Failed to reset demo data: {str(e)}") from e

@@ -95,6 +95,12 @@ class Settings(BaseSettings):
         description="Enable procedural memory extraction (Phase 2)"
     )
 
+    # Demo Mode
+    DEMO_MODE_ENABLED: bool = Field(
+        default=False,
+        description="Enable demo endpoints and features (development only)"
+    )
+
     # Performance
     max_conversation_history: int = Field(
         default=50,

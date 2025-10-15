@@ -98,6 +98,75 @@ class ChatMessageResponse(BaseModel):
         }
 
 
+class RetrievedMemoryResponse(BaseModel):
+    """Response model for retrieved memory."""
+
+    memory_id: int = Field(..., description="Memory ID")
+    memory_type: str = Field(..., description="Memory type (episodic, semantic, summary)")
+    content: str = Field(..., description="Memory content")
+    relevance_score: float = Field(..., ge=0.0, le=1.0, description="Relevance score")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Memory confidence")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "memory_id": 42,
+                "memory_type": "semantic",
+                "content": "Acme Corporation prefers NET30 payment terms",
+                "relevance_score": 0.87,
+                "confidence": 0.92,
+            }
+        }
+
+
+class EnhancedChatResponse(BaseModel):
+    """Enhanced response model with memory retrieval and context."""
+
+    event_id: int = Field(..., description="Created chat event ID")
+    session_id: UUID = Field(..., description="Conversation session ID")
+    resolved_entities: list[ResolvedEntityResponse] = Field(
+        default_factory=list, description="Entities resolved from the message"
+    )
+    retrieved_memories: list[RetrievedMemoryResponse] = Field(
+        default_factory=list, description="Relevant memories retrieved"
+    )
+    context_summary: str = Field(..., description="Summary of retrieved context")
+    mention_count: int = Field(..., description="Total entity mentions extracted")
+    memory_count: int = Field(..., description="Total memories retrieved")
+    created_at: datetime = Field(..., description="Message timestamp")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "event_id": 12345,
+                "session_id": "550e8400-e29b-41d4-a716-446655440000",
+                "resolved_entities": [
+                    {
+                        "entity_id": "customer:acme123",
+                        "canonical_name": "Acme Corporation",
+                        "entity_type": "customer",
+                        "mention_text": "Acme",
+                        "confidence": 0.95,
+                        "method": "exact",
+                    }
+                ],
+                "retrieved_memories": [
+                    {
+                        "memory_id": 42,
+                        "memory_type": "semantic",
+                        "content": "Acme Corporation prefers NET30 payment terms",
+                        "relevance_score": 0.87,
+                        "confidence": 0.92,
+                    }
+                ],
+                "context_summary": "Retrieved 3 relevant memories about Acme Corporation's payment preferences and history.",
+                "mention_count": 1,
+                "memory_count": 3,
+                "created_at": "2025-10-15T12:00:00Z",
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Error response model."""
 

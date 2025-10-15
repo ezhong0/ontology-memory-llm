@@ -4,10 +4,12 @@ This module sets up the FastAPI application with all routes, middleware,
 and lifecycle event handlers.
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.config.settings import Settings
 from src.infrastructure.database.session import close_db, init_db
@@ -81,8 +83,12 @@ async def root():
     """Root endpoint with API information.
 
     Returns:
-        dict: API metadata
+        dict: API metadata or redirect to demo UI
     """
+    # If demo mode is enabled, redirect to demo UI
+    if settings.DEMO_MODE_ENABLED:
+        return RedirectResponse(url="/demo")
+
     return {
         "name": "Ontology-Aware Memory System API",
         "version": "1.0.0",
@@ -126,6 +132,24 @@ async def internal_error_handler(request, exc):
 from src.api.routes import chat
 
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+
+# Include demo router if demo mode is enabled
+if settings.DEMO_MODE_ENABLED:
+    try:
+        from src.demo.api.router import demo_router
+
+        app.include_router(demo_router, prefix="/api/v1")
+        print("✓ Demo endpoints enabled at /api/v1/demo")
+
+        # Mount frontend static files
+        frontend_path = Path(__file__).parent.parent.parent / "frontend"
+        if frontend_path.exists():
+            app.mount("/demo", StaticFiles(directory=str(frontend_path), html=True), name="demo-ui")
+            print(f"✓ Demo UI enabled at /demo (serving from {frontend_path})")
+        else:
+            print(f"⚠ Frontend directory not found at {frontend_path}")
+    except RuntimeError as e:
+        print(f"⚠ Demo mode requested but failed to load: {e}")
 
 
 if __name__ == "__main__":

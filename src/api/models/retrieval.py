@@ -1,6 +1,6 @@
 """API models for memory retrieval endpoints."""
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -21,7 +21,7 @@ class RetrievalRequest(BaseModel):
         description="Retrieval strategy",
     )
     top_k: int = Field(default=20, ge=1, le=100, description="Number of results to return")
-    filters: Optional[Dict[str, any]] = Field(
+    filters: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Optional filters (entity_types, memory_types, min_confidence, etc.)",
     )

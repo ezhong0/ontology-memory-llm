@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory System Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #718096;
+            font-size: 16px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .nav-tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #718096;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-tab:hover {
+            color: #667eea;
+        }
+
+        .nav-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .actions-bar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .actions-bar h3 {
+            color: #2d3748;
+            font-size: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #fc8181;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #f56565;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(252, 129, 129, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+        }
+
+        .scenarios-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 20px;
+        }
+
+        .scenario-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+
+        .scenario-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .scenario-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .scenario-number {
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .scenario-title {
+            color: #2d3748;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .scenario-category {
+            display: inline-block;
+            background: #edf2f7;
+            color: #4a5568;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        .scenario-description {
+            color: #718096;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .scenario-query {
+            background: #f7fafc;
+            border-left: 3px solid #48bb78;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .query-label {
+            font-size: 11px;
+            color: #2d5f3d;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .query-text {
+            color: #2d3748;
+            font-size: 13px;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .scenario-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            border-left: 4px solid #48bb78;
+            color: #22543d;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            border-left: 4px solid #fc8181;
+            color: #742a2a;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .stat-box {
+            background: white;
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #718096;
+            text-transform: uppercase;
+        }
+
+        .data-table {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .data-table h3 {
+            color: #2d3748;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f7fafc;
+            color: #4a5568;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        td {
+            padding: 12px;
+            color: #2d3748;
+            font-size: 14px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        tr:hover {
+            background: #f7fafc;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+        }
+
+        .refresh-btn {
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Memory System Demo</h1>
+            <p class="subtitle">Week 2 - Complete Scenario Testing Interface</p>
+
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('scenarios')">
+                    📋 Scenarios (6)
+                </button>
+                <button class="nav-tab" onclick="switchTab('database')">
+                    🗄️ Database Explorer
+                </button>
+                <button class="nav-tab" onclick="switchTab('memory')">
+                    🧠 Memory Explorer
+                </button>
+            </div>
+        </div>
+
+        <!-- Scenarios Tab -->
+        <div id="scenarios-tab" class="tab-content active">
+            <div class="actions-bar">
+                <h3>Available Scenarios</h3>
+                <button class="btn-danger" onclick="resetAllData()">
+                    <span id="resetBtnText">🗑️ Reset All Data</span>
+                </button>
+            </div>
+
+            <div id="globalAlert"></div>
+
+            <div class="scenarios-grid" id="scenariosGrid">
+                <div class="scenario-card">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⏳</div>
+                        <div class="empty-state-title">Loading Scenarios...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Database Explorer Tab -->
+        <div id="database-tab" class="tab-content">
+            <div class="actions-bar">
+                <h3>Domain Database Tables</h3>
+                <button class="btn-secondary refresh-btn" onclick="loadDatabaseData()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div id="databaseContent"></div>
+        </div>
+
+        <!-- Memory Explorer Tab -->
+        <div id="memory-tab" class="tab-content">
+            <div class="actions-bar">
+                <h3>Memory System Data</h3>
+                <button class="btn-secondary refresh-btn" onclick="loadMemoryData()">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div id="memoryContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api/v1/demo';
+        let scenarios = [];
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            // Load data for the tab
+            if (tabName === 'database') {
+                loadDatabaseData();
+            } else if (tabName === 'memory') {
+                loadMemoryData();
+            }
+        }
+
+        // Load all scenarios
+        async function loadScenarios() {
+            try {
+                const response = await fetch(`${API_BASE}/scenarios`);
+                scenarios = await response.json();
+                renderScenarios();
+            } catch (error) {
+                showGlobalError('Failed to load scenarios', error.message);
+            }
+        }
+
+        // Render scenarios grid
+        function renderScenarios() {
+            const grid = document.getElementById('scenariosGrid');
+            grid.innerHTML = scenarios.map(scenario => `
+                <div class="scenario-card">
+                    <div class="scenario-header">
+                        <div class="scenario-number">${scenario.scenario_id}</div>
+                    </div>
+                    <h3 class="scenario-title">${scenario.title}</h3>
+                    <div class="scenario-category">${scenario.category.replace(/_/g, ' ')}</div>
+                    <p class="scenario-description">${scenario.description}</p>
+
+                    <div class="scenario-query">
+                        <div class="query-label">Expected Query</div>
+                        <div class="query-text">"${scenario.expected_query}"</div>
+                    </div>
+
+                    <div class="scenario-actions">
+                        <button class="btn-primary" onclick="loadScenario(${scenario.scenario_id})" id="loadBtn${scenario.scenario_id}">
+                            Load Scenario ${scenario.scenario_id}
+                        </button>
+                    </div>
+
+                    <div id="result${scenario.scenario_id}"></div>
+                </div>
+            `).join('');
+        }
+
+        // Load a specific scenario
+        async function loadScenario(scenarioId) {
+            const loadBtn = document.getElementById(`loadBtn${scenarioId}`);
+            const resultDiv = document.getElementById(`result${scenarioId}`);
+
+            loadBtn.disabled = true;
+            loadBtn.innerHTML = '<div class="spinner"></div> Loading...';
+            resultDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/scenarios/${scenarioId}/load`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <div class="alert-title">✅ ${result.message}</div>
+                            <div class="stats-grid">
+                                <div class="stat-box">
+                                    <div class="stat-value">${result.customers_created}</div>
+                                    <div class="stat-label">Customers</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">${result.sales_orders_created}</div>
+                                    <div class="stat-label">Orders</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">${result.invoices_created}</div>
+                                    <div class="stat-label">Invoices</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">${result.tasks_created}</div>
+                                    <div class="stat-label">Tasks</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">${result.semantic_memories_created}</div>
+                                    <div class="stat-label">Memories</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(result.detail || 'Failed to load scenario');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-error">
+                        <div class="alert-title">❌ Failed to load scenario</div>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                loadBtn.disabled = false;
+                loadBtn.innerHTML = `Load Scenario ${scenarioId}`;
+            }
+        }
+
+        // Reset all data
+        async function resetAllData() {
+            if (!confirm('⚠️ This will delete ALL demo data from the database. Continue?')) {
+                return;
+            }
+
+            const resetBtn = document.querySelector('.btn-danger');
+            const resetBtnText = document.getElementById('resetBtnText');
+
+            resetBtn.disabled = true;
+            resetBtnText.innerHTML = '<div class="spinner"></div> Resetting...';
+
+            try {
+                const response = await fetch(`${API_BASE}/scenarios/reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showGlobalSuccess(result.message);
+                    // Clear all result displays
+                    scenarios.forEach(s => {
+                        const resultDiv = document.getElementById(`result${s.scenario_id}`);
+                        if (resultDiv) resultDiv.innerHTML = '';
+                    });
+                } else {
+                    throw new Error(result.detail || 'Failed to reset data');
+                }
+            } catch (error) {
+                showGlobalError('Reset failed', error.message);
+            } finally {
+                resetBtn.disabled = false;
+                resetBtnText.textContent = '🗑️ Reset All Data';
+            }
+        }
+
+        // Load database data
+        async function loadDatabaseData() {
+            const content = document.getElementById('databaseContent');
+            content.innerHTML = `
+                <div class="data-table">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏗️</div>
+                        <div class="empty-state-title">Database Explorer</div>
+                        <div class="empty-state-text">Coming soon! This will show domain.customers, domain.sales_orders, domain.invoices, etc.</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load memory data
+        async function loadMemoryData() {
+            const content = document.getElementById('memoryContent');
+            content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading memory data...</div></div>';
+
+            try {
+                // Fetch all memory data
+                const [semanticRes, entitiesRes, statsRes] = await Promise.all([
+                    fetch(`${API_BASE}/memories/semantic`),
+                    fetch(`${API_BASE}/memories/entities`),
+                    fetch(`${API_BASE}/memories/stats`)
+                ]);
+
+                const semanticMemories = await semanticRes.json();
+                const entities = await entitiesRes.json();
+                const stats = await statsRes.json();
+
+                // Render memory explorer with tabs
+                content.innerHTML = `
+                    <div class="stats-grid" style="margin-bottom: 20px;">
+                        <div class="stat-box">
+                            <div class="stat-value">${stats.semantic_memories}</div>
+                            <div class="stat-label">Semantic Memories</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${stats.canonical_entities}</div>
+                            <div class="stat-label">Canonical Entities</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-value">${stats.entity_aliases}</div>
+                            <div class="stat-label">Entity Aliases</div>
+                        </div>
+                    </div>
+
+                    <div class="data-table">
+                        <h3>Semantic Memories</h3>
+                        ${semanticMemories.length > 0 ? `
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Subject Entity</th>
+                                        <th>Predicate</th>
+                                        <th>Type</th>
+                                        <th>Object Value</th>
+                                        <th>Confidence</th>
+                                        <th>Reinforcements</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${semanticMemories.map(m => `
+                                        <tr>
+                                            <td><strong>${m.subject_entity_name}</strong></td>
+                                            <td>${m.predicate}</td>
+                                            <td><span style="background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${m.predicate_type}</span></td>
+                                            <td><code style="font-size: 12px;">${JSON.stringify(m.object_value)}</code></td>
+                                            <td><span style="background: ${m.confidence >= 0.8 ? '#c6f6d5' : '#fed7d7'}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${(m.confidence * 100).toFixed(0)}%</span></td>
+                                            <td>${m.reinforcement_count}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Semantic Memories</div><div class="empty-state-text">Load a scenario to create memories</div></div>'}
+                    </div>
+
+                    <div class="data-table">
+                        <h3>Canonical Entities</h3>
+                        ${entities.length > 0 ? `
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Entity ID</th>
+                                        <th>Type</th>
+                                        <th>Name</th>
+                                        <th>External Ref</th>
+                                        <th>Aliases</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${entities.map(e => `
+                                        <tr>
+                                            <td><code style="font-size: 11px;">${e.entity_id}</code></td>
+                                            <td><span style="background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${e.entity_type}</span></td>
+                                            <td><strong>${e.canonical_name}</strong></td>
+                                            <td><code style="font-size: 11px;">${e.external_ref ? e.external_ref.table : 'N/A'}</code></td>
+                                            <td>${e.alias_count}</td>
+                                            <td>${new Date(e.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Entities</div><div class="empty-state-text">Load a scenario to create entities</div></div>'}
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        <div class="alert-title">❌ Failed to load memory data</div>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Global alerts
+        function showGlobalSuccess(message) {
+            const alert = document.getElementById('globalAlert');
+            alert.innerHTML = `
+                <div class="alert alert-success">
+                    <div class="alert-title">✅ Success</div>
+                    <p>${message}</p>
+                </div>
+            `;
+            setTimeout(() => { alert.innerHTML = ''; }, 5000);
+        }
+
+        function showGlobalError(title, message) {
+            const alert = document.getElementById('globalAlert');
+            alert.innerHTML = `
+                <div class="alert alert-error">
+                    <div class="alert-title">❌ ${title}</div>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Initialize
+        loadScenarios();
+    </script>
+</body>
+</html>
