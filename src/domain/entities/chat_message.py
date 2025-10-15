@@ -2,9 +2,9 @@
 
 Represents a message in a conversation (domain representation).
 """
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 from typing import Any, Optional
 from uuid import UUID
 

@@ -4,11 +4,16 @@ Endpoints for processing chat messages.
 """
 from datetime import datetime, timezone
 
-import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+import structlog
 
 from src.api.dependencies import get_current_user_id, get_process_chat_message_use_case
-from src.api.models import ChatMessageRequest, ChatMessageResponse, ErrorResponse, ResolvedEntityResponse
+from src.api.models import (
+    ChatMessageRequest,
+    ChatMessageResponse,
+    ErrorResponse,
+    ResolvedEntityResponse,
+)
 from src.application.dtos import ProcessChatMessageInput
 from src.application.use_cases import ProcessChatMessageUseCase
 from src.domain.exceptions import AmbiguousEntityError, DomainError

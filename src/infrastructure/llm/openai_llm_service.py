@@ -1,12 +1,15 @@
 """OpenAI LLM service implementation.
 
-Implements ILLMService using OpenAI's API for coreference resolution.
+Implements ILLMService using OpenAI's API for coreference resolution
+and semantic triple extraction.
 """
-import structlog
-from typing import Optional
+
+import json
+from typing import Any
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
+import structlog
 
 from src.domain.exceptions import LLMServiceError
 from src.domain.ports import ILLMService
@@ -145,6 +148,215 @@ class OpenAILLMService(ILLMService):
             "LLM-based mention extraction not implemented in Phase 1A. "
             "Use simple pattern-based extraction for now."
         )
+
+    async def extract_semantic_triples(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Extract semantic triples (SPO) from message using LLM.
+
+        Phase 1B: Extract structured knowledge (subject-predicate-object triples)
+        from natural language messages using GPT-4-turbo.
+
+        Args:
+            message: Chat message content
+            resolved_entities: Resolved entities from Phase 1A
+                Each dict should have: entity_id, canonical_name, entity_type
+
+        Returns:
+            List of triple dictionaries with structure:
+            {
+                "subject_entity_id": str,
+                "predicate": str,
+                "predicate_type": str (attribute|preference|relationship|action),
+                "object_value": dict (structured value),
+                "confidence": float,
+                "metadata": dict (optional)
+            }
+
+        Raises:
+            LLMServiceError: If extraction fails
+        """
+        if not message or not message.strip():
+            logger.debug("empty_message_for_extraction")
+            return []
+
+        if not resolved_entities:
+            logger.debug("no_entities_for_extraction")
+            return []
+
+        try:
+            # Build extraction prompt
+            prompt = self._build_extraction_prompt(message, resolved_entities)
+
+            logger.debug(
+                "calling_openai_for_triple_extraction",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                model=self.MODEL,
+            )
+
+            # Call OpenAI with JSON mode for structured output
+            response = await self.client.chat.completions.create(
+                model=self.MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at extracting structured knowledge from conversations. "
+                        "Extract semantic triples (subject-predicate-object) following the exact JSON schema provided.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1000,  # Allow for multiple triples
+                temperature=0.1,  # Low temperature for consistent extraction
+                response_format={"type": "json_object"},
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Parse response
+            triples = self._parse_extraction_response(response, message)
+
+            logger.info(
+                "triple_extraction_success",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                triple_count=len(triples),
+                tokens=response.usage.total_tokens if response.usage else 0,
+            )
+
+            return triples
+
+        except Exception as e:
+            logger.error(
+                "triple_extraction_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise LLMServiceError(f"Semantic triple extraction failed: {e}") from e
+
+    def _build_extraction_prompt(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> str:
+        """Build prompt for semantic triple extraction.
+
+        Args:
+            message: Message content
+            resolved_entities: Resolved entities
+
+        Returns:
+            Formatted prompt string
+        """
+        # Format entities as JSON
+        entities_json = json.dumps(resolved_entities, indent=2)
+
+        prompt = f"""Extract semantic triples (subject-predicate-object) from the message below.
+
+Resolved Entities:
+{entities_json}
+
+Predicate Types:
+- attribute: Factual properties (payment_terms, industry, size, location)
+- preference: User/entity preferences (prefers_delivery_day, dislikes_product)
+- relationship: Inter-entity relationships (supplies_to, works_with, is_customer_of)
+- action: Completed actions (ordered, cancelled, requested, confirmed)
+
+Message: "{message}"
+
+Task: Extract all semantic triples where the subject is one of the resolved entities.
+
+Instructions:
+1. Analyze the message for factual statements about the entities
+2. Extract each fact as a subject-predicate-object triple
+3. Use entity_id from resolved entities as subject
+4. Normalize predicates to snake_case (e.g., "prefers_delivery_day")
+5. Structure object_value as a dictionary with "type" and "value" keys
+6. Assign confidence based on statement clarity (0.0-1.0)
+   - Explicit statement: 0.9 ("Acme prefers Friday")
+   - Implicit statement: 0.7 ("They usually want Friday")
+   - Inferred: 0.5 ("They mentioned Friday twice")
+
+Output Format (JSON):
+{{
+  "triples": [
+    {{
+      "subject_entity_id": "customer_acme_123",
+      "predicate": "prefers_delivery_day",
+      "predicate_type": "preference",
+      "object_value": {{"type": "day_of_week", "value": "Friday"}},
+      "confidence": 0.9,
+      "metadata": {{"source": "explicit"}}
+    }}
+  ]
+}}
+
+Respond with ONLY the JSON object. If no triples can be extracted, return {{"triples": []}}.
+"""
+
+        return prompt
+
+    def _parse_extraction_response(
+        self,
+        response: ChatCompletion,
+        message: str,
+    ) -> list[dict[str, Any]]:
+        """Parse OpenAI response for semantic triple extraction.
+
+        Args:
+            response: OpenAI API response
+            message: Original message
+
+        Returns:
+            List of triple dictionaries
+
+        Raises:
+            LLMServiceError: If response cannot be parsed
+        """
+        if not response.choices:
+            logger.warning("no_choices_in_extraction_response")
+            return []
+
+        response_text = response.choices[0].message.content
+        if not response_text:
+            logger.warning("empty_extraction_response")
+            return []
+
+        try:
+            # Parse JSON response
+            parsed = json.loads(response_text)
+
+            if not isinstance(parsed, dict):
+                raise ValueError("Response is not a JSON object")
+
+            triples = parsed.get("triples", [])
+
+            if not isinstance(triples, list):
+                raise ValueError("triples field is not a list")
+
+            logger.debug(
+                "parsed_extraction_response",
+                triple_count=len(triples),
+            )
+
+            return triples
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "json_parse_error_in_extraction",
+                response_text=response_text[:200],
+                error=str(e),
+            )
+            return []
+        except ValueError as e:
+            logger.error(
+                "invalid_extraction_response_format",
+                error=str(e),
+            )
+            return []
 
     def _build_coreference_prompt(
         self, mention: EntityMention, context: ConversationContext

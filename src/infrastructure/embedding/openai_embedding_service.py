@@ -2,10 +2,9 @@
 
 Implements IEmbeddingService using OpenAI's embedding API.
 """
-import structlog
-from typing import List
 
 from openai import AsyncOpenAI
+import structlog
 
 from src.domain.exceptions import EmbeddingError
 from src.domain.ports import IEmbeddingService

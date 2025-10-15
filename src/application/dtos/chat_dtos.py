@@ -9,7 +9,7 @@ from uuid import UUID
 
 @dataclass
 class ResolvedEntityDTO:
-    """DTO for resolved entity information.
+    """DTO for resolved entity information (Phase 1A).
 
     Attributes:
         entity_id: Canonical entity ID
@@ -26,6 +26,29 @@ class ResolvedEntityDTO:
     mention_text: str
     confidence: float
     method: str
+
+
+@dataclass
+class SemanticMemoryDTO:
+    """DTO for semantic memory (Phase 1B).
+
+    Attributes:
+        memory_id: Database primary key
+        subject_entity_id: Subject entity ID
+        predicate: Normalized predicate name
+        predicate_type: Type (attribute, preference, relationship, action)
+        object_value: Structured object value
+        confidence: Current confidence [0.0, 1.0]
+        status: Memory status (active, inactive, conflicted)
+    """
+
+    memory_id: int
+    subject_entity_id: str
+    predicate: str
+    predicate_type: str
+    object_value: dict[str, Any]
+    confidence: float
+    status: str
 
 
 @dataclass
@@ -54,9 +77,11 @@ class ProcessChatMessageOutput:
     Attributes:
         event_id: Created chat event ID
         session_id: Conversation session ID
-        resolved_entities: List of resolved entities from the message
+        resolved_entities: List of resolved entities from the message (Phase 1A)
         mention_count: Total number of mentions extracted
         resolution_success_rate: Percentage of mentions successfully resolved
+        semantic_memories: List of semantic memories extracted (Phase 1B)
+        conflict_count: Number of conflicts detected (Phase 1B)
     """
 
     event_id: int
@@ -64,3 +89,5 @@ class ProcessChatMessageOutput:
     resolved_entities: list[ResolvedEntityDTO]
     mention_count: int
     resolution_success_rate: float
+    semantic_memories: list[SemanticMemoryDTO]
+    conflict_count: int

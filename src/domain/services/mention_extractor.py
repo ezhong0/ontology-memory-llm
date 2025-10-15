@@ -3,8 +3,8 @@
 Pattern-based extraction for Phase 1A. LLM-based extraction can be added in Phase 1B+.
 """
 import re
+
 import structlog
-from typing import List
 
 from src.domain.value_objects import EntityMention
 

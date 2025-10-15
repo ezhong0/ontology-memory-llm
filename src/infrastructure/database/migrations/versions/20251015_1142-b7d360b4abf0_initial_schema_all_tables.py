@@ -1,16 +1,16 @@
 """initial_schema_all_tables
 
 Revision ID: b7d360b4abf0
-Revises: 
+Revises:
 Create Date: 2025-10-15 11:42:12.468805
 
 """
 from typing import Sequence, Union
 
 from alembic import op
+import pgvector.sqlalchemy
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-import pgvector.sqlalchemy
 
 # revision identifiers, used by Alembic.
 revision: str = 'b7d360b4abf0'

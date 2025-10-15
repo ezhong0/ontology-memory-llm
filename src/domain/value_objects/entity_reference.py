@@ -58,10 +58,30 @@ class EntityReference:
             "primary_key": self.primary_key,
             "primary_value": self.primary_value,
             "display_name": self.display_name,
+            "properties": self.properties,
         }
-        if self.properties:
-            result["properties"] = self.properties
         return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EntityReference":
+        """Create EntityReference from dictionary.
+
+        Args:
+            data: Dictionary with entity reference fields
+
+        Returns:
+            EntityReference instance
+
+        Raises:
+            ValueError: If required fields are missing
+        """
+        return cls(
+            table=data["table"],
+            primary_key=data["primary_key"],
+            primary_value=data["primary_value"],
+            display_name=data["display_name"],
+            properties=data.get("properties"),
+        )
 
     def __str__(self) -> str:
         """String representation for logging."""

@@ -4,10 +4,10 @@ This module defines all database tables as SQLAlchemy ORM models.
 Schema follows DESIGN.md specification with 10 core tables.
 """
 from datetime import datetime
-from typing import Any
+
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
-    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -15,13 +15,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.declarative import declarative_base
-from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
 

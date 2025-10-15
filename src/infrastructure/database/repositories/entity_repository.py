@@ -2,12 +2,11 @@
 
 Implements IEntityRepository using SQLAlchemy and PostgreSQL.
 """
-import structlog
 from typing import Optional
 
 from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+import structlog
 
 from src.domain.entities import CanonicalEntity, EntityAlias
 from src.domain.exceptions import RepositoryError
@@ -15,6 +14,8 @@ from src.domain.ports import IEntityRepository
 from src.domain.value_objects import EntityReference
 from src.infrastructure.database.models import (
     CanonicalEntity as CanonicalEntityModel,
+)
+from src.infrastructure.database.models import (
     EntityAlias as EntityAliasModel,
 )
 

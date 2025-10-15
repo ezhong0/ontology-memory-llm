@@ -4,7 +4,7 @@ Represents the result of entity resolution (immutable).
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ResolutionMethod(str, Enum):

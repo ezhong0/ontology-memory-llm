@@ -309,28 +309,35 @@ def freeze_time(monkeypatch):
 
 
 # ============================================================================
-# Assertion Helpers
+# Assertion Helpers (from test_helpers.py)
 # ============================================================================
 
 @pytest.fixture
 def assert_confidence_in_range():
     """Helper to assert confidence is in valid range"""
-    def _assert(confidence: float, min_val: float = 0.0, max_val: float = 0.95):
-        assert min_val <= confidence <= max_val, \
-            f"Confidence {confidence} not in range [{min_val}, {max_val}]"
-    return _assert
+    from tests.fixtures.test_helpers import assert_confidence_in_range
+    return assert_confidence_in_range
 
 
 @pytest.fixture
 def assert_valid_entity_id():
     """Helper to assert entity_id follows format"""
-    import re
+    from tests.fixtures.test_helpers import assert_valid_entity_id
+    return assert_valid_entity_id
 
-    def _assert(entity_id: str):
-        pattern = r'^[a-z_]+:[a-zA-Z0-9_-]+$'
-        assert re.match(pattern, entity_id), \
-            f"Invalid entity_id format: {entity_id} (expected: 'type:identifier')"
-    return _assert
+
+@pytest.fixture
+def api_response_validator():
+    """Validator for API response structure"""
+    from tests.fixtures.test_helpers import APIResponseValidator
+    return APIResponseValidator()
+
+
+@pytest.fixture
+def time_helper():
+    """Helper for time-related operations"""
+    from tests.fixtures.test_helpers import TimeHelper
+    return TimeHelper()
 
 
 # ============================================================================

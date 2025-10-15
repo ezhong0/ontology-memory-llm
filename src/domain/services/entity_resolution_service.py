@@ -2,11 +2,12 @@
 
 Implements the 5-stage hybrid entity resolution algorithm from DESIGN.md v2.0.
 """
-import structlog
 from typing import Optional
 
-from src.domain.entities import CanonicalEntity, EntityAlias
-from src.domain.exceptions import AmbiguousEntityError, EntityResolutionError
+import structlog
+
+from src.domain.entities import EntityAlias
+from src.domain.exceptions import AmbiguousEntityError
 from src.domain.ports import IEntityRepository, ILLMService
 from src.domain.value_objects import (
     ConversationContext,

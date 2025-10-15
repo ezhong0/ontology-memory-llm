@@ -2,12 +2,12 @@
 
 Implements IChatEventRepository using SQLAlchemy and PostgreSQL.
 """
-import structlog
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from src.domain.entities import ChatMessage
 from src.domain.exceptions import RepositoryError

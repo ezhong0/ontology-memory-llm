@@ -45,7 +45,10 @@ class Settings(BaseSettings):
         description="OpenAI embedding model"
     )
     openai_embedding_dimensions: int = Field(default=1536, description="Embedding dimensions")
-    openai_llm_model: str = Field(default="gpt-4-turbo-preview", description="LLM model for extraction")
+    openai_llm_model: str = Field(
+        default="gpt-4-turbo-preview",
+        description="LLM model for extraction"
+    )
 
     # Redis Configuration (Phase 2)
     redis_url: str = Field(

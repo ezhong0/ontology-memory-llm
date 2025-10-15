@@ -1,0 +1,114 @@
+# Coverage.py Configuration
+# Configuration for test coverage measurement
+
+[run]
+# Source code to measure
+source = src/
+
+# Parallel mode (for async tests)
+parallel = True
+concurrency = multiprocessing,thread
+
+# Branch coverage (not just line coverage)
+branch = True
+
+# Files to omit from coverage
+omit =
+    */tests/*
+    */conftest.py
+    */__pycache__/*
+    */venv/*
+    */migrations/*
+    */.pytest_cache/*
+    */setup.py
+
+# Measure sub-processes
+include_subprocess = True
+
+[report]
+# Coverage report options
+
+# Minimum acceptable coverage percentage
+# (Tests fail if below this threshold)
+fail_under = 85
+
+# Precision for coverage percentages
+precision = 2
+
+# Show missing lines
+show_missing = True
+
+# Skip empty files
+skip_empty = True
+
+# Skip files with no executable code
+skip_covered = False
+
+# Sort by coverage percentage (lowest first)
+sort = Cover
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+
+    # Debugging code
+    def __repr__
+    def __str__
+
+    # Defensive programming
+    raise AssertionError
+    raise NotImplementedError
+    raise ValueError
+
+    # Type checking
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+
+    # Abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Overload decorators
+    @overload
+    @typing.overload
+
+    # Main blocks
+    if __name__ == .__main__.:
+
+    # Pass statements
+    pass
+
+    # Ellipsis (...)
+    \.\.\.
+
+[html]
+# HTML report configuration
+directory = htmlcov
+title = Ontology-Aware Memory System - Test Coverage Report
+
+[xml]
+# XML report for CI/CD integration
+output = coverage.xml
+
+[json]
+# JSON report for programmatic access
+output = coverage.json
+pretty_print = True
+
+[coverage:paths]
+# Path normalization for parallel coverage
+source =
+    src/
+    /Users/*/Projects/adenAssessment2/src/
+    /home/*/adenAssessment2/src/
+    /app/src/
+
+[coverage:html]
+# HTML report styling
+extra_css =
+show_contexts = True
+
+[coverage:run]
+# Additional run configuration
+relative_files = True
