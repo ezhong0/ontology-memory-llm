@@ -2,6 +2,12 @@
 
 Immutable value objects representing core domain concepts.
 """
+from src.domain.value_objects.consolidation import (
+    ConsolidationScope,
+    KeyFact,
+    MemorySummary,
+    SummaryData,
+)
 from src.domain.value_objects.conversation_context import ConversationContext
 from src.domain.value_objects.entity_mention import EntityMention
 from src.domain.value_objects.entity_reference import EntityReference
@@ -10,6 +16,7 @@ from src.domain.value_objects.memory_conflict import (
     ConflictType,
     MemoryConflict,
 )
+from src.domain.value_objects.procedural_memory import Pattern, ProceduralMemory
 from src.domain.value_objects.resolution_result import ResolutionMethod, ResolutionResult
 from src.domain.value_objects.semantic_triple import PredicateType, SemanticTriple
 
@@ -26,4 +33,11 @@ __all__ = [
     "MemoryConflict",
     "PredicateType",
     "SemanticTriple",
+    # Phase 1D
+    "ConsolidationScope",
+    "KeyFact",
+    "SummaryData",
+    "MemorySummary",
+    "Pattern",
+    "ProceduralMemory",
 ]

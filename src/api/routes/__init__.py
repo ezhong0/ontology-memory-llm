@@ -2,6 +2,6 @@
 
 FastAPI routers for all endpoints.
 """
-from src.api.routes import chat
+from src.api.routes import chat, consolidation, retrieval
 
-__all__ = ["chat"]
+__all__ = ["chat", "retrieval", "consolidation"]

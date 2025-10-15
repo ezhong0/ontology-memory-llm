@@ -6,11 +6,23 @@ Infrastructure layer implements these ports.
 from src.domain.ports.chat_repository import IChatEventRepository
 from src.domain.ports.embedding_service import IEmbeddingService
 from src.domain.ports.entity_repository import IEntityRepository
+from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
 from src.domain.ports.llm_service import ILLMService
+from src.domain.ports.procedural_memory_repository import IProceduralMemoryRepository
+from src.domain.ports.semantic_memory_repository import ISemanticMemoryRepository
+from src.domain.ports.summary_repository import ISummaryRepository
 
 __all__ = [
+    # Phase 1A
     "IEntityRepository",
     "IChatEventRepository",
-    "ILLMService",
     "IEmbeddingService",
+    "ILLMService",
+    # Phase 1B
+    "ISemanticMemoryRepository",
+    # Phase 1C
+    "IEpisodicMemoryRepository",
+    "ISummaryRepository",
+    # Phase 1D
+    "IProceduralMemoryRepository",
 ]

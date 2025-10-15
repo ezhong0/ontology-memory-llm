@@ -1,24 +1,236 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**Philosophy**: This project values **exceptional code quality**, **comprehensive solutions**, and **beautiful, elegant architecture** over speed and band-aid fixes.
 
-## System Overview
+> "Every line of code is a conversation with the future. Make it worth reading."
 
-**Ontology-Aware Memory System**: A sophisticated memory system for LLM agents that transforms raw conversations into structured, retrievable knowledge with domain ontology integration.
+## What This Project Is About
 
-**Memory Pipeline**: `Raw Chat → Episodic Memory → Semantic Memory → Procedural Memory → Summaries`
+This is not a typical CRUD application. This is a **philosophically grounded**, **vision-driven** system that transforms how LLM agents understand and remember business context.
 
-**Current Status**: Design v2.0 complete (ground-up redesign). Ready for Phase 1 implementation (8 weeks).
+**Current State**: Phase 1A + Phase 1B implementation ~95% complete. Core entity resolution and semantic extraction working. Now moving toward Phase 1C (intelligence) and Phase 1D (learning).
 
-**Design Approach**: Vision-driven architecture with surgical LLM integration (deterministic where it excels, LLM only where it adds clear value)
+**Code Quality**: 11,864 lines of carefully structured Python. 100% type-annotated. Pure hexagonal architecture. 121/130 unit tests passing. Production-ready foundation.
 
-### The Core Metaphor
+---
 
-From `docs/vision/VISION.md`:
+## The First Principle: Understanding Before Execution
 
-> "The system should behave like an **experienced colleague** who has worked with this company for years"
+> **SEEK TO FULLY UNDERSTAND ANY ISSUE OR REQUEST BEFORE JUMPING INTO EXECUTION. ERR ON THE SIDE OF BEING THOROUGH.**
 
-This colleague:
+This is not negotiable. This is the foundation of everything else.
+
+### Why This Matters
+
+**Building the wrong thing quickly is worse than building the right thing slowly.**
+
+A comprehensive solution to a misunderstood problem is worthless. A quick fix to a surface symptom creates technical debt. Understanding IS the work—execution is just the expression of that understanding.
+
+### Value Good Solutions Over Speed
+
+**CRITICAL**: Think deeply about all issues. **Value good solutions over lower token usage or time spent.**
+
+Don't optimize for:
+- ❌ Minimal tokens used
+- ❌ Fastest response time
+- ❌ Shortest conversation
+- ❌ Fewest questions asked
+
+**DO optimize for**:
+- ✅ **Correct understanding** of the problem
+- ✅ **Comprehensive solution** that addresses root cause
+- ✅ **Well-reasoned approach** aligned with architecture
+- ✅ **Thoughtful consideration** of edge cases and impacts
+
+**Remember**:
+- A 1000-token thorough investigation that leads to the right solution is **infinitely more valuable** than a 100-token quick fix that creates technical debt.
+- Spending 30 minutes understanding the problem deeply is **better** than spending 5 minutes implementing the wrong solution.
+- Asking 10 clarifying questions to get it right is **better** than making 10 assumptions and getting it wrong.
+
+**This project values quality over speed. Always.**
+
+### How to Apply This
+
+**When given a task, bug report, or feature request:**
+
+#### 1. **Investigate Thoroughly**
+
+**DON'T**:
+- ❌ Jump straight to coding
+- ❌ Assume you understand from a brief description
+- ❌ Implement based on the surface-level request
+- ❌ Rush to "done" without exploring context
+
+**DO**:
+- ✅ Read all relevant design docs
+- ✅ Check related code to understand current implementation
+- ✅ Run tests to see current behavior
+- ✅ Trace through the system to understand data flow
+- ✅ Look for similar patterns elsewhere in the codebase
+- ✅ Check git history to understand why it was built this way
+
+**Example**:
+```
+User: "Fix the failing tests in memory_validation_service.py"
+
+❌ BAD approach:
+- Look at test, see it expects X, change code to return X
+- Tests pass, mark done
+
+✅ GOOD approach:
+- Read failing tests to understand what behavior is expected
+- Read DESIGN.md to understand what the design specifies
+- Read the implementation to understand current logic
+- Read LIFECYCLE_DESIGN.md to understand confidence decay formula
+- Check if tests are testing the right thing or if implementation is wrong
+- Understand WHY the discrepancy exists
+- Determine root cause: formula mismatch? Test expectation wrong? Both?
+- Fix the ROOT CAUSE with full understanding
+- Add additional tests for edge cases discovered during investigation
+```
+
+#### 2. **Ask Clarifying Questions Liberally**
+
+**It is ALWAYS better to ask than to assume.**
+
+**Good questions to ask**:
+- "I see the tests are failing—should I verify the expected behavior against DESIGN.md first?"
+- "The design doc mentions X, but the current implementation does Y. Which is correct?"
+- "This request asks for feature X. Looking at the architecture, should this go in domain layer or infrastructure?"
+- "I see two possible approaches: A (simpler but less flexible) and B (more complex but scales better). Which aligns with the vision?"
+- "Before implementing, I want to check: does this serve a vision principle? Which one?"
+- "I found what looks like the issue, but I want to understand the context first. Can I investigate X, Y, and Z before proposing a fix?"
+
+**Questions show thoughtfulness, not weakness.**
+
+An experienced colleague asks questions to avoid wasting time on wrong solutions. You should too.
+
+#### 3. **Propose Before Implementing**
+
+When you've investigated and understood the issue:
+
+**DON'T** immediately write code.
+
+**DO** propose your understanding and approach:
+
+```
+"Based on my investigation:
+
+**Understanding**:
+- The tests expect confidence decay to use formula X (from DESIGN.md)
+- Current implementation uses formula Y (seems to be older approach)
+- Root cause: Implementation wasn't updated when design changed in v2.0
+
+**Proposed Solution**:
+1. Update calculate_effective_confidence() to match DESIGN.md spec
+2. Update related tests to verify edge cases (days=0, days=90, never validated)
+3. Add integration test to verify decay in full pipeline
+
+**Questions**:
+- Should I also check if other services use this formula correctly?
+- Are there any migration concerns if we change how confidence is calculated?
+
+Does this approach align with your expectations?"
+```
+
+This lets the human correct misunderstandings BEFORE you spend hours coding the wrong thing.
+
+#### 4. **Err on the Side of Thoroughness**
+
+When uncertain whether to investigate more or start coding:
+
+**Default to: Investigate more.**
+
+**Examples**:
+- "Should I check how other services handle this pattern?" → **Yes, check.**
+- "Should I read the entire DESIGN.md section or just the relevant part?" → **Read the entire section for context.**
+- "Should I verify my understanding matches the tests?" → **Yes, verify.**
+- "Should I look for edge cases beyond what's mentioned?" → **Yes, look.**
+- "Should I trace through the full flow or just the immediate function?" → **Trace the full flow.**
+
+**Why**: 10 minutes of investigation can save hours of rework.
+
+### What Thoroughness Looks Like
+
+**Scenario**: User reports "entity resolution is returning wrong results for fuzzy matches"
+
+**❌ SURFACE-LEVEL approach** (2 minutes):
+- Look at fuzzy match code
+- See similarity threshold is 0.7
+- Change to 0.8
+- Mark done
+
+**✅ THOROUGH approach** (20 minutes):
+- Read the error report carefully - which specific entities failed?
+- Check DESIGN.md - what's the intended fuzzy match behavior?
+- Look at test cases - what scenarios are tested?
+- Run tests to reproduce the issue
+- Check database - what aliases exist for the failing entities?
+- Check HEURISTICS_CALIBRATION.md - what's the rationale for 0.7 threshold?
+- Trace through the 5-stage resolution algorithm - where is it failing?
+- Check if similar entities resolve correctly - is this an outlier or systematic?
+- Investigate: Is threshold wrong? Is pg_trgm similarity calculation wrong? Is the test data unusual?
+- Understand the root cause
+- Propose fix with rationale
+- Implement with comprehensive tests
+
+**Result**: The first approach might "fix" this specific case but miss the underlying issue. The second approach solves the actual problem.
+
+### Balancing Thoroughness and Paralysis
+
+**Thoroughness doesn't mean analysis paralysis.**
+
+There's a balance:
+- ✅ Investigate thoroughly enough to understand the problem
+- ✅ Ask questions when uncertain
+- ✅ Propose approach before implementing
+- ❌ Don't spend hours investigating trivial changes
+- ❌ Don't research endlessly without making progress
+
+**Rule of thumb**:
+- **Simple tasks** (fix typo, update config value): 2-5 minutes investigation
+- **Medium tasks** (implement new function, fix bug): 10-30 minutes investigation
+- **Complex tasks** (new feature, architectural change): 30-60 minutes investigation
+
+**But always**: Understand before implementing.
+
+### Red Flags That You Haven't Understood Enough
+
+Stop and investigate more if you find yourself:
+- ❌ "I'll just try this and see if it works"
+- ❌ "I'm not sure why this is failing, but changing X seems to fix it"
+- ❌ "The design doc says Y but I'll do X because it's easier"
+- ❌ "I don't fully understand the architecture but I'll implement it here"
+- ❌ "I'm not sure which approach is right, so I'll pick one"
+- ❌ "This seems complicated, I'll simplify it" (without understanding WHY it's complex)
+
+**These are all signs you need to investigate more, read more docs, or ask questions.**
+
+### Success Indicators
+
+You've understood enough when you can:
+- ✅ Explain the problem in your own words
+- ✅ Trace the issue back to root cause
+- ✅ Justify your approach with reference to vision principles and design docs
+- ✅ Identify edge cases that need handling
+- ✅ Describe how your solution fits into the broader architecture
+- ✅ Anticipate potential impacts on other parts of the system
+
+**Only then should you start coding.**
+
+---
+
+## Ground Rules: How We Build Here
+
+### 1. **Vision First, Always**
+
+Every decision—every table, every field, every function—must answer:
+
+> **Which vision principle does this serve?**
+
+If you can't name the principle from `docs/vision/VISION.md`, stop and reconsider. This is not negotiable.
+
+**The Vision**: Build a system that behaves like an **experienced colleague who has worked with this company for years**—someone who:
 - Never forgets what matters (perfect recall of relevant context)
 - Knows the business deeply (understands data, processes, relationships)
 - Learns your way of working (adapts to preferences)
@@ -26,1014 +238,1089 @@ This colleague:
 - Explains their thinking (always traces reasoning to sources)
 - Gets smarter over time (each conversation improves future ones)
 
-### Philosophical Foundation: Dual Truth
+### 2. **Quality Over Speed, Without Exception**
 
-**The central thesis**: An intelligent agent requires **both correspondence truth (database) and contextual truth (memory)** in dynamic equilibrium.
+**We prioritize**:
+- ✅ **Comprehensive solutions** that solve the problem completely
+- ✅ **Beautiful, elegant architecture** that will age well
+- ✅ **Type-safe, well-tested code** with explicit contracts
+- ✅ **Thoughtful design** with documented rationale
+- ✅ **Patterns that scale** to Phase 2 and beyond
 
-- **Correspondence Truth** (Database): Objective facts, verifiable, authoritative
-  - Example: `invoice_id: INV-1009, amount: $1200, status: open`
+**We reject**:
+- ❌ **Quick fixes** that create technical debt
+- ❌ **"Good enough for now"** implementations
+- ❌ **Shortcuts** that violate architecture
+- ❌ **Band-aid solutions** that don't address root causes
+- ❌ **Rushing to "done"** without considering edge cases
 
-- **Contextual Truth** (Memory): Interpretive layers that transform data into understanding
-  - Example: "Customer is sensitive about reminders", "They typically pay 2-3 days late"
-
-**Neither alone is sufficient**. The database without memory is precise but hollow; memory without database is meaningful but ungrounded.
-
-## Essential Commands
-
-### Development Workflow
-```bash
-# First-time setup (installs deps, starts DB, runs migrations)
-make setup
-
-# Daily development
-make docker-up                # Start PostgreSQL
-make run                      # Start API server (http://localhost:8000)
-make test-watch              # Run tests on file changes
-
-# Before committing
-make check-all               # Run all quality checks (lint + typecheck + test coverage)
-```
-
-### Database Operations
-```bash
-# Migrations
-make db-migrate                                        # Apply pending migrations
-make db-create-migration MSG="description"            # Create new migration (autogenerate)
-make db-rollback                                       # Rollback last migration
-make db-reset                                         # ⚠️ Reset database (destroys data)
-
-# Direct access
-make db-shell                                         # Open psql shell
-```
-
-### Testing
-```bash
-# Run tests
-make test                    # All tests
-make test-unit              # Unit tests only (fast, no DB)
-make test-integration       # Integration tests (requires DB)
-make test-cov               # With coverage report (HTML in htmlcov/)
-
-# Test single file/function
-poetry run pytest tests/unit/domain/test_entity_resolver.py           # Single file
-poetry run pytest tests/unit/domain/test_entity_resolver.py::test_exact_match  # Single test
-poetry run pytest -k "entity"                                          # All tests matching "entity"
-```
-
-### Code Quality
-```bash
-make lint                    # Check code style (ruff)
-make lint-fix               # Auto-fix linting issues
-make format                 # Format code (ruff)
-make typecheck              # Type checking (mypy strict mode)
-make security               # Security checks (bandit + pip-audit)
-```
-
-## Architecture: The Big Picture
-
-### The Layered Memory Architecture
-
-From DESIGN.md v2.0, the system implements 6 layers of memory transformation:
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ Layer 6: CONSOLIDATED SUMMARIES (memory_summaries)        │
-│          Cross-session synthesis, entity profiles          │
-│          Vision: Forgetting through consolidation          │
-└────────────────────────────────────────────────────────────┘
-                         ↑ distills
-┌────────────────────────────────────────────────────────────┐
-│ Layer 5: PROCEDURAL MEMORY (procedural_memories)          │
-│          Learned heuristics: "When X, also Y"             │
-│          Vision: Learning from interaction patterns        │
-└────────────────────────────────────────────────────────────┘
-                         ↑ emerges from
-┌────────────────────────────────────────────────────────────┐
-│ Layer 4: SEMANTIC MEMORY (semantic_memories)              │
-│          Abstracted facts with lifecycle                   │
-│          Vision: Contextual truth, epistemic humility      │
-└────────────────────────────────────────────────────────────┘
-                         ↑ extracted from
-┌────────────────────────────────────────────────────────────┐
-│ Layer 3: EPISODIC MEMORY (episodic_memories)              │
-│          Events with meaning: "What happened"              │
-│          Vision: Foundation for learning                   │
-└────────────────────────────────────────────────────────────┘
-                         ↑ interprets
-┌────────────────────────────────────────────────────────────┐
-│ Layer 2: ENTITY RESOLUTION (canonical_entities, aliases)  │
-│          Text mentions → canonical entities                │
-│          Vision: Solving problem of reference              │
-└────────────────────────────────────────────────────────────┘
-                         ↑ links
-┌────────────────────────────────────────────────────────────┐
-│ Layer 1: RAW EVENTS (chat_events)                         │
-│          Immutable audit trail of conversations            │
-│          Vision: Provenance, explainability                │
-└────────────────────────────────────────────────────────────┘
-                         ↑ queries
-┌────────────────────────────────────────────────────────────┐
-│ Layer 0: DOMAIN DATABASE (external)                       │
-│          Authoritative truth about business                │
-│          Vision: Correspondence truth                      │
-└────────────────────────────────────────────────────────────┘
-```
-
-**Information Flow**:
-- **Abstraction (up)**: Raw events → Episodes → Facts → Patterns → Summaries
-- **Grounding (down)**: Queries start at DB, enrich with memory layers
-
-### Hexagonal Architecture (Ports & Adapters)
-
-```
-┌─────────────────────────────────────────────┐
-│  API Layer (FastAPI)                        │  ← HTTP requests
-│  - Routes in src/api/routes/                │
-│  - Pydantic models in src/api/models/       │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│  Domain Layer (Pure Python)                 │  ← Business logic
-│  - Entities (CanonicalEntity, SemanticMemory)│
-│  - Services (EntityResolver, MemoryRetriever)│
-│  - Ports (Repository interfaces - ABC)      │
-│  NO INFRASTRUCTURE IMPORTS                   │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│  Infrastructure Layer (Adapters)            │  ← External systems
-│  - PostgreSQL repositories                   │
-│  - OpenAI embedding service                  │
-│  - Domain database connector                 │
-└─────────────────────────────────────────────┘
-```
-
-**Critical Rule**: Domain layer never imports from infrastructure. Dependency direction is one-way: API → Domain → Infrastructure (via interfaces).
-
-### Database Schema (10 Core Tables)
-
-All models defined in `src/infrastructure/database/models.py`:
-
-| Layer | Table | Vision Principle Served |
-|-------|-------|------------------------|
-| 1 | `chat_events` | Provenance, explainability |
-| 2 | `canonical_entities` | Problem of reference |
-| 2 | `entity_aliases` | Identity across time, learning |
-| 3 | `episodic_memories` | Events with meaning, learning substrate |
-| 4 | `semantic_memories` | Contextual truth, epistemic humility, forgetting |
-| 5 | `procedural_memories` | Learning from patterns |
-| 6 | `memory_summaries` | Graceful forgetting through consolidation |
-| Support | `domain_ontology` | Ontology-awareness |
-| Support | `memory_conflicts` | Epistemic humility |
-| Support | `system_config` | Flexibility |
-
-**Every table directly serves the vision. No table is "nice to have."**
-
-**pgvector indexes**: All memory tables have `embedding vector(1536)` with IVFFlat indexes for semantic search.
-
-## Key Subsystems & Algorithms
-
-### 1. Entity Resolution (Hybrid Approach)
-
-**Design**: `docs/design/DESIGN.md` (Section: Entity Resolution Algorithm)
-
-**Approach**: **Deterministic fast path (95%) + LLM coreference (5%)**
-
-**Algorithm**:
-
+**Example of our standards**:
 ```python
-async def resolve_entity(mention: str, user_id: str, context: ConversationContext) -> ResolutionResult:
-    """
-    Hybrid entity resolution: deterministic for 95%, LLM for coreference (5%).
-
-    Vision alignment: Fast path for efficiency, LLM only where semantic
-    understanding is genuinely needed (pronouns, contextual references).
-    """
-
-    # ═══════════════════════════════════════════════════════════
-    # FAST PATH: Deterministic (handles 95% of cases)
-    # ═══════════════════════════════════════════════════════════
-
-    # Stage 1: Exact match on canonical name
-    exact = await db.fetchrow("""
-        SELECT entity_id, 1.0 as confidence
-        FROM canonical_entities
-        WHERE canonical_name = $1
-    """, mention)
-    if exact:
-        return ResolutionResult(entity_id=exact['entity_id'], confidence=1.0, method='exact')
-
-    # Stage 2: Known alias (user-specific first, then global)
-    alias = await db.fetchrow("""
-        SELECT canonical_entity_id, confidence
-        FROM entity_aliases
-        WHERE alias_text = $1 AND (user_id = $2 OR user_id IS NULL)
-        ORDER BY user_id NULLS LAST, confidence DESC
-        LIMIT 1
-    """, mention, user_id)
-    if alias and alias['confidence'] > 0.85:
-        return ResolutionResult(entity_id=alias['canonical_entity_id'],
-                               confidence=alias['confidence'],
-                               method='alias')
-
-    # Stage 3: Fuzzy match using pg_trgm
-    fuzzy = await db.fetch("""
-        SELECT ce.entity_id, ce.canonical_name, similarity(ea.alias_text, $1) as score
-        FROM canonical_entities ce
-        JOIN entity_aliases ea ON ea.canonical_entity_id = ce.entity_id
-        WHERE similarity(ea.alias_text, $1) > 0.7
-        ORDER BY score DESC
-        LIMIT 5
-    """, mention)
-
-    if len(fuzzy) == 1 and fuzzy[0]['score'] > 0.85:
-        await learn_alias(mention, fuzzy[0]['entity_id'], user_id, 'fuzzy', fuzzy[0]['score'])
-        return ResolutionResult(entity_id=fuzzy[0]['entity_id'],
-                               confidence=fuzzy[0]['score'],
-                               method='fuzzy')
-
-    if len(fuzzy) > 1:
-        # Need user disambiguation
-        return DisambiguationRequired(candidates=fuzzy)
-
-    # ═══════════════════════════════════════════════════════════
-    # LLM PATH: Coreference resolution (handles 5% of cases)
-    # ═══════════════════════════════════════════════════════════
-
-    if is_coreference_candidate(mention):  # "they", "it", "them", "the customer"
-        candidates = context.recent_entities
-        if not candidates:
-            return ResolutionResult(entity_id=None, confidence=0.0, method='no_candidates')
-
-        # Use LLM for coreference resolution
-        llm_result = await resolve_coreference_llm(
-            mention=mention,
-            candidates=candidates,
-            conversation_history=context.recent_messages
-        )
-
-        if llm_result.confidence > 0.7:
-            await learn_alias(mention, llm_result.entity_id, user_id,
-                            'coreference', llm_result.confidence)
-
-        return ResolutionResult(entity_id=llm_result.entity_id,
-                               confidence=llm_result.confidence,
-                               method='llm_coreference',
-                               reasoning=llm_result.reasoning)
-
-    # Stage 4: Search domain database (lazy entity creation)
-    domain_matches = await search_domain_database(mention, limit=3)
-    if domain_matches:
-        entity = await ensure_canonical_entity(domain_matches[0])
-        await learn_alias(mention, entity.entity_id, user_id, 'domain_db', 0.85)
-        return ResolutionResult(entity_id=entity.entity_id, confidence=0.85, method='domain_db')
-
-    return ResolutionResult(entity_id=None, confidence=0.0, method='not_found')
-```
-
-**Why This Design**:
-- **Deterministic for 95%**: Exact, alias, and fuzzy matching use SQL/pg_trgm (fast, reliable)
-- **LLM only for coreference**: Pronouns need conversation context to resolve
-- **Self-improving**: High-confidence resolutions create aliases, moving to fast path
-- **Cost**: $0.00015 per resolution (only 5% of cases use LLM)
-
-**Key Files**:
-- Domain service: `src/domain/services/entity_resolver.py` (to implement)
-- Repository port: `src/domain/ports/entity_repository.py` (to implement)
-- Repository impl: `src/infrastructure/database/repositories/entity_repository.py` (to implement)
-- Database models: `src/infrastructure/database/models.py` (✅ complete)
-
-### 2. Memory Extraction (Pattern Detection + LLM Semantic Parsing)
-
-**Design**: `docs/design/DESIGN.md` (Section: Memory Extraction Algorithm)
-
-**Approach**: **Deterministic event classification + LLM triple extraction**
-
-**Algorithm**:
-
-```python
-async def extract_memories(event: ChatEvent, entities: List[Entity]) -> ExtractionResult:
-    """
-    Extract semantic facts from episodic events.
-
-    Vision alignment: Deterministic patterns for event classification,
-    LLM for semantic parsing (genuinely hard with rules).
-    """
-
-    # ═══════════════════════════════════════════════════════════
-    # DETERMINISTIC: Event type classification
-    # ═══════════════════════════════════════════════════════════
-
-    event_type = classify_event_type(event.content)
-    # Patterns: "?" = question, "remember" = explicit statement, etc.
-
-    if event_type not in ['statement', 'correction', 'explicit_preference']:
-        # Don't extract from questions, commands, confirmations
-        return ExtractionResult(semantic_memories=[])
-
-    # ═══════════════════════════════════════════════════════════
-    # LLM: Semantic triple extraction
-    # ═══════════════════════════════════════════════════════════
-
-    extraction = await extract_triples_llm(
-        text=event.content,
-        entities=entities,
-        event_type=event_type
-    )
-
-    semantic_memories = []
-    for triple in extraction.triples:
-        # Check for existing memory (same subject + predicate)
-        existing = await db.fetchrow("""
-            SELECT memory_id, confidence, reinforcement_count, object_value
-            FROM semantic_memories
-            WHERE user_id = $1
-              AND subject_entity_id = $2
-              AND predicate = $3
-              AND status = 'active'
-        """, event.user_id, triple.subject, triple.predicate)
-
-        if existing:
-            if values_match(existing['object_value'], triple.object_value):
-                # REINFORCE: Increase confidence
-                await reinforce_memory(existing['memory_id'])
-            else:
-                # CONFLICT: Log and decide resolution
-                await handle_memory_conflict(existing, triple, event)
-        else:
-            # CREATE: New semantic memory
-            memory = await create_semantic_memory(triple, event)
-            semantic_memories.append(memory)
-
-    return ExtractionResult(semantic_memories=semantic_memories)
-```
-
-**Why LLM Here**: Parsing "Acme prefers Friday deliveries and NET30 terms" into structured triples is genuinely hard with patterns.
-
-**Cost**: $0.002 per extraction (only for statements, not all messages)
-
-### 3. Multi-Signal Retrieval (Deterministic Scoring)
-
-**Design**: `docs/design/DESIGN.md` (Section: Multi-Signal Retrieval)
-
-**Approach**: **Deterministic formula (NO LLM)**
-
-**Algorithm**:
-
-```python
-def score_memory_relevance(memory: Memory, query: Query) -> float:
-    """
-    Multi-signal relevance scoring using weighted formula.
-
-    Vision alignment: Combines semantic similarity, entity overlap, recency,
-    importance, and reinforcement to approximate "what would a knowledgeable
-    human consider relevant here?"
-
-    NO LLM: Would be too slow (need to score 100+ candidates in <100ms)
-    """
-    weights = get_config('multi_signal_weights')
-
-    # Signal 1: Semantic similarity (cosine)
-    semantic_score = 1 - cosine_distance(memory.embedding, query.embedding)
-
-    # Signal 2: Entity overlap (Jaccard)
-    entity_score = jaccard(memory.entities, query.entities)
-
-    # Signal 3: Recency (exponential decay)
-    age_days = (now() - memory.created_at).days
-    half_life = 30 if memory.type == 'episodic' else 90
-    recency_score = exp(-age_days * ln(2) / half_life)
-
-    # Signal 4: Importance (stored)
-    importance_score = memory.importance
-
-    # Signal 5: Reinforcement (for semantic memories)
-    if hasattr(memory, 'reinforcement_count'):
-        reinforce_score = min(1.0, memory.reinforcement_count / 5)
-    else:
-        reinforce_score = 0.5
-
-    # Weighted combination
-    relevance = (
-        weights['semantic'] * semantic_score +
-        weights['entity'] * entity_score +
-        weights['recency'] * recency_score +
-        weights['importance'] * importance_score +
-        weights['reinforcement'] * reinforce_score
-    )
-
-    # Apply confidence penalty (passive decay)
-    if hasattr(memory, 'confidence'):
-        effective_confidence = calculate_effective_confidence(memory)
-        relevance *= effective_confidence
-
-    return relevance
-```
-
-**Why NO LLM**:
-- Need to score 100+ candidates in <100ms
-- LLM would take 20+ seconds (200x slower)
-- Formula works well and is deterministic
-- Can tune weights from usage data (Phase 2)
-
-**Retrieval Strategy Weights** (from `src/config/heuristics.py`):
-
-```python
-# Default weights for multi-signal scoring
-"multi_signal_weights": {
-    "semantic": 0.4,        # Semantic similarity (cosine)
-    "entity": 0.25,         # Entity overlap (Jaccard)
-    "recency": 0.2,         # Temporal relevance (exponential decay)
-    "importance": 0.1,      # Stored importance
-    "reinforcement": 0.05   # Validation count
-}
-```
-
-### 4. Conflict Detection (Deterministic + LLM Semantic)
-
-**Design**: `docs/design/DESIGN.md` (Section: Conflict Detection)
-
-**Approach**: **Deterministic pre-filtering (99%) + LLM semantic conflicts (1%)**
-
-**Algorithm**:
-
-```python
-async def detect_conflicts(new_memory: SemanticMemory):
-    """
-    Detect conflicts between memories and database facts.
-
-    Vision alignment: Deterministic for obvious conflicts (same predicate),
-    LLM only for semantic conflicts across different predicates.
-    """
-
-    # ═══════════════════════════════════════════════════════════
-    # DETERMINISTIC: Same predicate conflicts (99% of conflicts)
-    # ═══════════════════════════════════════════════════════════
-
-    existing = await db.fetch("""
-        SELECT memory_id, object_value, confidence, last_validated_at
-        FROM semantic_memories
-        WHERE user_id = $1
-          AND subject_entity_id = $2
-          AND predicate = $3
-          AND status = 'active'
-    """, new_memory.user_id, new_memory.subject_entity_id, new_memory.predicate)
-
-    for mem in existing:
-        if not values_match(mem['object_value'], new_memory.object_value):
-            # Direct conflict: same predicate, different values
-            await log_conflict(
-                conflict_type='memory_vs_memory',
-                memories=[mem['memory_id'], new_memory.memory_id],
-                resolution_strategy='trust_recent'
-            )
-
-    # Check against domain database
-    db_value = await query_domain_for_predicate(
-        new_memory.subject_entity_id,
-        new_memory.predicate
-    )
-
-    if db_value and not values_match(db_value, new_memory.object_value):
-        # Memory vs DB conflict
-        await log_conflict(
-            conflict_type='memory_vs_db',
-            memory_id=new_memory.memory_id,
-            db_source=db_value.source,
-            resolution_strategy='trust_db'
-        )
-
-    # ═══════════════════════════════════════════════════════════
-    # LLM: Semantic conflicts across predicates (1% of conflicts)
-    # ═══════════════════════════════════════════════════════════
-
-    # Check if new memory semantically conflicts with existing memories
-    # Example: "prefers email" vs "hates electronic communication"
-    related_memories = await db.fetch("""
-        SELECT memory_id, predicate, object_value
-        FROM semantic_memories
-        WHERE user_id = $1
-          AND subject_entity_id = $2
-          AND status = 'active'
-          AND predicate != $3
-    """, new_memory.user_id, new_memory.subject_entity_id, new_memory.predicate)
-
-    if related_memories:
-        semantic_conflicts = await detect_semantic_conflicts_llm(
-            new_memory=new_memory,
-            existing_memories=related_memories
-        )
-
-        for conflict in semantic_conflicts:
-            await log_conflict(
-                conflict_type='semantic_conflict',
-                memory_ids=[new_memory.memory_id, conflict.memory_id],
-                reasoning=conflict.reasoning,
-                resolution_strategy='ask_user'
-            )
-```
-
-**Why LLM Only for Semantic**:
-- 99% of conflicts are obvious (same predicate, different values)
-- LLM only for edge cases: "prefers email" vs "dislikes electronic communication"
-- Cost: $0.00002 average (1% × $0.002)
-
-### 5. Consolidation (LLM Synthesis)
-
-**Design**: `docs/design/DESIGN.md` (Section: Consolidation Algorithm)
-
-**Approach**: **LLM synthesis (Essential)**
-
-**Algorithm**:
-
-```python
-async def consolidate_memories(user_id: str, scope: ConsolidationScope) -> MemorySummary:
-    """
-    Consolidate episodic and semantic memories into summary.
-
-    Vision alignment: This is exactly what LLMs excel at - reading multiple
-    memories and synthesizing coherent summaries.
-    """
-
-    # Fetch memories to consolidate
-    episodic = await db.fetch("""
-        SELECT summary, entities, created_at
-        FROM episodic_memories
-        WHERE user_id = $1 AND {scope.filter}
-        ORDER BY created_at DESC
-    """, user_id)
-
-    semantic = await db.fetch("""
-        SELECT predicate, object_value, confidence, reinforcement_count
-        FROM semantic_memories
-        WHERE user_id = $1 AND {scope.filter} AND status = 'active'
-        ORDER BY confidence DESC, reinforcement_count DESC
-    """, user_id)
-
-    # Use LLM for synthesis
-    summary = await synthesize_summary_llm(
-        episodic_memories=episodic,
-        semantic_memories=semantic,
-        scope=scope
-    )
-
-    # Store summary
-    summary_id = await db.fetchrow("""
-        INSERT INTO memory_summaries (
-            user_id, scope_type, scope_identifier,
-            summary_text, key_facts, source_data,
-            confidence, embedding
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING summary_id
-    """, user_id, scope.type, scope.identifier,
-         summary.text, summary.key_facts, summary.source_data,
-         summary.confidence, await embed(summary.text))
-
-    # Boost confidence of confirmed facts
-    for fact_id in summary.confirmed_memory_ids:
-        await db.execute("""
-            UPDATE semantic_memories
-            SET confidence = LEAST(0.95, confidence + 0.1),
-                last_validated_at = now()
-            WHERE memory_id = $1
-        """, fact_id)
-
-    return summary
-```
-
-**Why LLM Essential**: Reading 20+ memories and synthesizing coherent summary is exactly what LLMs excel at.
-
-## Surgical LLM Integration Summary
-
-Based on the principle: **Use LLMs where they add clear value, deterministic systems where they excel**
-
-| Component | Approach | Rationale | Cost per Use |
-|-----------|----------|-----------|--------------|
-| **Entity Resolution** | Deterministic (95%) + LLM coreference (5%) | pg_trgm excellent for fuzzy matching. Only pronouns need context. | $0.00015 avg |
-| **Memory Extraction** | Pattern classification + LLM triple parsing | Event types are pattern-matchable. Semantic parsing genuinely needs LLM. | $0.002 (statements only) |
-| **Query Understanding** | Pattern-based (90%) + LLM fallback (10%) | Simple patterns work most of time. LLM for compound/ambiguous queries. | $0.0001 avg |
-| **Retrieval Scoring** | Deterministic formula (100%) | Must be fast (<100ms). Formula works well. NO LLM. | $0 |
-| **Conflict Detection** | Deterministic (99%) + LLM semantic (1%) | Most conflicts are obvious. LLM only for cross-predicate semantic conflicts. | $0.00002 avg |
-| **Consolidation** | LLM synthesis (100%) | This is what LLMs excel at. Reading and synthesizing summaries. | $0.005 (periodic) |
-
-**Average cost per conversational turn**: ~$0.002
-
-**At scale** (1,000 users × 50 turns/day):
-- 50,000 turns/day
-- Cost: $100/day = **$3,000/month**
-
-**Comparison to alternatives**:
-- Pure deterministic: $0/month, but 60-70% accuracy on hard cases
-- Pure LLM: $15,000/month, but 90%+ accuracy
-- **Surgical (this design)**: $3,000/month, 85-90% accuracy ✅
-
-## Critical Design Patterns
-
-### Pattern 1: Passive vs Pre-Computed
-
-**Passive Computation** (Preferred for Phase 1):
-- Compute values on-demand during retrieval
-- Example: Memory decay, current confidence, memory state
-- Benefit: Simpler schema, no background jobs
-- Trade-off: Slightly slower reads (negligible with proper indexing)
-
-**Pre-Computed** (Only when necessary):
-- Store computed values in database
-- Example: Memory embeddings (expensive to compute, used frequently)
-- Benefit: Faster retrieval for expensive operations
-- Cost: Schema complexity, potential stale data
-
-**Passive Decay Example**:
-```python
-def calculate_effective_confidence(memory: SemanticMemory) -> float:
-    """
-    Passive decay: compute on-demand, not pre-computed.
-    Philosophy: No background jobs, always accurate.
-    """
-    config = get_config('decay')
-    decay_rate = config['default_rate_per_day']
-
-    days_since_validation = (now() - memory.last_validated_at).days
-
-    # Exponential decay
-    effective_conf = memory.confidence * exp(-days_since_validation * decay_rate)
-
-    return max(0.0, min(1.0, effective_conf))
-```
-
-### Pattern 2: JSONB vs Separate Table
-
-**Use JSONB when**:
-- Data is rarely queried independently (only needed with parent)
-- Example: `entities` in episodic_memories - always retrieved with the episode
-- Example: `confidence_factors` in semantic_memories - just metadata for explainability
-
-**Use Separate Table when**:
-- Need to query/filter/join independently
-- Example: `entity_aliases` - queried during resolution without loading full entities
-- Example: `canonical_entities` - referenced by many memories via foreign key
-
-### Pattern 3: Confidence Tracking and Epistemic Humility
-
-**Core Principle**: The system never claims 100% certainty (MAX_CONFIDENCE = 0.95).
-
-**Confidence Structure**:
-```python
-@dataclass(frozen=True)
-class Confidence:
-    value: float  # Overall confidence (0.0 to 0.95)
-    factors: dict[str, float]  # Component breakdown
-    # {
-    #   "base": 0.7,           # Initial extraction confidence
-    #   "reinforcement": 0.15,  # From validations
-    #   "recency": -0.05,      # From decay
-    #   "source": 0.05         # From consolidation boost
-    # }
-```
-
-**Conflict Detection** (memory_conflicts table):
-When retrieving contradictory information:
-1. Detect: Check for same subject-predicate with different object_value
-2. Log: Create memory_conflict record
-3. Resolve:
-   - Trust domain DB if conflict is memory_vs_db
-   - Trust higher confidence if gap > 0.30
-   - Trust recency if age gap > 60 days
-   - Ask user if ambiguous
-4. **Never silently ignore conflicts** - epistemic humility requires explicit acknowledgment
-
-### Pattern 4: Lazy Entity Creation
-
-**Philosophy**: Entities are NOT pre-loaded. Create on-demand when first mentioned.
-
-**Process**:
-1. User mentions "Acme Corporation"
-2. Entity resolution fails (not in canonical_entities)
-3. Query domain database (customers table) for "Acme Corporation"
-4. Create canonical_entity with external_ref pointing to customer record
-5. Create alias for "Acme Corporation" → entity_id
-6. Resolve future mentions via fast path
-
-**Example**:
-```python
-async def ensure_canonical_entity(domain_match: DomainEntity) -> CanonicalEntity:
-    """
-    Lazy entity creation: Create canonical entity from domain database match.
-    """
-    entity_id = f"{domain_match.type}:{uuid4()}"
-
-    entity = await db.fetchrow("""
-        INSERT INTO canonical_entities (
-            entity_id, entity_type, canonical_name, external_ref, properties
-        ) VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
-    """, entity_id, domain_match.type, domain_match.name,
-         {"table": domain_match.source_table, "id": domain_match.id},
-         domain_match.properties)
-
-    # Create initial alias
-    await create_alias(entity_id, domain_match.name, 'domain_db', confidence=1.0)
-
-    return CanonicalEntity(**entity)
-```
-
-## Design Philosophy: Three Questions Framework
-
-**Before adding any feature, table, field, or complexity, answer**:
-
-1. **Which vision principle does this serve?** (If none, remove it. See `docs/vision/VISION.md`)
-2. **Does this contribute enough to justify its cost?** (Cost = schema complexity, query complexity, maintenance)
-3. **Is this the right phase for this complexity?** (Phase 1 = essential, Phase 2 = enhancements with data, Phase 3 = learning)
-
-**Example application**:
-- Procedural memories table: ✅ In vision (Layer 5), essential for system completeness → Keep
-- Access count field: ❌ Useful for Phase 3 learning, not essential now → Defer
-- Entity mentions table: ❌ Can use JSONB in episodic_memories, rarely queried alone → Inline with JSONB
-
-**Key Vision Principles** (from VISION.md):
-
-1. **Perfect Recall of Relevant Context** - Never forget what matters
-   - Implemented via: Multi-signal retrieval, pgvector semantic search, entity-based lookup
-
-2. **Deep Business Understanding** - Knows data, processes, relationships
-   - Implemented via: Domain ontology integration, external_ref in canonical_entities, lazy entity loading
-
-3. **Adaptive Learning** - Gets smarter with each conversation
-   - Implemented via: Reinforcement (diminishing returns), consolidation, procedural memory extraction
-
-4. **Epistemic Humility** - Admits uncertainty, never claims 100% confidence
-   - Implemented via: Confidence tracking (max 0.95), memory_conflicts table, explicit provenance
-
-5. **Explainable Reasoning** - Always traces reasoning to sources
-   - Implemented via: source_memory_id, extracted_from_event_id, confidence_factors JSONB
-
-6. **Continuous Improvement** - Each conversation makes future ones better
-   - Implemented via: Episodic → Semantic transformation, consolidation, alias learning
-
-See `docs/vision/DESIGN_PHILOSOPHY.md` for full guidance and case studies.
-
-## Code Conventions
-
-### Type Hints (Required - 100% coverage enforced)
-```python
-from typing import Optional, List
-from datetime import datetime
-
+# ❌ UNACCEPTABLE
+def resolve_entity(name):
+    return db.query("SELECT * FROM entities WHERE name LIKE ?", name)[0]
+
+# ✅ ACCEPTABLE - Type-safe, async, comprehensive docstring, error handling
 async def resolve_entity(
-    mention: str,
-    user_id: str,
-    context: ResolutionContext
+    mention: str, user_id: str, context: ResolutionContext
 ) -> ResolutionResult:
-    """All public functions must have type hints."""
+    """5-stage hybrid resolution with confidence tracking."""
+    # Exact → Alias → Fuzzy → LLM coreference → Domain DB
     ...
 ```
 
-### Immutable Value Objects
-```python
-from dataclasses import dataclass
+### 3. **Think Deeply Before Coding**
 
-@dataclass(frozen=True)  # Always frozen
-class Confidence:
-    value: float  # 0.0 to 1.0
-    source: str
-    factors: dict[str, float]
+When given a task:
 
-    def __post_init__(self):
-        if not 0.0 <= self.value <= 1.0:
-            raise ValueError(f"Confidence must be 0.0-1.0, got {self.value}")
+1. **Read the design docs first** - Don't guess. The architecture is documented.
+2. **Understand the vision principle** - Why does this exist?
+3. **Consider edge cases** - What could go wrong?
+4. **Think about the whole system** - How does this fit?
+5. **Ask questions if unclear** - Better to ask than build wrong.
+
+**Before writing any code**, answer:
+- Which vision principle am I serving?
+- What are the edge cases?
+- How will this be tested?
+- Does this fit the established patterns?
+- Is there a simpler way that doesn't sacrifice quality?
+
+### 4. **Architecture is Sacred**
+
+This system uses **pure hexagonal architecture** (ports & adapters). This is non-negotiable.
+
+```
+API Layer (FastAPI)
+    ↓ depends on
+Domain Layer (Pure Python - NO infrastructure imports)
+    ↓ depends on (via interfaces)
+Infrastructure Layer (DB, LLM, external systems)
 ```
 
-### Domain Exceptions (Not HTTP exceptions)
+**Critical rules**:
+- ✅ Domain layer NEVER imports from infrastructure
+- ✅ All I/O goes through repository ports (ABC interfaces)
+- ✅ Domain exceptions are business concepts, not HTTP errors
+- ✅ Value objects are immutable (`@dataclass(frozen=True)`)
+- ✅ All public methods are 100% type-annotated
+
+**If you violate these rules, the code will be rejected.**
+
+### 5. **Tests Are Not Optional**
+
+Test pyramid: **70% unit | 20% integration | 10% E2E**
+
+**Before marking any task complete**:
+- [ ] Unit tests for domain logic (mocked I/O)
+- [ ] Integration tests for repository operations (real DB)
+- [ ] Edge cases covered (null, empty, invalid inputs)
+- [ ] Error paths tested (what happens when things fail?)
+- [ ] Coverage meets minimum: 90% domain, 80% API, 70% infrastructure
+
+**Test quality standards**:
 ```python
-# domain/exceptions.py
-class EntityNotFoundError(DomainException):
-    """Raised when entity resolution fails."""
-    def __init__(self, mention: str, context: str):
-        self.mention = mention
-        self.context = context
-        super().__init__(f"Entity '{mention}' not found")
+# ❌ UNACCEPTABLE - Vague
+def test_entity_resolution():
+    result = resolve_entity("Acme")
+    assert result is not None
 
-# API layer catches and converts to HTTP responses
-# api/errors.py
-@app.exception_handler(EntityNotFoundError)
-async def handle_entity_not_found(request, exc):
-    return JSONResponse(status_code=404, content={...})
-```
-
-### Repository Pattern (Ports & Adapters)
-```python
-# domain/ports/entity_repository.py
-from abc import ABC, abstractmethod
-
-class EntityRepositoryPort(ABC):
-    """Port (interface) for entity data access."""
-
-    @abstractmethod
-    async def get_by_id(self, entity_id: str) -> Optional[CanonicalEntity]:
-        pass
-
-# infrastructure/database/repositories/entity_repository.py
-class PostgresEntityRepository(EntityRepositoryPort):
-    """Adapter (implementation) for PostgreSQL."""
-
-    async def get_by_id(self, entity_id: str) -> Optional[CanonicalEntity]:
-        # SQLAlchemy queries here
-        ...
-        return self._to_domain(model)  # Convert DB model → Domain entity
-```
-
-### Heuristic Values (Never hardcode)
-```python
-# ❌ BAD - Hardcoded
-def compute_decay(days: int) -> float:
-    return math.exp(-days * 0.01)  # Magic number!
-
-# ✅ GOOD - From config
-from config.heuristics import DECAY_RATE_PER_DAY
-
-def compute_decay(days: int) -> float:
-    return math.exp(-days * DECAY_RATE_PER_DAY)
-```
-
-### Async Everything (I/O operations)
-```python
-# All database, LLM, and external API calls are async
-async def retrieve_memories(query: str) -> List[Memory]:
-    async with get_db_session() as session:
-        result = await session.execute(select(...))
-        return result.scalars().all()
-```
-
-### Structured Logging
-```python
-import structlog
-
-logger = structlog.get_logger()
-
-async def resolve_entity(mention: str, context: ResolutionContext) -> ResolutionResult:
-    logger.info(
-        "entity_resolution_started",
-        mention=mention,
-        user_id=context.user_id,
-        session_id=context.session_id
-    )
-
-    try:
-        result = await _resolve(mention, context)
-        logger.info(
-            "entity_resolution_completed",
-            mention=mention,
-            entity_id=result.entity_id,
-            confidence=result.confidence,
-            method=result.resolution_method
-        )
-        return result
-    except AmbiguousEntityError as e:
-        logger.warning(
-            "entity_resolution_ambiguous",
-            mention=mention,
-            candidate_count=len(e.candidates)
-        )
-        raise
-```
-
-## Testing Strategy
-
-**Test Pyramid**: 70% unit (fast, no I/O) | 20% integration (DB) | 10% E2E (full API)
-
-### Unit Tests (Domain logic)
-```python
-# tests/unit/domain/test_entity_resolver.py
+# ✅ ACCEPTABLE - Specific, Given-When-Then, Arrange-Act-Assert
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_exact_match_returns_high_confidence():
-    # Use mock repositories - no database
+async def test_exact_match_returns_confidence_1_0_with_exact_method():
+    """Given: Entity exists. When: Exact match. Then: confidence=1.0, method='exact'"""
+    # Arrange
     mock_repo = MockEntityRepository()
     mock_repo.add_entity(entity_id="customer:acme_123", canonical_name="Acme Corporation")
+    resolver = EntityResolver(entity_repo=mock_repo)
 
-    resolver = EntityResolver(entity_repo=mock_repo, embedding_service=None)
-    context = ResolutionContext(user_id="user_1", ...)
+    # Act
+    result = await resolver.resolve("Acme Corporation", "user_1", ResolutionContext())
 
-    result = await resolver.resolve(mention="Acme Corporation", context=context)
-
+    # Assert
     assert result.entity_id == "customer:acme_123"
     assert result.confidence == 1.0
     assert result.method == "exact_match"
 ```
 
-### Integration Tests (Database)
-```python
-# tests/integration/test_entity_repository.py
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_create_and_retrieve_entity(test_db_session):
-    repo = PostgresEntityRepository(test_db_session)
-    entity = CanonicalEntity(
-        entity_id="customer:test_123",
-        entity_type="customer",
-        canonical_name="Test Corp"
-    )
+---
 
-    created = await repo.create(entity)
-    retrieved = await repo.get_by_id("customer:test_123")
+## The Core Architecture
 
-    assert retrieved.entity_id == "customer:test_123"
+### Philosophical Foundation: Dual Truth
+
+The system maintains **two forms of truth in dynamic equilibrium**:
+
+**Correspondence Truth (Database)**: Objective, authoritative facts
+- `invoice_id: INV-1009, amount: $1200, status: open`
+- Source of truth for "what IS"
+
+**Contextual Truth (Memory)**: Interpretive understanding
+- "Customer is sensitive about reminders"
+- "They typically pay 2-3 days late"
+- Source of meaning for "what it MEANS"
+
+**Neither alone is sufficient.** Database without memory is precise but hollow. Memory without database is meaningful but ungrounded.
+
+### The 6-Layer Memory Architecture
+
+```
+Layer 6: SUMMARIES (memory_summaries)
+         ↑ Consolidation: "Gai Media profile (3 sessions)..."
+Layer 5: PROCEDURAL (procedural_memories)
+         ↑ Pattern extraction: "When delivery mentioned, check invoices"
+Layer 4: SEMANTIC (semantic_memories)
+         ↑ Fact extraction: "Gai Media: delivery_preference = Friday"
+Layer 3: EPISODIC (episodic_memories)
+         ↑ Event interpretation: "User asked about delivery timing"
+Layer 2: ENTITY RESOLUTION (canonical_entities, entity_aliases)
+         ↑ Reference grounding: "Gai" → customer:gai_media_123
+Layer 1: RAW EVENTS (chat_events)
+         ↑ Immutable audit trail: Every message stored
+Layer 0: DOMAIN DATABASE (external)
+         Authoritative business data
 ```
 
-### Coverage Requirements
-- Domain layer: 90% minimum (business logic is critical)
-- API layer: 80% minimum
-- Infrastructure: 70% minimum (tested via integration)
-- Overall: 80% enforced in CI/CD (make check-all fails below threshold)
+**Information flows both ways**:
+- **Abstraction (↑)**: Events → Facts → Patterns → Summaries
+- **Grounding (↓)**: Queries fetch DB facts, enrich with memory layers
 
-## Phase 1 Implementation Roadmap
+### Database Schema: 10 Essential Tables
 
-**Duration**: 8 weeks (2 months)
+Every table serves explicit vision principles. **No table is "nice to have."**
 
-**Structure**: 4 phases, week-by-week breakdown in `docs/quality/PHASE1_ROADMAP.md`
+| Layer | Table | Vision Principle |
+|-------|-------|------------------|
+| 1 | `chat_events` | Provenance, explainability |
+| 2 | `canonical_entities` | Problem of reference |
+| 2 | `entity_aliases` | Identity across time, learning |
+| 3 | `episodic_memories` | Events with meaning |
+| 4 | `semantic_memories` | Contextual truth, epistemic humility |
+| 5 | `procedural_memories` | Learning from patterns |
+| 6 | `memory_summaries` | Graceful forgetting |
+| Support | `domain_ontology` | Ontology-awareness |
+| Support | `memory_conflicts` | Epistemic humility |
+| Support | `system_config` | Tunable parameters |
 
-### Phase 1A: Foundation (Week 1-2)
-**Tables**: chat_events, canonical_entities, entity_aliases, system_config, domain_ontology
-**Capabilities**: Store conversations, Entity resolution (hybrid algorithm), Basic domain DB queries
-**Deliverable**: Can store events and resolve entities
+**See** `src/infrastructure/database/models.py` for complete schema (263 lines, all models defined).
 
-### Phase 1B: Memory Core (Week 3-4)
-**Add**: episodic_memories, semantic_memories
-**Capabilities**: Create episodic memories, Extract semantic facts (with LLM), Reinforce, Basic retrieval
-**Deliverable**: Can remember and retrieve facts
+---
 
-### Phase 1C: Intelligence (Week 5-6)
-**Add**: memory_conflicts
-**Capabilities**: Multi-signal retrieval scoring, Conflict detection, Passive decay, Ontology traversal
-**Deliverable**: Can reason about business relationships and handle uncertainty
+## Key Design Decisions (and Why)
 
-### Phase 1D: Learning (Week 7-8)
-**Add**: procedural_memories, memory_summaries
-**Capabilities**: Pattern detection (basic), Consolidation, Complete lifecycle, API endpoints
-**Deliverable**: Full vision implementation, ready for production
+### Decision 1: Surgical LLM Integration
+
+**Principle**: Use LLMs where they add clear value, deterministic systems where they excel.
+
+| Component | Approach | Why |
+|-----------|----------|-----|
+| Entity Resolution | 95% deterministic, 5% LLM | pg_trgm fuzzy matching handles most cases. LLM only for pronouns. |
+| Semantic Extraction | 100% LLM | Parsing "Acme prefers Friday deliveries and NET30" into triples genuinely needs LLM. |
+| Retrieval Scoring | 0% LLM | Must score 100+ candidates in <100ms. Deterministic formula works. |
+| Consolidation | 100% LLM | Reading 20+ memories and synthesizing summary is exactly what LLMs do best. |
+
+**Cost**: ~$0.002 per conversational turn (vs $0.03 for pure LLM approach)
+
+**Accuracy**: 85-90% (vs 90%+ for pure LLM, 60-70% for pure deterministic)
+
+### Decision 2: Passive Computation (No Background Jobs)
+
+**Preferred pattern**:
+```python
+def calculate_effective_confidence(memory: SemanticMemory) -> float:
+    """Compute confidence with decay applied - on demand, not pre-computed."""
+    days_since_validation = (now() - memory.last_validated_at).days
+    decay_rate = get_config('decay.default_rate_per_day')
+
+    return memory.confidence * exp(-days_since_validation * decay_rate)
+```
+
+**Why**:
+- Simpler: No background jobs, no staleness issues
+- Accurate: Always reflects current state
+- Phase 1 appropriate: Pre-computation is Phase 2 optimization
+
+**Exception**: Embeddings are pre-computed (expensive, used frequently)
+
+### Decision 3: JSONB for Context-Specific Data
+
+**Use JSONB when**:
+- Variable structure per context
+- Rarely queried independently
+- Explainability metadata
+
+**Examples**:
+- `semantic_memories.confidence_factors` - Evidence varies per memory
+- `episodic_memories.entities` - Coreference chains are context-specific
+- `entity_aliases.metadata` - Disambiguation context varies
+
+**Use separate tables when**:
+- Frequently queried independently
+- Foreign key relationships needed
+- Fixed schema with lifecycle
+
+**Examples**:
+- `canonical_entities` - Queried for resolution
+- `semantic_memories` - Has status lifecycle, referenced by conflicts
+
+### Decision 4: Epistemic Humility is Built-In
+
+**The system NEVER claims 100% certainty** (MAX_CONFIDENCE = 0.95).
+
+```python
+@dataclass
+class SemanticMemory:
+    confidence: float  # Range: 0.0 to 0.95
+
+    def reinforce(self, boost: float = 0.05) -> None:
+        """Increase confidence from validation (capped at 0.95)."""
+        self.confidence = min(0.95, self.confidence + boost)
+```
+
+**When conflicts are detected**:
+1. Log to `memory_conflicts` table (never silently ignore)
+2. Resolve using strategy: trust_db | trust_recent | ask_user
+3. Return both values with confidences to user if ambiguous
+
+**This is a philosophical stance**: The system knows what it doesn't know.
+
+---
+
+## Current Implementation Status
+
+### ✅ Phase 1A Complete: Entity Resolution
+- 5-stage hybrid resolution (exact/alias/fuzzy/LLM/domain-DB)
+- PostgreSQL with pg_trgm, alias learning, lazy entity creation
+- **Key**: `src/domain/services/entity_resolution_service.py`
+
+### ✅ Phase 1B Complete: Semantic Extraction
+- LLM triple extraction, conflict detection (memory vs memory, memory vs DB)
+- Passive decay calculation, reinforcement with diminishing returns
+- **Key**: `semantic_extraction_service.py`, `conflict_detection_service.py`, `memory_validation_service.py`
+
+### ⚠️ Current Issues
+- **9/130 tests failing**: 8 in `test_memory_validation_service.py` (decay formula mismatch), 1 in `test_semantic_extraction_service.py`
+- **API integration incomplete** (Phase 1B services not wired to routes/DI container)
+
+### 🎯 Next: Phase 1C (Intelligence)
+Multi-signal retrieval, domain database integration, enhanced conflict detection, ontology traversal
+
+### 🔮 Future: Phase 1D (Learning)
+Procedural memory extraction, consolidation, complete lifecycle, full API exposure
+
+---
+
+## Code Conventions (Non-Negotiable)
+
+### 1. Type Hints: 100% Coverage
+
+```python
+# ✅ CORRECT
+async def resolve_entity(
+    mention: str,
+    user_id: str,
+    context: ResolutionContext
+) -> ResolutionResult:
+    ...
+
+# ❌ REJECTED - Missing types
+async def resolve_entity(mention, user_id, context):
+    ...
+```
+
+**Enforcement**: `make typecheck` runs mypy in strict mode. Must pass.
+
+### 2. Immutable Value Objects
+
+```python
+# ✅ CORRECT
+@dataclass(frozen=True)
+class Confidence:
+    value: float
+    source: str
+    factors: dict[str, float]
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.value <= 1.0:
+            raise ValueError(f"Confidence must be 0.0-1.0, got {self.value}")
+
+# ❌ REJECTED - Mutable
+@dataclass
+class Confidence:
+    value: float
+    source: str
+```
+
+### 3. Domain Exceptions (Not HTTP)
+
+```python
+# ✅ CORRECT - Domain exception with context
+class AmbiguousEntityError(DomainException):
+    """Multiple entities match, user clarification required."""
+    def __init__(self, mention: str, candidates: List[Entity]):
+        self.mention = mention
+        self.candidates = candidates
+        super().__init__(f"Ambiguous entity: '{mention}'")
+
+# ❌ REJECTED - HTTP exception in domain
+from fastapi import HTTPException
+raise HTTPException(status_code=422, detail="Ambiguous entity")
+```
+
+**API layer converts to HTTP** - see `src/api/errors.py` for exception handlers.
+
+### 4. Repository Pattern (Ports & Adapters)
+
+**Pattern**: Port (ABC interface) in `domain/ports/`, adapter (implementation) in `infrastructure/database/repositories/`
+
+```python
+# ✅ Port in domain
+class EntityRepositoryPort(ABC):
+    @abstractmethod
+    async def get_by_id(self, entity_id: str) -> Optional[CanonicalEntity]:
+        pass
+
+# ✅ Adapter in infrastructure
+class PostgresEntityRepository(EntityRepositoryPort):
+    async def get_by_id(self, entity_id: str) -> Optional[CanonicalEntity]:
+        # Query DB, convert model to domain entity
+        return self._to_domain(model) if model else None
+```
+
+### 5. Never Hardcode Heuristics
+
+```python
+# ✅ CORRECT
+from src.config.heuristics import get_config
+
+decay_rate = get_config('decay.default_rate_per_day')
+confidence = memory.confidence * exp(-days * decay_rate)
+
+# ❌ REJECTED
+confidence = memory.confidence * exp(-days * 0.01)  # Magic number!
+```
+
+**All heuristic values** live in `src/config/heuristics.py` (203 lines, 43+ parameters).
+
+### 6. Structured Logging
+
+```python
+# ✅ CORRECT
+import structlog
+
+logger = structlog.get_logger()
+
+logger.info(
+    "entity_resolved",
+    method="fuzzy",
+    entity_id=result.entity_id,
+    confidence=result.confidence,
+    user_id=user_id,
+)
+
+# ❌ REJECTED
+print(f"Resolved {result.entity_id} with confidence {result.confidence}")
+```
+
+### 7. Async Everything (I/O)
+
+```python
+# ✅ CORRECT
+async def resolve_entity(...) -> ResolutionResult:
+    exact = await self.entity_repo.get_by_canonical_name(mention)
+    ...
+
+# ❌ REJECTED - Blocking I/O
+def resolve_entity(...) -> ResolutionResult:
+    exact = self.entity_repo.get_by_canonical_name(mention)  # Blocks event loop!
+    ...
+```
+
+---
+
+## Essential Development Commands
+
+### Daily Workflow
+
+```bash
+# Start database
+make docker-up
+
+# Run dev server with auto-reload
+make run
+
+# Run tests on file changes (TDD workflow)
+make test-watch
+```
+
+### Before Committing
+
+```bash
+# Run ALL quality checks (lint + typecheck + test coverage)
+make check-all
+
+# If any fail, fix them. Don't commit broken code.
+```
+
+### Testing
+
+```bash
+# All tests
+make test
+
+# Just unit tests (fast, no DB)
+make test-unit
+
+# Just integration tests (requires DB)
+make test-integration
+
+# With coverage report (HTML in htmlcov/)
+make test-cov
+
+# Single test file
+poetry run pytest tests/unit/domain/test_entity_resolver.py
+
+# Single test function
+poetry run pytest tests/unit/domain/test_entity_resolver.py::test_exact_match
+
+# All tests matching pattern
+poetry run pytest -k "entity"
+```
+
+### Database
+
+```bash
+# Apply migrations
+make db-migrate
+
+# Create new migration (autogenerate from models)
+make db-create-migration MSG="add procedural memories table"
+
+# Rollback last migration
+make db-rollback
+
+# Reset database (⚠️ destroys data)
+make db-reset
+
+# Open psql shell
+make db-shell
+```
+
+### Code Quality
+
+```bash
+# Check style
+make lint
+
+# Auto-fix style issues
+make lint-fix
+
+# Format code (ruff)
+make format
+
+# Type checking (mypy strict)
+make typecheck
+
+# Security checks
+make security
+```
+
+---
+
+## The Three Questions Framework
+
+**Before adding ANY complexity** (table, field, function, dependency), answer:
+
+### 1. Which vision principle does this serve?
+
+From `docs/vision/VISION.md`:
+- Perfect recall of relevant context
+- Deep business understanding (ontology-awareness)
+- Adaptive learning
+- Epistemic humility (knows what it doesn't know)
+- Explainable reasoning (provenance)
+- Continuous improvement
+
+**If you can't name the principle, STOP. Reconsider.**
+
+### 2. Does this contribute enough to justify its cost?
+
+**Cost** = Schema complexity + Query complexity + Maintenance burden
+
+**Contribution** = How much does this advance the vision?
+
+**Example**:
+- Procedural memories table: High cost, but essential (in vision Layer 5) → **Keep**
+- Access count field: Low cost, but deferred (Phase 3 learning) → **Defer**
+
+### 3. Is this the right phase for this complexity?
+
+- **Phase 1** (now): Essential for core functionality
+- **Phase 2** (after deployment): Enhancements that need real usage data
+- **Phase 3** (after calibration): Learning features that need patterns
+
+**Example**:
+- Confidence decay: Phase 1 (essential for epistemic humility)
+- Learned retrieval weights: Phase 2 (need usage data to tune)
+- Meta-learning decay rates: Phase 3 (need large dataset of corrections)
+
+---
+
+## Common Pitfalls (AVOID THESE)
+
+### ❌ 1. Importing Infrastructure in Domain
+
+```python
+# WRONG - Domain imports infrastructure
+from src.infrastructure.database.models import EntityModel
+
+class EntityResolver:
+    def resolve(self, mention: str) -> Entity:
+        result = session.query(EntityModel).filter(...).first()  # ❌
+```
+
+**Why wrong**: Violates hexagonal architecture. Domain should be pure Python.
+
+### ❌ 2. Hardcoded Heuristics
+
+```python
+# WRONG
+if confidence < 0.7:  # ❌ Magic number
+    needs_validation = True
+```
+
+**Why wrong**: Heuristics need Phase 2 calibration. Must be configurable.
+
+### ❌ 3. Skipping Type Hints
+
+```python
+# WRONG
+def resolve_entity(mention, context):  # ❌ No types
+    ...
+```
+
+**Why wrong**: Violates code quality standards. Will fail mypy strict mode.
+
+### ❌ 4. Mutable Domain Objects
+
+```python
+# WRONG
+@dataclass
+class Confidence:  # ❌ Not frozen
+    value: float
+```
+
+**Why wrong**: Value objects should be immutable. Prevents accidental mutation.
+
+### ❌ 5. Quick Fixes Without Tests
+
+```python
+# WRONG - No tests
+def resolve_entity(...):
+    try:
+        return db.query(...)[0]  # ❌ What if empty? No test coverage.
+    except:
+        return None  # ❌ Swallowing all exceptions
+```
+
+**Why wrong**: No edge case handling, no tests, silent failures.
+
+### ❌ 6. Adding Features Without Vision Justification
+
+```python
+# WRONG
+class SemanticMemory:
+    accessed_count: int  # ❌ Which vision principle does this serve?
+```
+
+**Why wrong**: Useful for Phase 3, not essential now. Adds premature complexity.
+
+### ❌ 7. Silently Ignoring Conflicts
+
+```python
+# WRONG
+if existing_memory.value != new_value:
+    return existing_memory  # ❌ Silent preference, no logging
+```
+
+**Why wrong**: Epistemic humility requires explicit conflict tracking.
+
+### ❌ 8. Pre-Computing When Passive Works
+
+```python
+# WRONG - Background job updating confidence
+@celery.task
+def update_confidence_with_decay():
+    for memory in all_memories:
+        memory.confidence *= decay_factor  # ❌ Unnecessary complexity
+        db.save(memory)
+```
+
+**Why wrong**: Phase 1 uses passive computation. Pre-computation is Phase 2.
+
+### ❌ 9. Using LLM When Deterministic Works
+
+```python
+# WRONG
+async def fuzzy_match(mention: str, entities: List[Entity]) -> Entity:
+    # Use LLM to find fuzzy match
+    result = await llm.complete(f"Which entity matches '{mention}'?")  # ❌
+```
+
+**Why wrong**: pg_trgm similarity is faster, cheaper, more reliable for fuzzy matching.
+
+### ❌ 10. Testing Infrastructure in Unit Tests
+
+```python
+# WRONG
+@pytest.mark.unit
+async def test_entity_repository():
+    repo = PostgresEntityRepository(real_db_session)  # ❌ Real DB in unit test
+    entity = await repo.get_by_id("customer:123")
+    assert entity is not None
+```
+
+**Why wrong**: Unit tests should be fast (no I/O). Use mocks. Real DB = integration test.
+
+---
+
+## Critical Reference Documents
+
+**Always consult these before implementing**:
+
+### Vision & Philosophy
+- `docs/vision/VISION.md` (720 lines) - **Start here**. Philosophical foundation.
+- `docs/vision/DESIGN_PHILOSOPHY.md` (323 lines) - Three Questions Framework, decision trees.
+
+### Complete Design
+- `docs/design/DESIGN.md` (1,509 lines) - **Complete system specification**. All algorithms, all tables, all justifications.
+
+### Implementation Guides
+- `docs/quality/PHASE1_ROADMAP.md` - 8-week implementation plan with detailed tasks.
+- `docs/reference/HEURISTICS_CALIBRATION.md` - All 43 tunable parameters (in `src/config/heuristics.py`).
+- `docs/design/API_DESIGN.md` - Request/response models for all endpoints.
+- `docs/design/LIFECYCLE_DESIGN.md` - Memory state transitions, decay, reinforcement.
+- `docs/design/RETRIEVAL_DESIGN.md` - Multi-signal scoring formula.
+
+### Architecture
+- `docs/ARCHITECTURE.md` - Hexagonal architecture, DDD patterns.
+- `docs/DEVELOPMENT_GUIDE.md` - Setup, workflows, troubleshooting.
+
+**If something isn't in the docs, ask before proceeding.**
+
+---
+
+## Working With Claude: Guidelines
+
+### When Starting a New Task
+
+1. **Read the relevant design docs** (don't guess at architecture)
+2. **Identify the vision principle** you're serving
+3. **Check current implementation status** (what's done, what's next)
+4. **Consider edge cases and error paths**
+5. **Plan the tests first** (TDD approach)
+6. **Ask clarifying questions** if design is ambiguous
+
+### When You're Uncertain
+
+**ASK instead of assuming**. Better questions to ask:
+
+- "Which vision principle does this serve?"
+- "Should this be Phase 1, 2, or 3?"
+- "Is there an established pattern I should follow?"
+- "What are the edge cases I should handle?"
+- "How should this be tested?"
+
+**Don't say**: "I'll implement it this way and we can change it later."
+
+### When Tests Fail
+
+**Don't just make tests pass. Understand WHY they're failing.**
+
+1. Read the test carefully - what's it asserting?
+2. Understand the expected behavior from design docs
+3. Check if implementation or test is wrong
+4. Fix the root cause, not just the symptom
+5. Add more tests for edge cases you discovered
+
+### When Code Review Feedback Comes
+
+**See feedback as improving the system, not criticism.**
+
+- If architectural violation: Fix immediately, understand why it matters
+- If missing edge case: Add tests, thank reviewer
+- If unclear design: Ask for design doc clarification
+- If disagreement: Discuss with reference to vision principles
+
+---
+
+## Advanced Principles: Mastering the Philosophy
+
+These principles go beyond "how to code" and into "how to think" about building this system.
+
+### 1. Root Cause Thinking (The 5 Whys)
+
+**Never fix symptoms. Always fix root causes.**
+
+When encountering an issue, ask "why" until you reach the fundamental cause:
+
+**Example**:
+```
+Issue: Tests failing in memory_validation_service.py
+
+Why? → Expected confidence 0.742, got 0.735
+Why? → Decay calculation differs from test expectation
+Why? → Formula uses different decay rate
+Why? → Implementation uses 0.01, test expects 0.0115 (from DESIGN.md)
+Why? → Implementation wasn't updated when design changed in v2.0
+
+ROOT CAUSE: Design-implementation drift from v2.0 revision
+FIX: Update implementation to match DESIGN.md, add regression test
+```
+
+**Surface fix** (wrong): Change expected value in test to 0.735
+**Root cause fix** (right): Update formula to match design specification
+
+**Apply this to**:
+- Bug fixes (don't patch symptoms, eliminate causes)
+- Test failures (understand WHY tests fail, not just how to make them pass)
+- Design questions (understand why the design exists before changing it)
+- Performance issues (profile and understand bottlenecks, don't blindly optimize)
+
+### 2. Systems Thinking (The Ripple Effect)
+
+**Every change affects multiple parts of the system.**
+
+Before implementing anything, trace the ripples:
+
+**6 Dimensions of Impact**:
+
+1. **Data Flow**: Where does this data come from? Where does it go?
+2. **Error Propagation**: What happens when this fails? Who handles the error?
+3. **Performance**: Does this add latency? Database queries? LLM calls?
+4. **State Management**: Does this change state? How does state persist?
+5. **Dependencies**: What depends on this? What does this depend on?
+6. **Testing**: How do I test this? What edge cases exist?
+
+**Example**:
+```
+Task: Add LLM coreference resolution to entity resolver
+
+Systems Thinking Analysis:
+1. Data Flow: Needs conversation history → Changes ResolutionContext
+2. Error Propagation: LLM can fail → Need fallback strategy, timeout handling
+3. Performance: LLM adds 200ms → Make this the LAST stage (fast path first)
+4. State Management: LLM results should be learned → Save as aliases
+5. Dependencies: Needs LLM service port → Add to EntityResolver constructor
+6. Testing: LLM is external → Mock LLM service in unit tests, integration test with real LLM
+
+Result: Comprehensive implementation that fits architecture
+```
+
+**Never implement in isolation. Always consider the system.**
+
+### 3. Learn from the Codebase
+
+**The existing code is the best documentation of standards.**
+
+Before writing new code, study similar existing code:
+
+**Pattern Recognition**:
+- Writing a new service? Study `EntityResolutionService` and `SemanticExtractionService`
+- Writing a new repository? Study `EntityRepository` and `SemanticMemoryRepository`
+- Writing a new domain entity? Study `CanonicalEntity` and `SemanticMemory`
+- Writing a new test? Study existing test structure in the same directory
+
+**What to observe**:
+- Naming conventions (e.g., methods are `create_memory`, not `createMemory`)
+- Error handling patterns (domain exceptions, not HTTP exceptions)
+- Logging structure (structured logs with context)
+- Type annotations (comprehensive, with Union, Optional where appropriate)
+- Docstring style (concise summary, then details)
+- Test structure (Arrange-Act-Assert, descriptive test names)
+
+**Anti-pattern**: "I'll write this my way and refactor later."
+**Good pattern**: "Let me see how EntityResolver does this, then follow that pattern."
+
+### 4. Code as Communication
+
+**You're not writing code for the computer. You're writing it for humans (including future you).**
+
+**Write self-documenting code**:
+
+```python
+# ❌ BAD - Needs comments to understand
+def calculate_score(m, q):
+    # Compute cosine similarity
+    s = 1 - cosine(m.e, q.e)
+    # Apply entity boost
+    e = jaccard(m.ents, q.ents)
+    # Decay factor
+    d = exp(-age * 0.01)
+    return 0.4 * s + 0.25 * e + 0.2 * d
+
+# ✅ GOOD - Self-documenting with good names
+def calculate_relevance_score(
+    memory: Memory,
+    query: Query,
+    weights: ScoringWeights
+) -> float:
+    """
+    Multi-signal relevance scoring.
+
+    Combines semantic similarity, entity overlap, and recency decay
+    using weighted formula from RETRIEVAL_DESIGN.md.
+    """
+    semantic_score = 1 - cosine_distance(memory.embedding, query.embedding)
+    entity_score = jaccard_similarity(memory.entities, query.entities)
+    age_days = (now() - memory.created_at).days
+    recency_score = exp(-age_days * get_config('decay.default_rate_per_day'))
+
+    relevance = (
+        weights.semantic * semantic_score +
+        weights.entity * entity_score +
+        weights.recency * recency_score
+    )
+
+    return relevance
+```
+
+**When to comment**:
+- **DON'T** comment WHAT the code does (code should show this)
+- **DO** comment WHY you made a design choice
+- **DO** comment complex algorithms with references
+- **DO** comment rationale for non-obvious values
+
+**Example of good comments**:
+```python
+# Use exponential decay rather than linear because confidence should
+# drop quickly initially but level off (per LIFECYCLE_DESIGN.md)
+decay_factor = exp(-age_days * decay_rate)
+
+# Cap at 0.95 (not 1.0) to maintain epistemic humility - system
+# never claims 100% certainty (vision principle)
+self.confidence = min(0.95, self.confidence + boost)
+```
+
+### 5. When to Push Back (Respectfully)
+
+**Not all requests should be implemented as stated.**
+
+Sometimes the right answer is: "I understand what you're asking, but here's why we should do X instead."
+
+**Legitimate reasons to push back**:
+
+1. **Violates core architecture**
+   - "This would require domain layer to import infrastructure, which breaks hexagonal architecture. Instead, let's..."
+
+2. **Doesn't serve vision principles**
+   - "I can add this field, but I can't identify which vision principle it serves. Can we defer this to Phase 2 when we have usage data?"
+
+3. **Creates technical debt**
+   - "A quick fix here would work short-term but make Phase 1C harder. Let me propose a comprehensive solution that sets us up correctly."
+
+4. **Wrong phase for complexity**
+   - "This feature requires learning from usage patterns. We don't have data yet. This is a Phase 3 feature. For Phase 1, let's do X instead."
+
+**How to push back effectively**:
+
+```
+Template:
+"I understand you want [THEIR REQUEST].
+
+However, [CONCERN WITH REFERENCE TO DOCS/PRINCIPLES].
+
+Instead, I propose [ALTERNATIVE APPROACH] because [RATIONALE TIED TO VISION].
+
+This gives us [BENEFITS] while avoiding [COSTS].
+
+Does this align with your intent?"
+```
+
+**Example**:
+```
+"I understand you want to add accessed_count to track memory usage.
+
+However, looking at DESIGN_PHILOSOPHY.md, this seems like a Phase 3
+learning feature (requires usage patterns we don't have yet), and
+PHASE1_ROADMAP.md doesn't include it as essential.
+
+Instead, I propose we add this to the Phase 3 backlog and focus on
+completing Phase 1C (conflict detection, multi-signal retrieval)
+which are essential for the core vision.
+
+This keeps Phase 1 scope manageable while ensuring we build learning
+features when we have data to learn from.
+
+Does this align with your intent?"
+```
+
+### 6. Incremental Perfection (Not Iterative Roughing-In)
+
+**Complete each piece fully before moving to the next.**
+
+**DON'T**: Rough-in approach
+```
+❌ "I'll implement entity resolution roughly, then semantic extraction
+   roughly, then come back and polish both later."
+
+Result: Two half-finished features, unclear what's production-ready
+```
+
+**DO**: Incremental perfection
+```
+✅ "I'll implement entity resolution COMPLETELY (including tests,
+   edge cases, error handling, docs), verify it works, THEN move
+   to semantic extraction."
+
+Result: One production-ready feature, clear progress
+```
+
+**What "complete" means**:
+- ✅ Implementation matches design specification
+- ✅ All edge cases handled
+- ✅ Comprehensive tests (unit + integration)
+- ✅ Error handling with appropriate exceptions
+- ✅ Logging for observability
+- ✅ Type annotations complete
+- ✅ Docstrings written
+- ✅ Passes all quality checks (lint, typecheck, coverage)
+
+**Progress should be**: 100% → 100% → 100%
+
+**Not**: 60% → 60% → 60% → eventually 100%
+
+### 7. Pattern Recognition and Consistency
+
+**Consistency compounds clarity.**
+
+The codebase has established patterns. Learn them, follow them, perpetuate them.
+
+**Core Patterns**:
+
+1. **Repository Pattern**
+   - Port (ABC) in `domain/ports/`
+   - Adapter (implementation) in `infrastructure/database/repositories/`
+   - Async methods with descriptive names
+   - Return domain entities, not DB models
+
+2. **Value Object Pattern**
+   - Immutable (`@dataclass(frozen=True)`)
+   - Validation in `__post_init__`
+   - Type annotations complete
+   - Semantic names
+
+3. **Service Pattern**
+   - Coordinates between repositories
+   - Contains business logic
+   - Takes repository ports in constructor (dependency injection)
+   - Returns domain entities or raises domain exceptions
+
+4. **Exception Pattern**
+   - Domain exceptions inherit from `DomainException`
+   - Carry context (not just message)
+   - API layer converts to HTTP responses
+   - Never raise HTTP exceptions from domain
+
+5. **Logging Pattern**
+   - Structured logging with `structlog`
+   - Use event names (e.g., "entity_resolved", not "Resolved entity")
+   - Include context (user_id, entity_id, confidence, etc.)
+   - Log at appropriate levels (info for success, warning for issues)
+
+6. **Configuration Pattern**
+   - All heuristics in `src/config/heuristics.py`
+   - Access via `get_config('path.to.value')`
+   - Never hardcode magic numbers
+   - Document rationale in `docs/reference/HEURISTICS_CALIBRATION.md`
+
+**When adding new code, ask**: "Is there already a pattern for this?"
+
+### 8. Documentation as Contract
+
+**Design docs are not suggestions. They're specifications.**
+
+When implementation and docs disagree:
+
+1. **First**: Understand which is correct
+   - Check git history - when was each changed?
+   - Check conversation history - what was the intention?
+   - Check related code - what's consistent?
+
+2. **Then**: Fix the discrepancy
+   - If docs are right: Update implementation
+   - If implementation is right: Update docs
+   - If both are wrong: Fix both
+
+3. **Never**: Ignore the discrepancy
+   - ❌ "Docs say X but code does Y, I'll leave it"
+   - ❌ "I'll implement Z which differs from both"
+
+**Docs are the source of truth for**:
+- Vision principles (`VISION.md`)
+- Algorithm specifications (`DESIGN.md`)
+- Architecture patterns (`ARCHITECTURE.md`)
+- Decision rationale (`DESIGN_PHILOSOPHY.md`)
+- Heuristic values (`HEURISTICS_CALIBRATION.md`)
+
+**Code is the source of truth for**:
+- Current implementation state
+- What actually works
+- Performance characteristics
+- Edge cases discovered through testing
+
+**When they align: System is healthy.**
+**When they diverge: Priority 1 issue.**
+
+### 9. Pride in Craft
+
+**You're building a system that transforms memory into intelligence.**
+
+This is not a throwaway prototype. This is production-grade infrastructure for the foundation of agentic intelligence.
+
+**What this means**:
+
+- Write code you'd be proud to show in 5 years
+- Leave the codebase better than you found it
+- Think: "Is this production-ready?" not "Is this good enough for now?"
+- Take ownership: If you see something wrong, fix it (or at least flag it)
+- Sweat the details: Naming, formatting, docstrings, test quality—all matter
+
+**Every line of code is a reflection of your standards.**
+
+Make them high standards.
+
+**Remember the metaphor**: You're building an experienced colleague, not a chatbot. Build something worthy of being called a colleague.
+
+---
 
 ## Performance Targets (Phase 1)
 
-| Operation | P95 Target | Implementation Note |
-|-----------|------------|---------------------|
-| Entity resolution (fast path) | <50ms | Indexed lookups, pg_trgm |
-| Entity resolution (LLM path) | <300ms | LLM coreference (5% of cases) |
-| Semantic search | <50ms | pgvector with IVFFlat index |
-| Multi-signal scoring | <100ms | Deterministic formula |
-| Chat endpoint | <800ms | End-to-end (includes LLM generation) |
+| Operation | P95 Latency | Why This Matters |
+|-----------|-------------|------------------|
+| Entity resolution (fast path) | <50ms | 95% of resolutions use deterministic path |
+| Entity resolution (LLM path) | <300ms | 5% of resolutions need coreference |
+| Semantic search (pgvector) | <50ms | Retrieval must be near-instant |
+| Multi-signal scoring | <100ms | Score 100+ candidates deterministically |
+| Full chat endpoint | <800ms | End-to-end including LLM generation |
 
-## Common Pitfalls to Avoid
+**If you add code that degrades these targets, optimize or reconsider.**
 
-1. **Don't hardcode heuristic values** - Always use `config/heuristics.py`
-
-2. **Don't import infrastructure in domain layer** - Use ports (ABC interfaces)
-
-3. **Don't skip type hints** - mypy strict mode enforced (100% coverage required)
-
-4. **Don't create background jobs** - Use passive computation (compute on-demand)
-
-5. **Don't add features without Three Questions justification** - Document which vision principle it serves
-
-6. **Don't use blocking I/O** - All database/LLM calls must be async
-
-7. **Don't test infrastructure in unit tests** - Use mocks; save DB tests for integration tests
-
-8. **Don't assume heuristic values are final** - All parameters need Phase 2 calibration
-
-9. **Don't over-normalize the schema** - Inline with JSONB when data isn't queried independently
-
-10. **Don't silently ignore conflicts** - Epistemic humility requires explicit conflict tracking
-
-11. **Don't use LLM when deterministic works** - Follow surgical LLM integration principle
-
-12. **Don't pre-compute when passive works** - Compute decay/confidence on-demand
-
-## Critical Files Reference
-
-When implementing features, always reference these design documents:
-
-- **Core Design**: `docs/design/DESIGN.md` - Ground-up redesign (v2.0), all algorithms, complete specifications
-- **Roadmap**: `docs/quality/PHASE1_ROADMAP.md` - 8-week implementation plan with detailed tasks
-- **Vision**: `docs/vision/VISION.md` - Philosophical foundation, core principles
-- **Philosophy**: `docs/vision/DESIGN_PHILOSOPHY.md` - Three Questions Framework, decision criteria
-- **Heuristics**: `docs/reference/HEURISTICS_CALIBRATION.md` - All 43 parameters (in `src/config/heuristics.py`)
-- **API Contracts**: `docs/design/API_DESIGN.md` - Request/response models for all endpoints
-- **Lifecycle**: `docs/design/LIFECYCLE_DESIGN.md` - State transitions, decay, reinforcement
-- **Retrieval**: `docs/design/RETRIEVAL_DESIGN.md` - Multi-signal scoring formula
-- **Architecture**: `docs/ARCHITECTURE.md` - Hexagonal architecture, DDD patterns
-- **Development**: `docs/DEVELOPMENT_GUIDE.md` - Setup, workflows, troubleshooting
+---
 
 ## Environment Setup
 
 Required environment variables (see `.env.example`):
+
 ```bash
 # Database
 DATABASE_URL=postgresql+asyncpg://memoryuser:memorypass@localhost:5432/memorydb
 
-# OpenAI (for embeddings + extraction)
+# OpenAI (embeddings + extraction)
 OPENAI_API_KEY=sk-...your-key...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small  # 1536 dimensions
-OPENAI_LLM_MODEL=gpt-4o  # For extraction quality
+OPENAI_LLM_MODEL=gpt-4o  # Quality matters for extraction
 
 # API
 API_HOST=0.0.0.0
@@ -1044,46 +1331,25 @@ LOG_LEVEL=INFO
 LOG_FORMAT=json  # json for production, text for development
 ```
 
+---
+
 ## Commit Message Convention
 
 Format: `<type>(<scope>): <subject>`
 
-Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `refactor`: Code restructure (no behavior change)
+- `test`: Add/update tests
+- `docs`: Documentation only
+- `chore`: Build, dependencies, tooling
 
 Examples:
 ```
-feat(entity-resolution): implement hybrid resolution algorithm with LLM coreference
-fix(retrieval): correct passive decay calculation
-test(lifecycle): add tests for confidence reinforcement
-docs(design): update DESIGN.md with surgical LLM approach
+feat(entity-resolution): implement Stage 4 LLM coreference resolution
+fix(semantic-memory): correct passive decay calculation per DESIGN.md spec
+refactor(repositories): extract common query patterns to base class
+test(conflict-detection): add tests for memory vs DB conflicts
+docs(architecture): update DESIGN.md with surgical LLM justification
 ```
-
-## Quick Reference: Make Commands
-
-```bash
-make setup          # First-time setup (install + docker + migrate)
-make run            # Start dev server
-make test           # Run all tests
-make test-unit      # Fast unit tests only
-make test-cov       # Tests with HTML coverage report
-make check-all      # All quality checks (lint + typecheck + coverage)
-make lint-fix       # Auto-fix linting issues
-make format         # Format all code
-make db-migrate     # Apply migrations
-make db-shell       # Open psql shell
-make clean          # Remove caches
-make stats          # Show project statistics
-```
-
-## Design Evolution History
-
-This system has undergone a comprehensive ground-up redesign (v2.0). See `docs/design/ARCHIVE_DESIGN_EVOLUTION.md` for the complete evolution history from initial exploration through surgical LLM approach to the current vision-driven architecture.
-
-**Key learnings**:
-- Start from vision, not from solution
-- Surgical over blanket LLM use
-- Justify every piece of complexity
-- Iteration is essential
-- Documentation serves implementation
-
-**Current design** (v2.0) represents the culmination of this iterative refinement process, fully grounded in vision principles with explicit justification for every design decision.

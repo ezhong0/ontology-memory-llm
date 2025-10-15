@@ -1,0 +1,94 @@
+"""Semantic memory repository port (interface).
+
+Defines the contract for semantic memory data access.
+"""
+
+from abc import ABC, abstractmethod
+from typing import List, Optional
+
+import numpy as np
+
+from src.domain.entities.semantic_memory import SemanticMemory
+
+
+class ISemanticMemoryRepository(ABC):
+    """Interface for semantic memory data access.
+
+    Hexagonal architecture: Domain defines the interface,
+    infrastructure implements it.
+    """
+
+    @abstractmethod
+    async def create(self, memory: SemanticMemory) -> SemanticMemory:
+        """Create a new semantic memory.
+
+        Args:
+            memory: Semantic memory to create
+
+        Returns:
+            Created memory with assigned memory_id
+        """
+        pass
+
+    @abstractmethod
+    async def find_by_id(self, memory_id: int) -> Optional[SemanticMemory]:
+        """Find semantic memory by ID.
+
+        Args:
+            memory_id: Memory identifier
+
+        Returns:
+            Semantic memory if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def find_by_subject_predicate(
+        self, user_id: str, subject_entity_id: str, predicate: str
+    ) -> List[SemanticMemory]:
+        """Find semantic memories by subject and predicate.
+
+        Used for conflict detection.
+
+        Args:
+            user_id: User identifier
+            subject_entity_id: Subject entity ID
+            predicate: Predicate name
+
+        Returns:
+            List of matching semantic memories
+        """
+        pass
+
+    @abstractmethod
+    async def find_similar(
+        self,
+        user_id: str,
+        query_embedding: np.ndarray,
+        limit: int = 50,
+        min_confidence: Optional[float] = None,
+    ) -> List[SemanticMemory]:
+        """Find similar semantic memories using pgvector.
+
+        Args:
+            user_id: User identifier
+            query_embedding: Query embedding vector (1536-dim)
+            limit: Maximum number of results
+            min_confidence: Optional minimum confidence threshold
+
+        Returns:
+            List of similar semantic memories, ordered by similarity
+        """
+        pass
+
+    @abstractmethod
+    async def update(self, memory: SemanticMemory) -> SemanticMemory:
+        """Update an existing semantic memory.
+
+        Args:
+            memory: Memory with updated fields
+
+        Returns:
+            Updated memory
+        """
+        pass

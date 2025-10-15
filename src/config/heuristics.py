@@ -126,6 +126,15 @@ CONSOLIDATION_MIN_SESSIONS = 3  # Min sessions in window
 CONSOLIDATION_SESSION_WINDOW_DEFAULT = 5  # Last N sessions
 
 # ==============================================================================
+# PROCEDURAL MEMORY
+# ==============================================================================
+
+# Pattern Detection
+PROCEDURAL_MIN_CONFIDENCE = 0.5  # Minimum confidence to use pattern for augmentation
+PROCEDURAL_MIN_SUPPORT = 3  # Minimum observations to create pattern
+PROCEDURAL_LOOKBACK_DAYS = 30  # Days to analyze for pattern detection
+
+# ==============================================================================
 # EXTRACTION
 # ==============================================================================
 

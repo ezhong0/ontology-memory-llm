@@ -1,4 +1,4 @@
-.PHONY: help install test lint format typecheck run clean docker-up docker-down db-migrate db-rollback db-reset seed check-all
+.PHONY: help install test lint format typecheck run clean docker-up docker-down db-migrate db-rollback db-reset seed check-all test-prod test-demo check-demo-isolation check-demo
 
 # Default target
 .DEFAULT_GOAL := help
@@ -138,6 +138,16 @@ test-cov-min: ## Check if coverage meets minimum threshold (80%)
 	@echo "$(BLUE)Checking coverage threshold...$(NC)"
 	poetry run pytest --cov=src --cov-fail-under=80 -q
 
+test-prod: ## Run production tests only (excludes demo tests)
+	@echo "$(BLUE)Running production tests only...$(NC)"
+	DEMO_MODE_ENABLED=false poetry run pytest tests/unit tests/integration --ignore=tests/demo -v
+	@echo "$(GREEN)✓ Production tests passed$(NC)"
+
+test-demo: ## Run demo tests only
+	@echo "$(BLUE)Running demo tests only...$(NC)"
+	DEMO_MODE_ENABLED=true poetry run pytest tests/demo -v
+	@echo "$(GREEN)✓ Demo tests passed$(NC)"
+
 # Code Quality
 lint: ## Run linting checks
 	@echo "$(BLUE)Running linting checks...$(NC)"
@@ -168,6 +178,28 @@ security: ## Run security checks
 	poetry run bandit -r src/
 	poetry run pip-audit
 	@echo "$(GREEN)✓ Security checks passed$(NC)"
+
+check-demo-isolation: ## Verify demo code doesn't contaminate production
+	@echo "$(BLUE)Checking demo isolation rules...$(NC)"
+	@# Check for demo imports in production code
+	@if grep -r "from src.demo" src/domain src/infrastructure src/api 2>/dev/null; then \
+		echo "$(RED)✗ ERROR: Production code imports from demo!$(NC)"; \
+		exit 1; \
+	fi
+	@# Check for demo files outside demo directory
+	@if find src/domain src/infrastructure src/api -name "*demo*" -type f 2>/dev/null | grep -q .; then \
+		echo "$(RED)✗ ERROR: Demo code found outside src/demo/$(NC)"; \
+		exit 1; \
+	fi
+	@# Check domain models haven't been modified with demo fields
+	@if grep -E "(is_demo|demo_data|scenario_id)" src/infrastructure/database/models.py 2>/dev/null; then \
+		echo "$(YELLOW)⚠ WARNING: Possible demo contamination in production models$(NC)"; \
+		echo "$(YELLOW)  Review src/infrastructure/database/models.py$(NC)"; \
+	fi
+	@echo "$(GREEN)✓ Demo isolation verified!$(NC)"
+
+check-demo: check-demo-isolation test-prod test-demo ## Run all demo safety checks
+	@echo "$(GREEN)✓ All demo safety checks passed!$(NC)"
 
 check-all: lint typecheck test-cov-min ## Run all quality checks (CI/CD)
 	@echo "$(GREEN)✓ All checks passed!$(NC)"
