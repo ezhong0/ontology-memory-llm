@@ -1,7 +1,11 @@
 # LLM Integration Strategy: Surgical Application, Not Blanket Replacement
 
+> **SUPERSEDED**: This document has been superseded by **DESIGN.md v2.0** (Section: Where LLMs Are Used).
+> See `ARCHIVE_DESIGN_EVOLUTION.md` for the evolution history.
+> Retained for reference on LLM integration decision-making process.
+
 **Date**: 2025-10-15
-**Status**: Revised Architectural Guidance
+**Status**: Superseded by DESIGN.md v2.0
 **Principle**: Use LLMs for **semantic understanding** and **reasoning**, not for **lookup** or **pattern matching**
 
 ---

@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Memory Pipeline**: `Raw Chat → Episodic Memory → Semantic Memory → Procedural Memory → Summaries`
 
-**Current Status**: Week 0 implementation complete. Foundation ready for Phase 1 development (10-12 weeks).
+**Current Status**: Design v2.0 complete (ground-up redesign). Ready for Phase 1 implementation (8 weeks).
 
-**Design Quality**: 9.74/10 (Exceptional) | 97% Philosophy Alignment
+**Design Approach**: Vision-driven architecture with surgical LLM integration (deterministic where it excels, LLM only where it adds clear value)
 
 ### The Core Metaphor
 
@@ -91,6 +91,58 @@ make security               # Security checks (bandit + pip-audit)
 
 ## Architecture: The Big Picture
 
+### The Layered Memory Architecture
+
+From DESIGN.md v2.0, the system implements 6 layers of memory transformation:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Layer 6: CONSOLIDATED SUMMARIES (memory_summaries)        │
+│          Cross-session synthesis, entity profiles          │
+│          Vision: Forgetting through consolidation          │
+└────────────────────────────────────────────────────────────┘
+                         ↑ distills
+┌────────────────────────────────────────────────────────────┐
+│ Layer 5: PROCEDURAL MEMORY (procedural_memories)          │
+│          Learned heuristics: "When X, also Y"             │
+│          Vision: Learning from interaction patterns        │
+└────────────────────────────────────────────────────────────┘
+                         ↑ emerges from
+┌────────────────────────────────────────────────────────────┐
+│ Layer 4: SEMANTIC MEMORY (semantic_memories)              │
+│          Abstracted facts with lifecycle                   │
+│          Vision: Contextual truth, epistemic humility      │
+└────────────────────────────────────────────────────────────┘
+                         ↑ extracted from
+┌────────────────────────────────────────────────────────────┐
+│ Layer 3: EPISODIC MEMORY (episodic_memories)              │
+│          Events with meaning: "What happened"              │
+│          Vision: Foundation for learning                   │
+└────────────────────────────────────────────────────────────┘
+                         ↑ interprets
+┌────────────────────────────────────────────────────────────┐
+│ Layer 2: ENTITY RESOLUTION (canonical_entities, aliases)  │
+│          Text mentions → canonical entities                │
+│          Vision: Solving problem of reference              │
+└────────────────────────────────────────────────────────────┘
+                         ↑ links
+┌────────────────────────────────────────────────────────────┐
+│ Layer 1: RAW EVENTS (chat_events)                         │
+│          Immutable audit trail of conversations            │
+│          Vision: Provenance, explainability                │
+└────────────────────────────────────────────────────────────┘
+                         ↑ queries
+┌────────────────────────────────────────────────────────────┐
+│ Layer 0: DOMAIN DATABASE (external)                       │
+│          Authoritative truth about business                │
+│          Vision: Correspondence truth                      │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Information Flow**:
+- **Abstraction (up)**: Raw events → Episodes → Facts → Patterns → Summaries
+- **Grounding (down)**: Queries start at DB, enrich with memory layers
+
 ### Hexagonal Architecture (Ports & Adapters)
 
 ```
@@ -118,168 +170,462 @@ make security               # Security checks (bandit + pip-audit)
 
 **Critical Rule**: Domain layer never imports from infrastructure. Dependency direction is one-way: API → Domain → Infrastructure (via interfaces).
 
-### Key Subsystems & Their Files
-
-**Entity Resolution (5-stage algorithm)**:
-- Design: `docs/design/ENTITY_RESOLUTION_DESIGN.md`
-- Domain service: `src/domain/services/entity_resolver.py` (to implement)
-- Repository port: `src/domain/ports/entity_repository.py` (to implement)
-- Repository impl: `src/infrastructure/database/repositories/entity_repository.py` (to implement)
-- Database models: `src/infrastructure/database/models.py` (✅ complete: CanonicalEntity, EntityAlias)
-
-**5-Stage Resolution Process with Confidence Scores**:
-1. **Exact Match** (confidence: 1.0) - Lookup canonical_name in canonical_entities
-2. **User-Specific Alias** (confidence: 0.95) - Check entity_aliases WHERE user_id = current_user
-3. **Fuzzy Match** (confidence: 0.85 high, 0.70 low) - pg_trgm similarity > 0.70 threshold
-4. **Coreference Resolution** (confidence: 0.60) - Use conversation context ("it", "they", "that customer")
-5. **User Disambiguation** (confidence: 0.85 after selection) - Present top 5 candidates, user selects
-
-**Lazy Entity Creation**: Entities are NOT pre-loaded. When a mention like "ACME Corp" fails resolution, query domain DB (customers table), create canonical_entity with external_ref pointing to customer record, then resolve.
-
-**Memory Lifecycle (4 states: ACTIVE, AGING, SUPERSEDED, INVALIDATED)**:
-- Design: `docs/design/LIFECYCLE_DESIGN.md`
-- Domain service: `src/domain/services/lifecycle_manager.py` (to implement)
-- Database model: `src/infrastructure/database/models.py` (✅ complete: SemanticMemory with status field)
-- Heuristics: `src/config/heuristics.py` (✅ complete: DECAY_RATE_PER_DAY, REINFORCEMENT_BOOSTS)
-
-**State Transitions**:
-- **ACTIVE** → **AGING**: When confidence < 0.3 threshold (due to decay or conflicting info)
-- **ACTIVE** → **SUPERSEDED**: When new memory replaces old (confidence_gap > 0.30 or age_gap > 60 days)
-- **ACTIVE** → **INVALIDATED**: When user explicitly corrects ("No, that's wrong")
-- **AGING** → **ACTIVE**: When user validates during active recall ("Yes, that's still correct")
-
-**Passive Computation (Critical Pattern)**:
-- Decay is NOT stored in database (no background jobs)
-- Current confidence = `stored_confidence * exp(-days_since_validation * DECAY_RATE_PER_DAY)`
-- Computed on-demand during retrieval
-- Only write to DB on reinforcement or state change
-
-**Reinforcement with Diminishing Returns**:
-- 1st validation: +0.15 confidence boost
-- 2nd validation: +0.10
-- 3rd validation: +0.05
-- 4th+ validations: +0.02 each (capped at MAX_CONFIDENCE = 0.95 for epistemic humility)
-
-**Memory Retrieval (Multi-signal scoring)**:
-- Design: `docs/design/RETRIEVAL_DESIGN.md`
-- Domain service: `src/domain/services/memory_retriever.py` (to implement)
-- Strategy weights: `src/config/heuristics.py` (✅ complete: RETRIEVAL_STRATEGY_WEIGHTS)
-- Database queries: Use pgvector for semantic search (embedding <=> operator)
-
-**3-Stage Retrieval Pipeline**:
-1. **Query Understanding**: Classify query intent → select retrieval strategy (factual_entity_focused, procedural, exploratory, temporal)
-2. **Candidate Generation** (parallel):
-   - Semantic: pgvector KNN search (top 50 candidates)
-   - Entity-based: Exact entity_id matches (top 30)
-   - Temporal: Recent memories in time window (top 30)
-   - Summaries: Cross-session summaries (top 5, get 15% boost)
-3. **Ranking & Selection**:
-   - Score each candidate using strategy weights
-   - Final score = weighted sum of 5 signals
-   - Select top 15 memories fitting within max_context_tokens (3000)
-
-**4 Retrieval Strategies (from heuristics.py)**:
-```python
-# Factual/Entity-Focused (when query is about specific entities)
-"factual_entity_focused": {
-    "semantic_similarity": 0.25, "entity_overlap": 0.40,  # Entity overlap dominates
-    "temporal_relevance": 0.20, "importance": 0.10, "reinforcement": 0.05
-}
-
-# Procedural (when query asks "how to" or about processes)
-"procedural": {
-    "semantic_similarity": 0.45, "entity_overlap": 0.05,
-    "temporal_relevance": 0.05, "importance": 0.15, "reinforcement": 0.30  # Reinforcement matters
-}
-
-# Exploratory (open-ended queries)
-"exploratory": {
-    "semantic_similarity": 0.35, "entity_overlap": 0.25,
-    "temporal_relevance": 0.15, "importance": 0.20, "reinforcement": 0.05
-}
-
-# Temporal (time-specific queries like "what happened last week?")
-"temporal": {
-    "semantic_similarity": 0.20, "entity_overlap": 0.20,
-    "temporal_relevance": 0.40,  # Temporal dominates
-    "importance": 0.15, "reinforcement": 0.05
-}
-```
-
-**Chat Pipeline (Primary API endpoint)**:
-- API endpoint: `src/api/routes/chat.py` (to implement)
-- Orchestration: Combines entity resolution → retrieval → LLM generation → memory creation
-- Response model: `src/api/models/responses.py` (to implement, see API_DESIGN.md)
-
-**Chat Pipeline Flow** (from API_DESIGN.md):
-1. **Ingest**: Store user message as chat_event (immutable audit trail)
-2. **Entity Resolution**: Extract mentions → resolve to canonical_entities (5-stage algorithm)
-3. **Domain Enrichment**: Query domain DB for authoritative facts about resolved entities
-4. **Memory Retrieval**: Fetch relevant memories (multi-signal scoring)
-5. **Context Assembly**: Combine domain facts (40% of token budget) + memories (60%)
-6. **LLM Generation**: Generate response with full context
-7. **Memory Creation**: Extract episodic memory, possibly semantic facts
-8. **Conflict Detection**: Check for contradictions with existing memories or domain DB
-9. **Response**: Return answer with citations (which memories/domain facts were used)
-
-**Context Window Token Budget Allocation** (from heuristics.py):
-```python
-# Total: max_context_tokens = 3000 (default in settings.py)
-CONTEXT_DB_FACTS = 0.40      # 1200 tokens - Domain DB facts (authoritative)
-CONTEXT_SUMMARIES = 0.20     # 600 tokens  - Memory summaries (high-level patterns)
-CONTEXT_SEMANTIC = 0.20      # 600 tokens  - Semantic facts (user preferences/policies)
-CONTEXT_EPISODIC = 0.15      # 450 tokens  - Recent episodic memories (specific events)
-CONTEXT_PROCEDURAL = 0.05    # 150 tokens  - Procedural hints (how-to patterns)
-
-# Token estimation: TOKENS_PER_CHAR = 0.25 (rough estimate: 4 chars per token)
-```
-
-**Priority Order for Context Assembly**:
-1. Domain DB facts (correspondence truth) - always included first
-2. Summaries (consolidated patterns) - high information density
-3. Semantic facts (user-specific context)
-4. Episodic memories (specific recent events)
-5. Procedural hints (learned workflows)
-
-**Domain Ontology Integration**:
-- Design: `docs/design/DESIGN.md` (domain_ontology table)
-- Purpose: Defines business relationship semantics (customer HAS orders, order REQUIRES product)
-- Database model: `src/infrastructure/database/models.py` (✅ complete: DomainOntology)
-- Example:
-  ```python
-  # Ontology record: customer HAS orders (1:many)
-  {
-    "from_entity_type": "customer",
-    "relation_type": "has",
-    "to_entity_type": "order",
-    "cardinality": "1:many",
-    "relation_semantics": "A customer can have multiple orders",
-    "join_spec": {
-      "from_table": "customers",
-      "to_table": "orders",
-      "join_on": "customers.customer_id = orders.customer_id"
-    }
-  }
-  ```
-- Usage: When user asks about a customer, automatically fetch related orders using ontology join specs
-- Repository: `src/infrastructure/external/domain_db_connector.py` (to implement)
-
 ### Database Schema (10 Core Tables)
 
 All models defined in `src/infrastructure/database/models.py`:
 
-1. **chat_events**: Raw conversation audit trail (immutable)
-2. **canonical_entities**: Entity layer with external_ref (customer ID, order ID, etc.)
-3. **entity_aliases**: User-specific + global aliases for resolution
-4. **episodic_memories**: Event summaries with entity coreference
-5. **semantic_memories**: Facts (subject-predicate-object triples) with confidence + lifecycle
-6. **procedural_memories**: Learned heuristics (Phase 2/3)
-7. **memory_summaries**: Cross-session consolidation
-8. **domain_ontology**: Business relationship semantics (customer HAS orders, etc.)
-9. **memory_conflicts**: Conflict tracking for epistemic humility
-10. **system_config**: Heuristic parameters (stored as JSONB)
+| Layer | Table | Vision Principle Served |
+|-------|-------|------------------------|
+| 1 | `chat_events` | Provenance, explainability |
+| 2 | `canonical_entities` | Problem of reference |
+| 2 | `entity_aliases` | Identity across time, learning |
+| 3 | `episodic_memories` | Events with meaning, learning substrate |
+| 4 | `semantic_memories` | Contextual truth, epistemic humility, forgetting |
+| 5 | `procedural_memories` | Learning from patterns |
+| 6 | `memory_summaries` | Graceful forgetting through consolidation |
+| Support | `domain_ontology` | Ontology-awareness |
+| Support | `memory_conflicts` | Epistemic humility |
+| Support | `system_config` | Flexibility |
+
+**Every table directly serves the vision. No table is "nice to have."**
 
 **pgvector indexes**: All memory tables have `embedding vector(1536)` with IVFFlat indexes for semantic search.
+
+## Key Subsystems & Algorithms
+
+### 1. Entity Resolution (Hybrid Approach)
+
+**Design**: `docs/design/DESIGN.md` (Section: Entity Resolution Algorithm)
+
+**Approach**: **Deterministic fast path (95%) + LLM coreference (5%)**
+
+**Algorithm**:
+
+```python
+async def resolve_entity(mention: str, user_id: str, context: ConversationContext) -> ResolutionResult:
+    """
+    Hybrid entity resolution: deterministic for 95%, LLM for coreference (5%).
+
+    Vision alignment: Fast path for efficiency, LLM only where semantic
+    understanding is genuinely needed (pronouns, contextual references).
+    """
+
+    # ═══════════════════════════════════════════════════════════
+    # FAST PATH: Deterministic (handles 95% of cases)
+    # ═══════════════════════════════════════════════════════════
+
+    # Stage 1: Exact match on canonical name
+    exact = await db.fetchrow("""
+        SELECT entity_id, 1.0 as confidence
+        FROM canonical_entities
+        WHERE canonical_name = $1
+    """, mention)
+    if exact:
+        return ResolutionResult(entity_id=exact['entity_id'], confidence=1.0, method='exact')
+
+    # Stage 2: Known alias (user-specific first, then global)
+    alias = await db.fetchrow("""
+        SELECT canonical_entity_id, confidence
+        FROM entity_aliases
+        WHERE alias_text = $1 AND (user_id = $2 OR user_id IS NULL)
+        ORDER BY user_id NULLS LAST, confidence DESC
+        LIMIT 1
+    """, mention, user_id)
+    if alias and alias['confidence'] > 0.85:
+        return ResolutionResult(entity_id=alias['canonical_entity_id'],
+                               confidence=alias['confidence'],
+                               method='alias')
+
+    # Stage 3: Fuzzy match using pg_trgm
+    fuzzy = await db.fetch("""
+        SELECT ce.entity_id, ce.canonical_name, similarity(ea.alias_text, $1) as score
+        FROM canonical_entities ce
+        JOIN entity_aliases ea ON ea.canonical_entity_id = ce.entity_id
+        WHERE similarity(ea.alias_text, $1) > 0.7
+        ORDER BY score DESC
+        LIMIT 5
+    """, mention)
+
+    if len(fuzzy) == 1 and fuzzy[0]['score'] > 0.85:
+        await learn_alias(mention, fuzzy[0]['entity_id'], user_id, 'fuzzy', fuzzy[0]['score'])
+        return ResolutionResult(entity_id=fuzzy[0]['entity_id'],
+                               confidence=fuzzy[0]['score'],
+                               method='fuzzy')
+
+    if len(fuzzy) > 1:
+        # Need user disambiguation
+        return DisambiguationRequired(candidates=fuzzy)
+
+    # ═══════════════════════════════════════════════════════════
+    # LLM PATH: Coreference resolution (handles 5% of cases)
+    # ═══════════════════════════════════════════════════════════
+
+    if is_coreference_candidate(mention):  # "they", "it", "them", "the customer"
+        candidates = context.recent_entities
+        if not candidates:
+            return ResolutionResult(entity_id=None, confidence=0.0, method='no_candidates')
+
+        # Use LLM for coreference resolution
+        llm_result = await resolve_coreference_llm(
+            mention=mention,
+            candidates=candidates,
+            conversation_history=context.recent_messages
+        )
+
+        if llm_result.confidence > 0.7:
+            await learn_alias(mention, llm_result.entity_id, user_id,
+                            'coreference', llm_result.confidence)
+
+        return ResolutionResult(entity_id=llm_result.entity_id,
+                               confidence=llm_result.confidence,
+                               method='llm_coreference',
+                               reasoning=llm_result.reasoning)
+
+    # Stage 4: Search domain database (lazy entity creation)
+    domain_matches = await search_domain_database(mention, limit=3)
+    if domain_matches:
+        entity = await ensure_canonical_entity(domain_matches[0])
+        await learn_alias(mention, entity.entity_id, user_id, 'domain_db', 0.85)
+        return ResolutionResult(entity_id=entity.entity_id, confidence=0.85, method='domain_db')
+
+    return ResolutionResult(entity_id=None, confidence=0.0, method='not_found')
+```
+
+**Why This Design**:
+- **Deterministic for 95%**: Exact, alias, and fuzzy matching use SQL/pg_trgm (fast, reliable)
+- **LLM only for coreference**: Pronouns need conversation context to resolve
+- **Self-improving**: High-confidence resolutions create aliases, moving to fast path
+- **Cost**: $0.00015 per resolution (only 5% of cases use LLM)
+
+**Key Files**:
+- Domain service: `src/domain/services/entity_resolver.py` (to implement)
+- Repository port: `src/domain/ports/entity_repository.py` (to implement)
+- Repository impl: `src/infrastructure/database/repositories/entity_repository.py` (to implement)
+- Database models: `src/infrastructure/database/models.py` (✅ complete)
+
+### 2. Memory Extraction (Pattern Detection + LLM Semantic Parsing)
+
+**Design**: `docs/design/DESIGN.md` (Section: Memory Extraction Algorithm)
+
+**Approach**: **Deterministic event classification + LLM triple extraction**
+
+**Algorithm**:
+
+```python
+async def extract_memories(event: ChatEvent, entities: List[Entity]) -> ExtractionResult:
+    """
+    Extract semantic facts from episodic events.
+
+    Vision alignment: Deterministic patterns for event classification,
+    LLM for semantic parsing (genuinely hard with rules).
+    """
+
+    # ═══════════════════════════════════════════════════════════
+    # DETERMINISTIC: Event type classification
+    # ═══════════════════════════════════════════════════════════
+
+    event_type = classify_event_type(event.content)
+    # Patterns: "?" = question, "remember" = explicit statement, etc.
+
+    if event_type not in ['statement', 'correction', 'explicit_preference']:
+        # Don't extract from questions, commands, confirmations
+        return ExtractionResult(semantic_memories=[])
+
+    # ═══════════════════════════════════════════════════════════
+    # LLM: Semantic triple extraction
+    # ═══════════════════════════════════════════════════════════
+
+    extraction = await extract_triples_llm(
+        text=event.content,
+        entities=entities,
+        event_type=event_type
+    )
+
+    semantic_memories = []
+    for triple in extraction.triples:
+        # Check for existing memory (same subject + predicate)
+        existing = await db.fetchrow("""
+            SELECT memory_id, confidence, reinforcement_count, object_value
+            FROM semantic_memories
+            WHERE user_id = $1
+              AND subject_entity_id = $2
+              AND predicate = $3
+              AND status = 'active'
+        """, event.user_id, triple.subject, triple.predicate)
+
+        if existing:
+            if values_match(existing['object_value'], triple.object_value):
+                # REINFORCE: Increase confidence
+                await reinforce_memory(existing['memory_id'])
+            else:
+                # CONFLICT: Log and decide resolution
+                await handle_memory_conflict(existing, triple, event)
+        else:
+            # CREATE: New semantic memory
+            memory = await create_semantic_memory(triple, event)
+            semantic_memories.append(memory)
+
+    return ExtractionResult(semantic_memories=semantic_memories)
+```
+
+**Why LLM Here**: Parsing "Acme prefers Friday deliveries and NET30 terms" into structured triples is genuinely hard with patterns.
+
+**Cost**: $0.002 per extraction (only for statements, not all messages)
+
+### 3. Multi-Signal Retrieval (Deterministic Scoring)
+
+**Design**: `docs/design/DESIGN.md` (Section: Multi-Signal Retrieval)
+
+**Approach**: **Deterministic formula (NO LLM)**
+
+**Algorithm**:
+
+```python
+def score_memory_relevance(memory: Memory, query: Query) -> float:
+    """
+    Multi-signal relevance scoring using weighted formula.
+
+    Vision alignment: Combines semantic similarity, entity overlap, recency,
+    importance, and reinforcement to approximate "what would a knowledgeable
+    human consider relevant here?"
+
+    NO LLM: Would be too slow (need to score 100+ candidates in <100ms)
+    """
+    weights = get_config('multi_signal_weights')
+
+    # Signal 1: Semantic similarity (cosine)
+    semantic_score = 1 - cosine_distance(memory.embedding, query.embedding)
+
+    # Signal 2: Entity overlap (Jaccard)
+    entity_score = jaccard(memory.entities, query.entities)
+
+    # Signal 3: Recency (exponential decay)
+    age_days = (now() - memory.created_at).days
+    half_life = 30 if memory.type == 'episodic' else 90
+    recency_score = exp(-age_days * ln(2) / half_life)
+
+    # Signal 4: Importance (stored)
+    importance_score = memory.importance
+
+    # Signal 5: Reinforcement (for semantic memories)
+    if hasattr(memory, 'reinforcement_count'):
+        reinforce_score = min(1.0, memory.reinforcement_count / 5)
+    else:
+        reinforce_score = 0.5
+
+    # Weighted combination
+    relevance = (
+        weights['semantic'] * semantic_score +
+        weights['entity'] * entity_score +
+        weights['recency'] * recency_score +
+        weights['importance'] * importance_score +
+        weights['reinforcement'] * reinforce_score
+    )
+
+    # Apply confidence penalty (passive decay)
+    if hasattr(memory, 'confidence'):
+        effective_confidence = calculate_effective_confidence(memory)
+        relevance *= effective_confidence
+
+    return relevance
+```
+
+**Why NO LLM**:
+- Need to score 100+ candidates in <100ms
+- LLM would take 20+ seconds (200x slower)
+- Formula works well and is deterministic
+- Can tune weights from usage data (Phase 2)
+
+**Retrieval Strategy Weights** (from `src/config/heuristics.py`):
+
+```python
+# Default weights for multi-signal scoring
+"multi_signal_weights": {
+    "semantic": 0.4,        # Semantic similarity (cosine)
+    "entity": 0.25,         # Entity overlap (Jaccard)
+    "recency": 0.2,         # Temporal relevance (exponential decay)
+    "importance": 0.1,      # Stored importance
+    "reinforcement": 0.05   # Validation count
+}
+```
+
+### 4. Conflict Detection (Deterministic + LLM Semantic)
+
+**Design**: `docs/design/DESIGN.md` (Section: Conflict Detection)
+
+**Approach**: **Deterministic pre-filtering (99%) + LLM semantic conflicts (1%)**
+
+**Algorithm**:
+
+```python
+async def detect_conflicts(new_memory: SemanticMemory):
+    """
+    Detect conflicts between memories and database facts.
+
+    Vision alignment: Deterministic for obvious conflicts (same predicate),
+    LLM only for semantic conflicts across different predicates.
+    """
+
+    # ═══════════════════════════════════════════════════════════
+    # DETERMINISTIC: Same predicate conflicts (99% of conflicts)
+    # ═══════════════════════════════════════════════════════════
+
+    existing = await db.fetch("""
+        SELECT memory_id, object_value, confidence, last_validated_at
+        FROM semantic_memories
+        WHERE user_id = $1
+          AND subject_entity_id = $2
+          AND predicate = $3
+          AND status = 'active'
+    """, new_memory.user_id, new_memory.subject_entity_id, new_memory.predicate)
+
+    for mem in existing:
+        if not values_match(mem['object_value'], new_memory.object_value):
+            # Direct conflict: same predicate, different values
+            await log_conflict(
+                conflict_type='memory_vs_memory',
+                memories=[mem['memory_id'], new_memory.memory_id],
+                resolution_strategy='trust_recent'
+            )
+
+    # Check against domain database
+    db_value = await query_domain_for_predicate(
+        new_memory.subject_entity_id,
+        new_memory.predicate
+    )
+
+    if db_value and not values_match(db_value, new_memory.object_value):
+        # Memory vs DB conflict
+        await log_conflict(
+            conflict_type='memory_vs_db',
+            memory_id=new_memory.memory_id,
+            db_source=db_value.source,
+            resolution_strategy='trust_db'
+        )
+
+    # ═══════════════════════════════════════════════════════════
+    # LLM: Semantic conflicts across predicates (1% of conflicts)
+    # ═══════════════════════════════════════════════════════════
+
+    # Check if new memory semantically conflicts with existing memories
+    # Example: "prefers email" vs "hates electronic communication"
+    related_memories = await db.fetch("""
+        SELECT memory_id, predicate, object_value
+        FROM semantic_memories
+        WHERE user_id = $1
+          AND subject_entity_id = $2
+          AND status = 'active'
+          AND predicate != $3
+    """, new_memory.user_id, new_memory.subject_entity_id, new_memory.predicate)
+
+    if related_memories:
+        semantic_conflicts = await detect_semantic_conflicts_llm(
+            new_memory=new_memory,
+            existing_memories=related_memories
+        )
+
+        for conflict in semantic_conflicts:
+            await log_conflict(
+                conflict_type='semantic_conflict',
+                memory_ids=[new_memory.memory_id, conflict.memory_id],
+                reasoning=conflict.reasoning,
+                resolution_strategy='ask_user'
+            )
+```
+
+**Why LLM Only for Semantic**:
+- 99% of conflicts are obvious (same predicate, different values)
+- LLM only for edge cases: "prefers email" vs "dislikes electronic communication"
+- Cost: $0.00002 average (1% × $0.002)
+
+### 5. Consolidation (LLM Synthesis)
+
+**Design**: `docs/design/DESIGN.md` (Section: Consolidation Algorithm)
+
+**Approach**: **LLM synthesis (Essential)**
+
+**Algorithm**:
+
+```python
+async def consolidate_memories(user_id: str, scope: ConsolidationScope) -> MemorySummary:
+    """
+    Consolidate episodic and semantic memories into summary.
+
+    Vision alignment: This is exactly what LLMs excel at - reading multiple
+    memories and synthesizing coherent summaries.
+    """
+
+    # Fetch memories to consolidate
+    episodic = await db.fetch("""
+        SELECT summary, entities, created_at
+        FROM episodic_memories
+        WHERE user_id = $1 AND {scope.filter}
+        ORDER BY created_at DESC
+    """, user_id)
+
+    semantic = await db.fetch("""
+        SELECT predicate, object_value, confidence, reinforcement_count
+        FROM semantic_memories
+        WHERE user_id = $1 AND {scope.filter} AND status = 'active'
+        ORDER BY confidence DESC, reinforcement_count DESC
+    """, user_id)
+
+    # Use LLM for synthesis
+    summary = await synthesize_summary_llm(
+        episodic_memories=episodic,
+        semantic_memories=semantic,
+        scope=scope
+    )
+
+    # Store summary
+    summary_id = await db.fetchrow("""
+        INSERT INTO memory_summaries (
+            user_id, scope_type, scope_identifier,
+            summary_text, key_facts, source_data,
+            confidence, embedding
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING summary_id
+    """, user_id, scope.type, scope.identifier,
+         summary.text, summary.key_facts, summary.source_data,
+         summary.confidence, await embed(summary.text))
+
+    # Boost confidence of confirmed facts
+    for fact_id in summary.confirmed_memory_ids:
+        await db.execute("""
+            UPDATE semantic_memories
+            SET confidence = LEAST(0.95, confidence + 0.1),
+                last_validated_at = now()
+            WHERE memory_id = $1
+        """, fact_id)
+
+    return summary
+```
+
+**Why LLM Essential**: Reading 20+ memories and synthesizing coherent summary is exactly what LLMs excel at.
+
+## Surgical LLM Integration Summary
+
+Based on the principle: **Use LLMs where they add clear value, deterministic systems where they excel**
+
+| Component | Approach | Rationale | Cost per Use |
+|-----------|----------|-----------|--------------|
+| **Entity Resolution** | Deterministic (95%) + LLM coreference (5%) | pg_trgm excellent for fuzzy matching. Only pronouns need context. | $0.00015 avg |
+| **Memory Extraction** | Pattern classification + LLM triple parsing | Event types are pattern-matchable. Semantic parsing genuinely needs LLM. | $0.002 (statements only) |
+| **Query Understanding** | Pattern-based (90%) + LLM fallback (10%) | Simple patterns work most of time. LLM for compound/ambiguous queries. | $0.0001 avg |
+| **Retrieval Scoring** | Deterministic formula (100%) | Must be fast (<100ms). Formula works well. NO LLM. | $0 |
+| **Conflict Detection** | Deterministic (99%) + LLM semantic (1%) | Most conflicts are obvious. LLM only for cross-predicate semantic conflicts. | $0.00002 avg |
+| **Consolidation** | LLM synthesis (100%) | This is what LLMs excel at. Reading and synthesizing summaries. | $0.005 (periodic) |
+
+**Average cost per conversational turn**: ~$0.002
+
+**At scale** (1,000 users × 50 turns/day):
+- 50,000 turns/day
+- Cost: $100/day = **$3,000/month**
+
+**Comparison to alternatives**:
+- Pure deterministic: $0/month, but 60-70% accuracy on hard cases
+- Pure LLM: $15,000/month, but 90%+ accuracy
+- **Surgical (this design)**: $3,000/month, 85-90% accuracy ✅
 
 ## Critical Design Patterns
 
@@ -297,36 +643,35 @@ All models defined in `src/infrastructure/database/models.py`:
 - Benefit: Faster retrieval for expensive operations
 - Cost: Schema complexity, potential stale data
 
-**When to use which**:
+**Passive Decay Example**:
 ```python
-# ✅ Passive - Decay computation
-def get_current_confidence(memory: SemanticMemory) -> float:
-    days_since_validation = (now - memory.last_validated_at).days
-    return memory.confidence * math.exp(-days_since_validation * DECAY_RATE_PER_DAY)
+def calculate_effective_confidence(memory: SemanticMemory) -> float:
+    """
+    Passive decay: compute on-demand, not pre-computed.
+    Philosophy: No background jobs, always accurate.
+    """
+    config = get_config('decay')
+    decay_rate = config['default_rate_per_day']
 
-# ✅ Pre-computed - Embeddings
-async def create_semantic_memory(fact: str) -> SemanticMemory:
-    embedding = await embedding_service.generate(fact)  # Expensive OpenAI call
-    return SemanticMemory(fact=fact, embedding=embedding)  # Store for retrieval
+    days_since_validation = (now() - memory.last_validated_at).days
+
+    # Exponential decay
+    effective_conf = memory.confidence * exp(-days_since_validation * decay_rate)
+
+    return max(0.0, min(1.0, effective_conf))
 ```
 
 ### Pattern 2: JSONB vs Separate Table
 
 **Use JSONB when**:
 - Data is rarely queried independently (only needed with parent)
-- Example: `entity_mentions` in episodic_memories - always retrieved with the episode
-- Example: `confidence_factors` in semantic_memories - just metadata for debugging
+- Example: `entities` in episodic_memories - always retrieved with the episode
+- Example: `confidence_factors` in semantic_memories - just metadata for explainability
 
 **Use Separate Table when**:
 - Need to query/filter/join independently
 - Example: `entity_aliases` - queried during resolution without loading full entities
 - Example: `canonical_entities` - referenced by many memories via foreign key
-
-**From QUALITY_EVALUATION.md**:
-> "Entity mentions stored as JSONB in episodic_memories is justified because:
-> 1. They're always needed when retrieving the episode (never queried alone)
-> 2. Coreference chains are episode-specific (no cross-episode queries)
-> 3. Avoids 4-5 table joins on every retrieval"
 
 ### Pattern 3: Confidence Tracking and Epistemic Humility
 
@@ -357,59 +702,39 @@ When retrieving contradictory information:
    - Ask user if ambiguous
 4. **Never silently ignore conflicts** - epistemic humility requires explicit acknowledgment
 
-### Pattern 4: Memory Transformation Decision Logic
+### Pattern 4: Lazy Entity Creation
 
-**When to Extract Semantic from Episodic**:
+**Philosophy**: Entities are NOT pre-loaded. Create on-demand when first mentioned.
+
+**Process**:
+1. User mentions "Acme Corporation"
+2. Entity resolution fails (not in canonical_entities)
+3. Query domain database (customers table) for "Acme Corporation"
+4. Create canonical_entity with external_ref pointing to customer record
+5. Create alias for "Acme Corporation" → entity_id
+6. Resolve future mentions via fast path
+
+**Example**:
 ```python
-# Heuristic: Extract if episodic contains subject-predicate-object triple about an entity
-# Example episodic: "User asked about customer ACME's payment preferences"
-# → Extract semantic: (customer:acme_123, "prefers", "net-30 payment terms")
+async def ensure_canonical_entity(domain_match: DomainEntity) -> CanonicalEntity:
+    """
+    Lazy entity creation: Create canonical entity from domain database match.
+    """
+    entity_id = f"{domain_match.type}:{uuid4()}"
 
-if (
-    episodic.event_type in ["statement", "correction", "confirmation"]
-    and len(episodic.entities) > 0
-    and contains_factual_claim(episodic.summary)
-):
-    extract_semantic_memory(episodic)
-```
+    entity = await db.fetchrow("""
+        INSERT INTO canonical_entities (
+            entity_id, entity_type, canonical_name, external_ref, properties
+        ) VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+    """, entity_id, domain_match.type, domain_match.name,
+         {"table": domain_match.source_table, "id": domain_match.id},
+         domain_match.properties)
 
-**Reinforcement vs New Memory Decision**:
-```python
-# Check if similar semantic memory exists
-existing = await find_similar_semantic(
-    subject=entity_id,
-    predicate=predicate,
-    semantic_similarity_threshold=0.85  # High threshold for "same fact"
-)
+    # Create initial alias
+    await create_alias(entity_id, domain_match.name, 'domain_db', confidence=1.0)
 
-if existing and confidence_gap < 0.30:
-    # Reinforce existing memory
-    existing.reinforcement_count += 1
-    existing.confidence += get_reinforcement_boost(existing.reinforcement_count)
-    existing.last_validated_at = now
-else:
-    # Create new memory (or supersede if conflict)
-    if existing and confidence_gap >= 0.30:
-        existing.status = "SUPERSEDED"
-        existing.superseded_by_memory_id = new_memory.memory_id
-    create_new_semantic_memory(...)
-```
-
-**Consolidation Triggers** (from LIFECYCLE_DESIGN.md):
-```python
-# Trigger consolidation when:
-if (
-    len(recent_episodic_memories) >= 10  # Min 10 episodic in window
-    and len(distinct_sessions) >= 3      # Min 3 sessions
-    and session_window <= 5              # Last 5 sessions
-):
-    # Extract patterns across episodes
-    summary = await llm_consolidate(recent_episodic_memories)
-    create_memory_summary(summary, source_data={
-        "episodic_ids": [m.memory_id for m in recent_episodic_memories],
-        "session_ids": distinct_sessions,
-        "time_range": {"start": earliest.created_at, "end": latest.created_at}
-    })
+    return CanonicalEntity(**entity)
 ```
 
 ## Design Philosophy: Three Questions Framework
@@ -623,84 +948,80 @@ async def test_create_and_retrieve_entity(test_db_session):
 
 ## Phase 1 Implementation Roadmap
 
-**Current**: Week 0 complete (foundation ready)
+**Duration**: 8 weeks (2 months)
 
-**Next Steps** (see `docs/quality/PHASE1_ROADMAP.md` for week-by-week details):
-- **Week 1-2**: Create initial migration with all 10 tables, seed system_config
-- **Week 3-4**: Implement entity resolution (5-stage algorithm)
-- **Week 5-6**: Implement memory transformation pipeline (chat → episodic → semantic)
-- **Week 7-8**: Implement retrieval system (multi-signal scoring)
-- **Week 9**: Implement API endpoints (chat, memories, entities, health)
-- **Week 10-12**: Testing, optimization, deployment
+**Structure**: 4 phases, week-by-week breakdown in `docs/quality/PHASE1_ROADMAP.md`
 
-## Critical Files Reference
+### Phase 1A: Foundation (Week 1-2)
+**Tables**: chat_events, canonical_entities, entity_aliases, system_config, domain_ontology
+**Capabilities**: Store conversations, Entity resolution (hybrid algorithm), Basic domain DB queries
+**Deliverable**: Can store events and resolve entities
 
-When implementing features, always reference these design documents:
+### Phase 1B: Memory Core (Week 3-4)
+**Add**: episodic_memories, semantic_memories
+**Capabilities**: Create episodic memories, Extract semantic facts (with LLM), Reinforce, Basic retrieval
+**Deliverable**: Can remember and retrieve facts
 
-- **Database Schema**: `docs/design/DESIGN.md` - All 10 tables with field justifications
-- **Heuristic Values**: `docs/reference/HEURISTICS_CALIBRATION.md` - All 43 parameters (already in `src/config/heuristics.py`)
-- **API Contracts**: `docs/design/API_DESIGN.md` - Request/response models for all endpoints
-- **Entity Resolution**: `docs/design/ENTITY_RESOLUTION_DESIGN.md` - 5-stage algorithm specification
-- **Memory Lifecycle**: `docs/design/LIFECYCLE_DESIGN.md` - State transitions, decay, reinforcement
-- **Retrieval**: `docs/design/RETRIEVAL_DESIGN.md` - Multi-signal scoring formula
-- **Architecture**: `ARCHITECTURE.md` - Hexagonal architecture, DDD patterns, testing strategy
-- **Development**: `DEVELOPMENT_GUIDE.md` - Setup, workflows, troubleshooting
+### Phase 1C: Intelligence (Week 5-6)
+**Add**: memory_conflicts
+**Capabilities**: Multi-signal retrieval scoring, Conflict detection, Passive decay, Ontology traversal
+**Deliverable**: Can reason about business relationships and handle uncertainty
+
+### Phase 1D: Learning (Week 7-8)
+**Add**: procedural_memories, memory_summaries
+**Capabilities**: Pattern detection (basic), Consolidation, Complete lifecycle, API endpoints
+**Deliverable**: Full vision implementation, ready for production
 
 ## Performance Targets (Phase 1)
 
 | Operation | P95 Target | Implementation Note |
 |-----------|------------|---------------------|
+| Entity resolution (fast path) | <50ms | Indexed lookups, pg_trgm |
+| Entity resolution (LLM path) | <300ms | LLM coreference (5% of cases) |
 | Semantic search | <50ms | pgvector with IVFFlat index |
-| Entity resolution | <30ms | Indexed lookups on canonical_name |
-| Full retrieval | <100ms | Multi-signal scoring (parallel candidate generation) |
-| Chat endpoint | <300ms | End-to-end (includes LLM call which dominates) |
+| Multi-signal scoring | <100ms | Deterministic formula |
+| Chat endpoint | <800ms | End-to-end (includes LLM generation) |
 
 ## Common Pitfalls to Avoid
 
 1. **Don't hardcode heuristic values** - Always use `config/heuristics.py`
-   - Example: `DECAY_RATE_PER_DAY = 0.01` is in heuristics.py with calibration notes
-   - These values are marked for Phase 2 tuning with real data
 
 2. **Don't import infrastructure in domain layer** - Use ports (ABC interfaces)
-   - Domain service `EntityResolver` depends on `EntityRepositoryPort` (abstract)
-   - Infrastructure provides `PostgresEntityRepository` implementation
-   - Dependency injection happens at API layer
 
 3. **Don't skip type hints** - mypy strict mode enforced (100% coverage required)
-   - All public functions must have full type signatures
-   - Use `from typing import Optional, List, Dict` for Python 3.9 compatibility
 
 4. **Don't create background jobs** - Use passive computation (compute on-demand)
-   - NO cron jobs for decay updates
-   - NO background workers for state transitions
-   - Compute current confidence during retrieval, only write on explicit events
 
 5. **Don't add features without Three Questions justification** - Document which vision principle it serves
-   - From QUALITY_EVALUATION.md: "Access count field deferred to Phase 3 - not essential for Phase 1 MVP"
-   - Ask: Which vision principle? Does it justify cost? Is this the right phase?
 
 6. **Don't use blocking I/O** - All database/LLM calls must be async
-   - Use `async with get_db_session()` for database operations
-   - Use `await embedding_service.generate(text)` for OpenAI calls
-   - FastAPI endpoints are all `async def`
 
 7. **Don't test infrastructure in unit tests** - Use mocks; save DB tests for integration tests
-   - Unit tests: Mock repositories, test domain logic only
-   - Integration tests: Real database, test repository implementations
-   - Test pyramid: 70% unit, 20% integration, 10% E2E
 
-8. **Don't assume heuristic values are final** - All 43 parameters need Phase 2 calibration
-   - From QUALITY_EVALUATION.md: "High-risk heuristics needing early validation: FUZZY_MATCH_THRESHOLD (0.70), DISAMBIGUATION_MIN_CONFIDENCE_GAP (0.15)"
-   - Track actual performance metrics to tune in Phase 2
+8. **Don't assume heuristic values are final** - All parameters need Phase 2 calibration
 
 9. **Don't over-normalize the schema** - Inline with JSONB when data isn't queried independently
-   - Example: Entity mentions in episodic_memories uses JSONB (not separate table)
-   - Reason: Always retrieved with parent episode, never queried alone
 
 10. **Don't silently ignore conflicts** - Epistemic humility requires explicit conflict tracking
-    - Always create `memory_conflict` record when detecting contradictions
-    - Never auto-resolve without logging the decision and reasoning
-    - Provide user visibility into "why the system chose this answer"
+
+11. **Don't use LLM when deterministic works** - Follow surgical LLM integration principle
+
+12. **Don't pre-compute when passive works** - Compute decay/confidence on-demand
+
+## Critical Files Reference
+
+When implementing features, always reference these design documents:
+
+- **Core Design**: `docs/design/DESIGN.md` - Ground-up redesign (v2.0), all algorithms, complete specifications
+- **Roadmap**: `docs/quality/PHASE1_ROADMAP.md` - 8-week implementation plan with detailed tasks
+- **Vision**: `docs/vision/VISION.md` - Philosophical foundation, core principles
+- **Philosophy**: `docs/vision/DESIGN_PHILOSOPHY.md` - Three Questions Framework, decision criteria
+- **Heuristics**: `docs/reference/HEURISTICS_CALIBRATION.md` - All 43 parameters (in `src/config/heuristics.py`)
+- **API Contracts**: `docs/design/API_DESIGN.md` - Request/response models for all endpoints
+- **Lifecycle**: `docs/design/LIFECYCLE_DESIGN.md` - State transitions, decay, reinforcement
+- **Retrieval**: `docs/design/RETRIEVAL_DESIGN.md` - Multi-signal scoring formula
+- **Architecture**: `docs/ARCHITECTURE.md` - Hexagonal architecture, DDD patterns
+- **Development**: `docs/DEVELOPMENT_GUIDE.md` - Setup, workflows, troubleshooting
 
 ## Environment Setup
 
@@ -712,7 +1033,7 @@ DATABASE_URL=postgresql+asyncpg://memoryuser:memorypass@localhost:5432/memorydb
 # OpenAI (for embeddings + extraction)
 OPENAI_API_KEY=sk-...your-key...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small  # 1536 dimensions
-OPENAI_LLM_MODEL=gpt-4-turbo-preview
+OPENAI_LLM_MODEL=gpt-4o  # For extraction quality
 
 # API
 API_HOST=0.0.0.0
@@ -731,19 +1052,11 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 
 Examples:
 ```
-feat(entity-resolution): implement five-stage resolution algorithm
-fix(retrieval): correct temporal decay calculation
-test(lifecycle): add tests for AGING state transition
-docs(api): add phase tags to endpoint descriptions
+feat(entity-resolution): implement hybrid resolution algorithm with LLM coreference
+fix(retrieval): correct passive decay calculation
+test(lifecycle): add tests for confidence reinforcement
+docs(design): update DESIGN.md with surgical LLM approach
 ```
-
-## When to Reference Full Documentation
-
-- **Before implementing a subsystem**: Read the relevant design doc in `docs/design/`
-- **Before adding a field to a table**: Check `docs/design/DESIGN.md` for field justifications
-- **Before changing a heuristic value**: Check `docs/reference/HEURISTICS_CALIBRATION.md` for Phase 2 tuning requirements
-- **When unsure about complexity**: Apply Three Questions Framework from `docs/vision/DESIGN_PHILOSOPHY.md`
-- **When implementing API endpoint**: Check `docs/design/API_DESIGN.md` for contracts
 
 ## Quick Reference: Make Commands
 
@@ -761,3 +1074,16 @@ make db-shell       # Open psql shell
 make clean          # Remove caches
 make stats          # Show project statistics
 ```
+
+## Design Evolution History
+
+This system has undergone a comprehensive ground-up redesign (v2.0). See `docs/design/ARCHIVE_DESIGN_EVOLUTION.md` for the complete evolution history from initial exploration through surgical LLM approach to the current vision-driven architecture.
+
+**Key learnings**:
+- Start from vision, not from solution
+- Surgical over blanket LLM use
+- Justify every piece of complexity
+- Iteration is essential
+- Documentation serves implementation
+
+**Current design** (v2.0) represents the culmination of this iterative refinement process, fully grounded in vision principles with explicit justification for every design decision.

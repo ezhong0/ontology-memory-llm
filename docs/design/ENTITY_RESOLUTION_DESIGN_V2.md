@@ -1,8 +1,12 @@
 # Entity Resolution: Hybrid Fast Path + LLM Approach
 
-**Version**: 2.0 - LLM-First Architecture
+> **SUPERSEDED**: This document has been superseded by **DESIGN.md v2.0** (Section: Entity Resolution Algorithm).
+> See `ARCHIVE_DESIGN_EVOLUTION.md` for the evolution history.
+> Retained for reference on design iteration process.
+
+**Version**: 2.0 - LLM-First Architecture (Historical)
 **Date**: 2025-10-15
-**Status**: Active Design (replaces complex 5-stage algorithm)
+**Status**: Superseded by DESIGN.md v2.0
 
 ---
 
