@@ -153,16 +153,18 @@ async def process_chat_simplified(
             }
 
         # Add conflicts if any detected (Vision Principle: Epistemic Humility)
+        # Phase 2.1: Expose conflicts for transparency
         if output.conflicts_detected:
-            response_dict["conflicts"] = [
+            response_dict["conflicts_detected"] = [
                 {
+                    "conflict_type": conflict.conflict_type,
                     "subject": conflict.subject_entity_id,
                     "predicate": conflict.predicate,
                     "existing_value": conflict.existing_value,
                     "new_value": conflict.new_value,
                     "existing_confidence": conflict.existing_confidence,
                     "new_confidence": conflict.new_confidence,
-                    "resolution": conflict.resolution_strategy,
+                    "resolution_strategy": conflict.resolution_strategy,
                 }
                 for conflict in output.conflicts_detected
             ]

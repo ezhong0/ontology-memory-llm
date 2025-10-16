@@ -3490,116 +3490,158 @@
 
         function removeProcessingSteps(id, replyContent, debugData) {
             const element = document.getElementById(id);
-            if (element) {
-                // Mark all remaining steps as completed
-                const allSteps = element.querySelectorAll('.processing-step');
-                allSteps.forEach(step => {
-                    const icon = step.querySelector('.processing-step-icon');
-                    if (icon && icon.textContent === '⏳') {
-                        icon.textContent = '✓';
-                        icon.style.color = 'var(--color-success)';
-                        step.classList.add('completed');
-                    }
-                });
+            if (!element) {
+                console.warn('removeProcessingSteps: element not found:', id);
+                return;
+            }
 
-                // Reorder content: move processing steps to bottom, add reply at top
-                const contentDiv = element.querySelector('.chat-message-content');
-                const roleDiv = element.querySelector('.chat-message-role');
-                const stepsContainer = element.querySelector('.processing-steps');
+            // Mark all remaining steps as completed
+            const allSteps = element.querySelectorAll('.processing-step');
+            allSteps.forEach(step => {
+                const icon = step.querySelector('.processing-step-icon');
+                if (icon && icon.textContent === '⏳') {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                    step.classList.add('completed');
+                }
+            });
 
-                if (contentDiv && replyContent) {
-                    // Remove processing steps temporarily to reorder
-                    if (stepsContainer && stepsContainer.parentNode === contentDiv) {
-                        contentDiv.removeChild(stepsContainer);
-                    }
+            // Reorder content: move processing steps to bottom, add reply at top
+            const contentDiv = element.querySelector('.chat-message-content');
+            const roleDiv = element.querySelector('.chat-message-role');
+            const stepsContainer = element.querySelector('.processing-steps');
 
-                    // Update role to just show assistant + timestamp
-                    if (roleDiv) {
-                        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        roleDiv.innerHTML = `
-                            assistant
-                            <span class="chat-message-timestamp">${timestamp}</span>
-                        `;
-                    }
+            if (!contentDiv) {
+                console.warn('removeProcessingSteps: contentDiv not found for:', id);
+                return;
+            }
 
-                    // Add reply text at the top (after role)
-                    const replyDiv = document.createElement('div');
-                    replyDiv.className = 'chat-message-text';
-                    replyDiv.textContent = replyContent;
-                    contentDiv.appendChild(replyDiv);
+            if (!replyContent) {
+                console.warn('removeProcessingSteps: no reply content for:', id);
+                return;
+            }
 
-                    // Build and add debug HTML if available
-                    if (debugData) {
-                        const debugSections = [];
+            // Remove processing steps temporarily to reorder
+            if (stepsContainer && stepsContainer.parentNode === contentDiv) {
+                try {
+                    contentDiv.removeChild(stepsContainer);
+                } catch (error) {
+                    console.error('Error removing steps container:', error);
+                }
+            }
 
-                        if (debugData.domain_facts_used && debugData.domain_facts_used.length > 0) {
-                            debugSections.push(`
-                                <div class="chat-message-debug">
-                                    <div class="chat-message-debug-title">Domain Facts (${debugData.domain_facts_used.length})</div>
-                                    ${debugData.domain_facts_used.slice(0, 3).map(f => `<div class="chat-message-debug-item">• ${JSON.stringify(f).slice(0, 100)}...</div>`).join('')}
-                                </div>
-                            `);
-                        }
+            // Update role to just show assistant + timestamp
+            if (roleDiv) {
+                try {
+                    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    // Clear and rebuild using DOM methods instead of innerHTML
+                    roleDiv.textContent = 'assistant ';
+                    const timestampSpan = document.createElement('span');
+                    timestampSpan.className = 'chat-message-timestamp';
+                    timestampSpan.textContent = timestamp;
+                    roleDiv.appendChild(timestampSpan);
+                } catch (error) {
+                    console.error('Error updating roleDiv:', error);
+                }
+            }
 
-                        if (debugData.memories_used && debugData.memories_used.length > 0) {
-                            debugSections.push(`
-                                <div class="chat-message-debug">
-                                    <div class="chat-message-debug-title">Memories Used (${debugData.memories_used.length})</div>
-                                    ${debugData.memories_used.slice(0, 3).map(m => `<div class="chat-message-debug-item">• ${m.content || JSON.stringify(m).slice(0, 100)}</div>`).join('')}
-                                </div>
-                            `);
-                        }
+            // Add reply text at the top (after role)
+            try {
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'chat-message-text';
+                replyDiv.textContent = replyContent;
+                contentDiv.appendChild(replyDiv);
+            } catch (error) {
+                console.error('Error adding reply text:', error);
+                return;
+            }
 
-                        if (debugSections.length > 0) {
-                            try {
-                                const debugContainer = document.createElement('div');
-                                debugContainer.innerHTML = debugSections.join('');
-                                contentDiv.appendChild(debugContainer);
-                            } catch (error) {
-                                console.error('Error adding debug container:', error);
-                            }
-                        }
-                    }
+            // Build and add debug HTML if available
+            if (debugData) {
+                try {
+                    if (debugData.domain_facts_used && debugData.domain_facts_used.length > 0) {
+                        const factsDiv = document.createElement('div');
+                        factsDiv.className = 'chat-message-debug';
 
-                    // Add processing details toggle button (only if not already added)
-                    if (!element.querySelector('.processing-details-toggle')) {
-                        try {
-                            const toggleDiv = document.createElement('div');
-                            toggleDiv.className = 'processing-details-toggle';
-                            toggleDiv.style.cssText = 'margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--color-border); cursor: pointer;';
-                            toggleDiv.onclick = () => toggleProcessingDetails(id);
+                        const factsTitle = document.createElement('div');
+                        factsTitle.className = 'chat-message-debug-title';
+                        factsTitle.textContent = `Domain Facts (${debugData.domain_facts_used.length})`;
+                        factsDiv.appendChild(factsTitle);
 
-                            const toggleContent = document.createElement('span');
-                            toggleContent.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary);';
+                        debugData.domain_facts_used.slice(0, 3).forEach(f => {
+                            const item = document.createElement('div');
+                            item.className = 'chat-message-debug-item';
+                            item.textContent = `• ${JSON.stringify(f).slice(0, 100)}...`;
+                            factsDiv.appendChild(item);
+                        });
 
-                            const checkSpan = document.createElement('span');
-                            checkSpan.style.color = 'var(--color-success)';
-                            checkSpan.textContent = '✓';
-
-                            const textSpan = document.createElement('span');
-                            textSpan.textContent = 'Processing Details';
-
-                            const iconSpan = document.createElement('span');
-                            iconSpan.className = 'toggle-icon';
-                            iconSpan.id = `${id}-toggle`;
-                            iconSpan.textContent = '▼';
-
-                            toggleContent.appendChild(checkSpan);
-                            toggleContent.appendChild(textSpan);
-                            toggleContent.appendChild(iconSpan);
-                            toggleDiv.appendChild(toggleContent);
-
-                            contentDiv.appendChild(toggleDiv);
-                        } catch (error) {
-                            console.error('Error adding toggle button:', error);
-                        }
+                        contentDiv.appendChild(factsDiv);
                     }
 
-                    // Re-add processing steps at the bottom (collapsed)
-                    if (stepsContainer) {
-                        stepsContainer.classList.add('collapsed');
-                        contentDiv.appendChild(stepsContainer);
+                    if (debugData.memories_used && debugData.memories_used.length > 0) {
+                        const memsDiv = document.createElement('div');
+                        memsDiv.className = 'chat-message-debug';
+
+                        const memsTitle = document.createElement('div');
+                        memsTitle.className = 'chat-message-debug-title';
+                        memsTitle.textContent = `Memories Used (${debugData.memories_used.length})`;
+                        memsDiv.appendChild(memsTitle);
+
+                        debugData.memories_used.slice(0, 3).forEach(m => {
+                            const item = document.createElement('div');
+                            item.className = 'chat-message-debug-item';
+                            item.textContent = `• ${m.content || JSON.stringify(m).slice(0, 100)}`;
+                            memsDiv.appendChild(item);
+                        });
+
+                        contentDiv.appendChild(memsDiv);
                     }
+                } catch (error) {
+                    console.error('Error adding debug data:', error);
+                }
+            }
+
+            // Add processing details toggle button (only if not already added)
+            if (!element.querySelector('.processing-details-toggle')) {
+                try {
+                    const toggleDiv = document.createElement('div');
+                    toggleDiv.className = 'processing-details-toggle';
+                    toggleDiv.style.cssText = 'margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--color-border); cursor: pointer;';
+                    toggleDiv.onclick = () => toggleProcessingDetails(id);
+
+                    const toggleContent = document.createElement('span');
+                    toggleContent.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary);';
+
+                    const checkSpan = document.createElement('span');
+                    checkSpan.style.color = 'var(--color-success)';
+                    checkSpan.textContent = '✓';
+
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = 'Processing Details';
+
+                    const iconSpan = document.createElement('span');
+                    iconSpan.className = 'toggle-icon';
+                    iconSpan.id = `${id}-toggle`;
+                    iconSpan.textContent = '▼';
+
+                    toggleContent.appendChild(checkSpan);
+                    toggleContent.appendChild(textSpan);
+                    toggleContent.appendChild(iconSpan);
+                    toggleDiv.appendChild(toggleContent);
+
+                    contentDiv.appendChild(toggleDiv);
+                } catch (error) {
+                    console.error('Error adding toggle button:', error);
+                }
+            }
+
+            // Re-add processing steps at the bottom (collapsed)
+            if (stepsContainer) {
+                try {
+                    stepsContainer.classList.add('collapsed');
+                    contentDiv.appendChild(stepsContainer);
+                } catch (error) {
+                    console.error('Error re-adding steps container:', error);
                 }
             }
         }

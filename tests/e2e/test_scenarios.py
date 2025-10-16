@@ -486,7 +486,7 @@ async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Conflict detection needs Phase 2 implementation - memory-vs-DB conflict logic")
+# Phase 2.1: Unskipped - memory-vs-DB conflict detection implemented
 async def test_scenario_17_memory_vs_db_conflict_trust_db(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 17: Error handling when DB and memory disagree

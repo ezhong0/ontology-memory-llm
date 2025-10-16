@@ -211,7 +211,7 @@ class ProcessChatMessageUseCase:
                             predicate=conflict.predicate,
                         )
 
-        # Step 5: Score memories (Phase 1D)
+        # Step 5: Score and retrieve memories (Phase 1D)
         retrieved_memories, semantic_memory_map = await self.score_memories.execute(
             semantic_memory_entities=semantics_result.semantic_memory_entities,
             resolved_entities=entities_result.resolved_entities,
@@ -219,6 +219,26 @@ class ProcessChatMessageUseCase:
             user_id=input_dto.user_id,
             session_id=input_dto.session_id,
         )
+
+        # Phase 2.1: Check retrieved memories against domain facts for conflicts
+        if domain_facts and retrieved_memories:
+            for retrieved_mem in retrieved_memories:
+                # Convert retrieved memory DTO back to semantic memory entity for conflict detection
+                if retrieved_mem.memory_id and retrieved_mem.memory_id in semantic_memory_map:
+                    memory_entity = semantic_memory_map[retrieved_mem.memory_id]
+                    for domain_fact in domain_facts:
+                        conflict = self.conflict_detection_service.detect_memory_vs_db_conflict(
+                            memory=memory_entity,
+                            domain_fact=domain_fact,
+                        )
+                        if conflict:
+                            memory_vs_db_conflicts.append(conflict)
+                            logger.warning(
+                                "memory_vs_db_conflict_detected_retrieved",
+                                memory_id=retrieved_mem.memory_id,
+                                entity_id=conflict.subject_entity_id,
+                                predicate=conflict.predicate,
+                            )
 
         # Step 6: Generate reply
         reply = await self._generate_reply(
@@ -261,6 +281,7 @@ class ProcessChatMessageUseCase:
 
             conflict_dtos.append(
                 MemoryConflictDTO(
+                    conflict_type=conflict.conflict_type.value,  # Phase 2.1: Add conflict type
                     subject_entity_id=conflict.subject_entity_id,
                     predicate=conflict.predicate,
                     existing_value=conflict.existing_value,

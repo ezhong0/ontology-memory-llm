@@ -100,9 +100,10 @@ class RetrievedMemoryDTO:
 
 @dataclass
 class MemoryConflictDTO:
-    """DTO for memory conflict information (Phase 1C Epistemic Humility).
+    """DTO for memory conflict information (Phase 2.1 Epistemic Humility).
 
     Attributes:
+        conflict_type: Type of conflict (memory_vs_memory, memory_vs_db)
         subject_entity_id: Entity the conflict is about
         predicate: Property that conflicts
         existing_value: Value in existing memory
@@ -112,6 +113,7 @@ class MemoryConflictDTO:
         resolution_strategy: How conflict was resolved
     """
 
+    conflict_type: str
     subject_entity_id: str
     predicate: str
     existing_value: dict[str, Any]
