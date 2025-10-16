@@ -124,6 +124,32 @@ class EntityResolutionService:
                     entity_id=result.entity_id,
                     confidence=result.confidence,
                 )
+
+                # Task 1.3.1: Auto-create alias from successful fuzzy match
+                # This implements learning: next time this user types the same variant,
+                # it will hit Stage 2 (alias) instead of Stage 3 (fuzzy match)
+                try:
+                    await self.learn_alias(
+                        entity_id=result.entity_id,
+                        alias_text=mention.text,
+                        user_id=context.user_id,
+                        source="fuzzy",
+                    )
+                    logger.info(
+                        "fuzzy_match_alias_learned",
+                        entity_id=result.entity_id,
+                        alias=mention.text,
+                        user_id=context.user_id,
+                    )
+                except Exception as e:
+                    # Don't fail resolution if alias creation fails
+                    logger.warning(
+                        "fuzzy_match_alias_creation_failed",
+                        entity_id=result.entity_id,
+                        alias=mention.text,
+                        error=str(e),
+                    )
+
                 return result
 
         # Stage 5: Domain database lookup (lazy creation)
@@ -367,7 +393,8 @@ class EntityResolutionService:
             aliases = await self.entity_repo.get_aliases(entity_id)
             for a in aliases:
                 if a.alias_text == alias_text and a.user_id == user_id:
-                    await self.entity_repo.increment_alias_use_count(a.alias_id)
+                    if a.alias_id is not None:
+                        await self.entity_repo.increment_alias_use_count(a.alias_id)
                     return a
 
         # Create new alias
