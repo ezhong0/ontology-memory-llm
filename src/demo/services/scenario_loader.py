@@ -7,11 +7,9 @@ Phase 1: Simplified implementation for Scenario 1
 Phase 2: Generalized for all scenarios with production service integration
 """
 import logging
-from datetime import datetime
-from typing import Dict, List
 from uuid import UUID
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.demo.models.scenario import ScenarioDefinition, ScenarioLoadResult
@@ -37,7 +35,6 @@ logger = logging.getLogger(__name__)
 class ScenarioLoadError(Exception):
     """Raised when scenario loading fails."""
 
-    pass
 
 
 class ScenarioLoaderService:
@@ -56,8 +53,8 @@ class ScenarioLoaderService:
         self.session = session
         self.user_id = user_id
         # Track created entities for memory creation
-        self._entity_map: Dict[str, UUID] = {}  # name -> domain entity UUID
-        self._canonical_entity_map: Dict[str, str] = {}  # name -> canonical entity_id
+        self._entity_map: dict[str, UUID] = {}  # name -> domain entity UUID
+        self._canonical_entity_map: dict[str, str] = {}  # name -> canonical entity_id
 
     async def load_scenario(self, scenario_id: int) -> ScenarioLoadResult:
         """Load a scenario into the system.
@@ -74,7 +71,8 @@ class ScenarioLoaderService:
         # Get scenario definition
         scenario = ScenarioRegistry.get(scenario_id)
         if not scenario:
-            raise ScenarioLoadError(f"Scenario {scenario_id} not found in registry")
+            msg = f"Scenario {scenario_id} not found in registry"
+            raise ScenarioLoadError(msg)
 
         logger.info(f"Loading scenario {scenario_id}: {scenario.title}")
 
@@ -121,7 +119,8 @@ class ScenarioLoaderService:
         except Exception as e:
             await self.session.rollback()
             logger.error(f"Failed to load scenario {scenario_id}: {e}")
-            raise ScenarioLoadError(f"Failed to load scenario {scenario_id}: {e}") from e
+            msg = f"Failed to load scenario {scenario_id}: {e}"
+            raise ScenarioLoadError(msg) from e
 
     async def _load_customers(self, scenario: ScenarioDefinition) -> int:
         """Load customers from scenario (idempotent)."""
@@ -172,8 +171,9 @@ class ScenarioLoaderService:
             # Look up customer UUID
             customer_id = self._entity_map.get(so_setup.customer_name)
             if not customer_id:
+                msg = f"Customer '{so_setup.customer_name}' not found for sales order {so_setup.so_number}"
                 raise ScenarioLoadError(
-                    f"Customer '{so_setup.customer_name}' not found for sales order {so_setup.so_number}"
+                    msg
                 )
 
             # Create new sales order
@@ -211,8 +211,9 @@ class ScenarioLoaderService:
             # Look up sales order UUID
             so_id = self._entity_map.get(invoice_setup.sales_order_number)
             if not so_id:
+                msg = f"Sales order '{invoice_setup.sales_order_number}' not found for invoice {invoice_setup.invoice_number}"
                 raise ScenarioLoadError(
-                    f"Sales order '{invoice_setup.sales_order_number}' not found for invoice {invoice_setup.invoice_number}"
+                    msg
                 )
 
             # Create new invoice
@@ -239,8 +240,9 @@ class ScenarioLoaderService:
         for wo_setup in scenario.domain_setup.work_orders:
             so_id = self._entity_map.get(wo_setup.sales_order_number)
             if not so_id:
+                msg = f"Sales order '{wo_setup.sales_order_number}' not found for work order"
                 raise ScenarioLoadError(
-                    f"Sales order '{wo_setup.sales_order_number}' not found for work order"
+                    msg
                 )
 
             work_order = DomainWorkOrder(
@@ -262,8 +264,9 @@ class ScenarioLoaderService:
         for payment_setup in scenario.domain_setup.payments:
             invoice_id = self._entity_map.get(payment_setup.invoice_number)
             if not invoice_id:
+                msg = f"Invoice '{payment_setup.invoice_number}' not found for payment"
                 raise ScenarioLoadError(
-                    f"Invoice '{payment_setup.invoice_number}' not found for payment"
+                    msg
                 )
 
             payment = DomainPayment(
@@ -285,8 +288,9 @@ class ScenarioLoaderService:
             if task_setup.customer_name:
                 customer_id = self._entity_map.get(task_setup.customer_name)
                 if not customer_id:
+                    msg = f"Customer '{task_setup.customer_name}' not found for task"
                     raise ScenarioLoadError(
-                        f"Customer '{task_setup.customer_name}' not found for task"
+                        msg
                     )
 
             task = DomainTask(
@@ -308,7 +312,7 @@ class ScenarioLoaderService:
         Phase 2: Integrate with EntityResolutionService.
         """
         # Only process customers created/referenced in this load
-        for customer_name, customer_id in self._entity_map.items():
+        for customer_id in self._entity_map.values():
             # Skip non-customer entities
             if not isinstance(customer_id, UUID):
                 continue
@@ -383,8 +387,9 @@ class ScenarioLoaderService:
             # Look up canonical entity
             entity_id = self._canonical_entity_map.get(memory_setup.subject)
             if not entity_id:
+                msg = f"Canonical entity for '{memory_setup.subject}' not found"
                 raise ScenarioLoadError(
-                    f"Canonical entity for '{memory_setup.subject}' not found"
+                    msg
                 )
 
             # Check if memory already exists
@@ -451,7 +456,7 @@ class ScenarioLoaderService:
             # Get all customer canonical entity IDs first
             customer_entities_result = await self.session.execute(
                 select(CanonicalEntity.entity_id).where(
-                    CanonicalEntity.entity_id.like('customer:%')
+                    CanonicalEntity.entity_id.like("customer:%")
                 )
             )
             customer_entity_ids = [row[0] for row in customer_entities_result]
@@ -467,7 +472,7 @@ class ScenarioLoaderService:
                 # Delete episodic memories for demo users
                 await self.session.execute(
                     delete(EpisodicMemory).where(
-                        EpisodicMemory.user_id.in_([self.user_id, 'demo-user', 'demo-user-001'])
+                        EpisodicMemory.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
                     )
                 )
 
@@ -491,4 +496,5 @@ class ScenarioLoaderService:
         except Exception as e:
             await self.session.rollback()
             logger.error("Failed to reset demo data: %s", str(e))
-            raise ScenarioLoadError(f"Failed to reset demo data: {str(e)}") from e
+            msg = f"Failed to reset demo data: {e!s}"
+            raise ScenarioLoadError(msg) from e

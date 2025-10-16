@@ -7,13 +7,11 @@ Custom exceptions for domain layer (business logic errors).
 class DomainError(Exception):
     """Base exception for all domain errors."""
 
-    pass
 
 
 class EntityResolutionError(DomainError):
     """Error during entity resolution."""
 
-    pass
 
 
 class AmbiguousEntityError(EntityResolutionError):
@@ -42,22 +40,18 @@ class AmbiguousEntityError(EntityResolutionError):
 class InvalidMessageError(DomainError):
     """Invalid chat message (validation error)."""
 
-    pass
 
 
 class LLMServiceError(DomainError):
     """Error communicating with LLM service."""
 
-    pass
 
 
 class EmbeddingError(DomainError):
     """Error generating embeddings."""
 
-    pass
 
 
 class RepositoryError(DomainError):
     """Error in repository operation."""
 
-    pass

@@ -2,10 +2,10 @@
 
 Implements the 5-stage hybrid entity resolution algorithm from DESIGN.md v2.0.
 """
-from typing import Optional
 
 import structlog
 
+from src.config import heuristics
 from src.domain.entities import EntityAlias
 from src.domain.exceptions import AmbiguousEntityError
 from src.domain.ports import IEntityRepository, ILLMService
@@ -33,12 +33,6 @@ class EntityResolutionService:
     LLMs only where they add clear value (5% - coreference).
     """
 
-    # Thresholds tuned from DESIGN.md
-    FUZZY_MATCH_THRESHOLD = 0.6  # pg_trgm similarity threshold
-    HIGH_CONFIDENCE_THRESHOLD = 0.9  # Exact match confidence
-    MEDIUM_CONFIDENCE_THRESHOLD = 0.7  # Alias/fuzzy match confidence
-    AMBIGUITY_DIFF_THRESHOLD = 0.1  # Max confidence diff to trigger ambiguity
-
     def __init__(
         self,
         entity_repository: IEntityRepository,
@@ -52,6 +46,12 @@ class EntityResolutionService:
         """
         self.entity_repo = entity_repository
         self.llm_service = llm_service
+
+        # Load thresholds from heuristics (calibrated in Phase 2)
+        self.fuzzy_match_threshold = heuristics.FUZZY_MATCH_THRESHOLD
+        self.high_confidence = heuristics.CONFIDENCE_EXACT_MATCH
+        self.medium_confidence = heuristics.CONFIDENCE_FUZZY_LOW
+        self.ambiguity_diff_threshold = heuristics.DISAMBIGUATION_MIN_CONFIDENCE_GAP
 
     async def resolve_entity(
         self,
@@ -127,7 +127,9 @@ class EntityResolutionService:
                 return result
 
         # Stage 5: Domain database lookup (lazy creation)
-        # TODO: Implement in Phase 1C when domain DB integration is ready
+        # Phase 1C: Domain DB connector pending - requires external DB integration
+        # When implemented, will query domain.customers, domain.sales_orders, etc.
+        # and create canonical entities on-the-fly for unresolved mentions
         logger.debug("domain_db_lookup_not_implemented", mention=mention.text)
 
         # Resolution failed
@@ -139,7 +141,7 @@ class EntityResolutionService:
 
     async def _stage1_exact_match(
         self, mention: EntityMention
-    ) -> Optional[ResolutionResult]:
+    ) -> ResolutionResult | None:
         """Stage 1: Exact match on canonical name.
 
         Fast path for exact matches (70% of cases).
@@ -155,7 +157,7 @@ class EntityResolutionService:
             if entity:
                 return ResolutionResult(
                     entity_id=entity.entity_id,
-                    confidence=self.HIGH_CONFIDENCE_THRESHOLD,
+                    confidence=self.high_confidence,
                     method=ResolutionMethod.EXACT_MATCH,
                     mention_text=mention.text,
                     canonical_name=entity.canonical_name,
@@ -168,7 +170,7 @@ class EntityResolutionService:
 
     async def _stage2_alias_match(
         self, mention: EntityMention, user_id: str
-    ) -> Optional[ResolutionResult]:
+    ) -> ResolutionResult | None:
         """Stage 2: User alias lookup.
 
         Check user-specific aliases first, then global aliases.
@@ -186,7 +188,7 @@ class EntityResolutionService:
             if entity:
                 return ResolutionResult(
                     entity_id=entity.entity_id,
-                    confidence=self.MEDIUM_CONFIDENCE_THRESHOLD,
+                    confidence=self.medium_confidence,
                     method=ResolutionMethod.USER_ALIAS,
                     mention_text=mention.text,
                     canonical_name=entity.canonical_name,
@@ -199,7 +201,7 @@ class EntityResolutionService:
 
     async def _stage3_fuzzy_match(
         self, mention: EntityMention
-    ) -> Optional[ResolutionResult]:
+    ) -> ResolutionResult | None:
         """Stage 3: Fuzzy match using pg_trgm.
 
         Handles typos, abbreviations, partial matches (10% of cases).
@@ -216,7 +218,7 @@ class EntityResolutionService:
         try:
             matches = await self.entity_repo.fuzzy_search(
                 search_text=mention.text,
-                threshold=self.FUZZY_MATCH_THRESHOLD,
+                threshold=self.fuzzy_match_threshold,
                 limit=5,
             )
 
@@ -231,7 +233,7 @@ class EntityResolutionService:
                 second_entity, second_score = matches[1]
                 score_diff = best_score - second_score
 
-                if score_diff < self.AMBIGUITY_DIFF_THRESHOLD:
+                if score_diff < self.ambiguity_diff_threshold:
                     # Ambiguous! Need clarification
                     candidates = [
                         (entity.entity_id, score) for entity, score in matches[:3]
@@ -241,9 +243,9 @@ class EntityResolutionService:
                         candidates=candidates,
                     )
 
-            # Confidence is the similarity score scaled to [0.6, 0.8] range
+            # Confidence is the similarity score, capped at medium confidence threshold
             # (fuzzy matches are less confident than exact/alias)
-            confidence = min(self.MEDIUM_CONFIDENCE_THRESHOLD, best_score)
+            confidence = min(self.medium_confidence, best_score)
 
             return ResolutionResult(
                 entity_id=best_entity.entity_id,
@@ -275,7 +277,7 @@ class EntityResolutionService:
 
     async def _stage4_coreference_resolution(
         self, mention: EntityMention, context: ConversationContext
-    ) -> Optional[ResolutionResult]:
+    ) -> ResolutionResult | None:
         """Stage 4: Coreference resolution via LLM.
 
         Use LLM to resolve pronouns and demonstratives (5% of cases).
@@ -327,7 +329,7 @@ class EntityResolutionService:
         self,
         entity_id: str,
         alias_text: str,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
         source: str = "user_stated",
     ) -> EntityAlias:
         """Learn a new alias for an entity.
@@ -350,7 +352,8 @@ class EntityResolutionService:
         # Verify entity exists
         entity = await self.entity_repo.find_by_entity_id(entity_id)
         if not entity:
-            raise ValueError(f"Entity {entity_id} not found")
+            msg = f"Entity {entity_id} not found"
+            raise ValueError(msg)
 
         # Check if alias already exists
         existing = await self.entity_repo.find_by_alias(alias_text, user_id)
@@ -368,11 +371,17 @@ class EntityResolutionService:
                     return a
 
         # Create new alias
+        # Use heuristics for alias confidence based on source
+        alias_confidence = (
+            heuristics.CONFIDENCE_USER_ALIAS if source == "user_stated"
+            else heuristics.CONFIDENCE_FUZZY_LOW
+        )
+
         alias = EntityAlias(
             canonical_entity_id=entity_id,
             alias_text=alias_text,
             alias_source=source,
-            confidence=0.9 if source == "user_stated" else 0.7,
+            confidence=alias_confidence,
             user_id=user_id,
         )
 

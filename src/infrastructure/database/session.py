@@ -2,8 +2,8 @@
 
 Provides async session factory and context managers for database operations.
 """
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -66,7 +66,8 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: Database session
     """
     if async_session_factory is None:
-        raise RuntimeError("Database not initialized. Call init_db() first.")
+        msg = "Database not initialized. Call init_db() first."
+        raise RuntimeError(msg)
 
     session = async_session_factory()
     try:

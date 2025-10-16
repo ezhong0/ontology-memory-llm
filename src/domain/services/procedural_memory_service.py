@@ -13,11 +13,12 @@ from typing import Any
 import structlog
 
 from src.config import heuristics
+from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.exceptions import DomainError
 from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
 from src.domain.ports.procedural_memory_repository import IProceduralMemoryRepository
 from src.domain.value_objects.memory_candidate import MemoryCandidate
-from src.domain.value_objects.procedural_memory import Pattern, ProceduralMemory
+from src.domain.value_objects.procedural_memory import Pattern
 
 logger = structlog.get_logger()
 
@@ -167,7 +168,8 @@ class ProceduralMemoryService:
             logger.error(
                 "pattern_detection_error", user_id=user_id, error=str(e)
             )
-            raise DomainError(f"Error detecting patterns: {e}") from e
+            msg = f"Error detecting patterns: {e}"
+            raise DomainError(msg) from e
 
     def _extract_features(self, episode: MemoryCandidate) -> dict[str, Any]:
         """Extract features from episodic memory.
@@ -187,7 +189,7 @@ class ProceduralMemoryService:
         intent = self._classify_intent(content_lower)
 
         # Extract entity types from episode
-        entity_types = list(set([ent for ent in episode.entities]))
+        entity_types = list(set(episode.entities))
 
         # Extract topics (simple keyword matching)
         topics = self._extract_topics(content_lower)

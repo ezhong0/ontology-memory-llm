@@ -19,7 +19,8 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.domain.value_objects.procedural_memory import Pattern, ProceduralMemory
+from src.domain.entities.procedural_memory import ProceduralMemory
+from src.domain.value_objects.procedural_memory import Pattern
 
 
 # ============================================================================

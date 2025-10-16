@@ -3,18 +3,18 @@
 Implements procedural memory storage and retrieval using SQLAlchemy and PostgreSQL with pgvector.
 """
 
-from datetime import datetime
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
+import structlog
 from numpy import typing as npt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
+from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.exceptions import RepositoryError
 from src.domain.ports.procedural_memory_repository import IProceduralMemoryRepository
-from src.domain.value_objects.procedural_memory import ProceduralMemory
 
 logger = structlog.get_logger(__name__)
 
@@ -106,11 +106,12 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 user_id=memory.user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error creating procedural memory: {e}") from e
+            msg = f"Error creating procedural memory: {e}"
+            raise RepositoryError(msg) from e
 
     async def get_by_id(
-        self, memory_id: int, user_id: Optional[str] = None
-    ) -> Optional[ProceduralMemory]:
+        self, memory_id: int, user_id: str | None = None
+    ) -> ProceduralMemory | None:
         """Get procedural memory by ID.
 
         Args:
@@ -155,7 +156,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 memory_id=memory_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error getting procedural memory by ID: {e}") from e
+            msg = f"Error getting procedural memory by ID: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_user(
         self,
@@ -213,7 +215,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding procedural memories by user: {e}") from e
+            msg = f"Error finding procedural memories by user: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_similar(
         self,
@@ -281,7 +284,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding similar procedural memories: {e}") from e
+            msg = f"Error finding similar procedural memories: {e}"
+            raise RepositoryError(msg) from e
 
     async def update(self, memory: ProceduralMemory) -> ProceduralMemory:
         """Update an existing procedural memory.
@@ -294,7 +298,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
         """
         try:
             if memory.memory_id is None:
-                raise ValueError("memory_id is required for update")
+                msg = "memory_id is required for update"
+                raise ValueError(msg)
 
             # Convert embedding to list if present
             embedding_list = memory.embedding.tolist() if memory.embedding is not None else None
@@ -327,7 +332,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 "observed_count": memory.observed_count,
                 "confidence": memory.confidence,
                 "embedding": embedding_list,
-                "updated_at": datetime.utcnow(),
+                "updated_at": datetime.now(UTC),
             }
 
             result = await self.session.execute(stmt, params)
@@ -335,7 +340,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
             await self.session.commit()
 
             if not row:
-                raise RepositoryError(f"Procedural memory {memory.memory_id} not found")
+                msg = f"Procedural memory {memory.memory_id} not found"
+                raise RepositoryError(msg)
 
             logger.info(
                 "procedural_memory_updated",
@@ -366,7 +372,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 memory_id=memory.memory_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error updating procedural memory: {e}") from e
+            msg = f"Error updating procedural memory: {e}"
+            raise RepositoryError(msg) from e
 
     async def delete(self, memory_id: int, user_id: str) -> bool:
         """Delete a procedural memory.
@@ -419,14 +426,15 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 memory_id=memory_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error deleting procedural memory: {e}") from e
+            msg = f"Error deleting procedural memory: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_trigger_features(
         self,
         user_id: str,
-        intent: Optional[str] = None,
-        entity_types: Optional[list[str]] = None,
-        topics: Optional[list[str]] = None,
+        intent: str | None = None,
+        entity_types: list[str] | None = None,
+        topics: list[str] | None = None,
         min_confidence: float = 0.5,
         limit: int = 20,
     ) -> list[ProceduralMemory]:
@@ -504,7 +512,8 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding procedural memories by features: {e}") from e
+            msg = f"Error finding procedural memories by features: {e}"
+            raise RepositoryError(msg) from e
 
     def _row_to_procedural_memory(self, row: Any) -> ProceduralMemory:
         """Convert database row to ProceduralMemory.

@@ -5,6 +5,7 @@ Pydantic models for request/response validation.
 from src.api.models.chat import (
     ChatMessageRequest,
     ChatMessageResponse,
+    DomainFactResponse,
     EnhancedChatResponse,
     ErrorResponse,
     ResolvedEntityResponse,
@@ -28,6 +29,7 @@ __all__ = [
     "EnhancedChatResponse",
     "ResolvedEntityResponse",
     "RetrievedMemoryResponse",
+    "DomainFactResponse",
     "ErrorResponse",
     # Retrieval
     "RetrievalRequest",

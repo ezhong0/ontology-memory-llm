@@ -3,7 +3,6 @@
 Implements episodic memory retrieval using SQLAlchemy and PostgreSQL with pgvector.
 """
 
-from typing import List, Optional
 from uuid import UUID
 
 import numpy as np
@@ -37,8 +36,8 @@ class EpisodicMemoryRepository(IEpisodicMemoryRepository):
         user_id: str,
         query_embedding: np.ndarray,
         limit: int = 50,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find similar episodic memories using pgvector.
 
         Args:
@@ -112,14 +111,15 @@ class EpisodicMemoryRepository(IEpisodicMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding similar episodic memories: {e}") from e
+            msg = f"Error finding similar episodic memories: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_recent(
         self,
         user_id: str,
         limit: int = 10,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find recent episodic memories.
 
         Args:
@@ -185,16 +185,17 @@ class EpisodicMemoryRepository(IEpisodicMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding recent episodic memories: {e}") from e
+            msg = f"Error finding recent episodic memories: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_user(
         self,
         user_id: str,
-        since: Optional[object] = None,
-        until: Optional[object] = None,
+        since: object | None = None,
+        until: object | None = None,
         limit: int = 500,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find episodic memories for a user within a time range.
 
         Args:
@@ -273,9 +274,10 @@ class EpisodicMemoryRepository(IEpisodicMemoryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding episodic memories by user: {e}") from e
+            msg = f"Error finding episodic memories by user: {e}"
+            raise RepositoryError(msg) from e
 
-    def _extract_entity_ids(self, entities_jsonb: dict) -> List[str]:
+    def _extract_entity_ids(self, entities_jsonb: dict) -> list[str]:
         """Extract entity IDs from JSONB entities column.
 
         Args:

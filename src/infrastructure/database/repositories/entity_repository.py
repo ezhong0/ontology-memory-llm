@@ -2,11 +2,10 @@
 
 Implements IEntityRepository using SQLAlchemy and PostgreSQL.
 """
-from typing import Optional
 
+import structlog
 from sqlalchemy import and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
 from src.domain.entities import CanonicalEntity, EntityAlias
 from src.domain.exceptions import RepositoryError
@@ -36,7 +35,7 @@ class EntityRepository(IEntityRepository):
         """
         self.session = session
 
-    async def find_by_canonical_name(self, name: str) -> Optional[CanonicalEntity]:
+    async def find_by_canonical_name(self, name: str) -> CanonicalEntity | None:
         """Find entity by exact canonical name (case-insensitive).
 
         Args:
@@ -56,9 +55,10 @@ class EntityRepository(IEntityRepository):
 
         except Exception as e:
             logger.error("find_by_canonical_name_error", name=name, error=str(e))
-            raise RepositoryError(f"Error finding entity by name: {e}") from e
+            msg = f"Error finding entity by name: {e}"
+            raise RepositoryError(msg) from e
 
-    async def find_by_entity_id(self, entity_id: str) -> Optional[CanonicalEntity]:
+    async def find_by_entity_id(self, entity_id: str) -> CanonicalEntity | None:
         """Find entity by entity ID.
 
         Args:
@@ -78,11 +78,12 @@ class EntityRepository(IEntityRepository):
 
         except Exception as e:
             logger.error("find_by_entity_id_error", entity_id=entity_id, error=str(e))
-            raise RepositoryError(f"Error finding entity by ID: {e}") from e
+            msg = f"Error finding entity by ID: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_alias(
-        self, alias: str, user_id: Optional[str] = None
-    ) -> Optional[CanonicalEntity]:
+        self, alias: str, user_id: str | None = None
+    ) -> CanonicalEntity | None:
         """Find entity by alias (user-specific or global).
 
         Priority: user-specific aliases first, then global.
@@ -132,7 +133,8 @@ class EntityRepository(IEntityRepository):
 
         except Exception as e:
             logger.error("find_by_alias_error", alias=alias, error=str(e))
-            raise RepositoryError(f"Error finding entity by alias: {e}") from e
+            msg = f"Error finding entity by alias: {e}"
+            raise RepositoryError(msg) from e
 
     async def fuzzy_search(
         self, search_text: str, threshold: float = 0.6, limit: int = 5
@@ -199,7 +201,8 @@ class EntityRepository(IEntityRepository):
 
         except Exception as e:
             logger.error("fuzzy_search_error", search_text=search_text, error=str(e))
-            raise RepositoryError(f"Error in fuzzy search: {e}") from e
+            msg = f"Error in fuzzy search: {e}"
+            raise RepositoryError(msg) from e
 
     async def create(self, entity: CanonicalEntity) -> CanonicalEntity:
         """Create a new canonical entity.
@@ -217,7 +220,8 @@ class EntityRepository(IEntityRepository):
             # Check if entity already exists
             existing = await self.find_by_entity_id(entity.entity_id)
             if existing:
-                raise RepositoryError(f"Entity {entity.entity_id} already exists")
+                msg = f"Entity {entity.entity_id} already exists"
+                raise RepositoryError(msg)
 
             # Convert to ORM model
             model = self._to_orm_model(entity)
@@ -237,7 +241,8 @@ class EntityRepository(IEntityRepository):
             raise
         except Exception as e:
             logger.error("create_entity_error", entity_id=entity.entity_id, error=str(e))
-            raise RepositoryError(f"Error creating entity: {e}") from e
+            msg = f"Error creating entity: {e}"
+            raise RepositoryError(msg) from e
 
     async def update(self, entity: CanonicalEntity) -> CanonicalEntity:
         """Update an existing canonical entity.
@@ -259,7 +264,8 @@ class EntityRepository(IEntityRepository):
             model = result.scalar_one_or_none()
 
             if not model:
-                raise RepositoryError(f"Entity {entity.entity_id} not found")
+                msg = f"Entity {entity.entity_id} not found"
+                raise RepositoryError(msg)
 
             # Update fields
             model.canonical_name = entity.canonical_name
@@ -277,7 +283,8 @@ class EntityRepository(IEntityRepository):
             raise
         except Exception as e:
             logger.error("update_entity_error", entity_id=entity.entity_id, error=str(e))
-            raise RepositoryError(f"Error updating entity: {e}") from e
+            msg = f"Error updating entity: {e}"
+            raise RepositoryError(msg) from e
 
     async def create_alias(self, alias: EntityAlias) -> EntityAlias:
         """Create a new entity alias.
@@ -325,7 +332,8 @@ class EntityRepository(IEntityRepository):
                 alias=alias.alias_text,
                 error=str(e),
             )
-            raise RepositoryError(f"Error creating alias: {e}") from e
+            msg = f"Error creating alias: {e}"
+            raise RepositoryError(msg) from e
 
     async def get_aliases(self, entity_id: str) -> list[EntityAlias]:
         """Get all aliases for an entity.
@@ -347,7 +355,8 @@ class EntityRepository(IEntityRepository):
 
         except Exception as e:
             logger.error("get_aliases_error", entity_id=entity_id, error=str(e))
-            raise RepositoryError(f"Error getting aliases: {e}") from e
+            msg = f"Error getting aliases: {e}"
+            raise RepositoryError(msg) from e
 
     async def increment_alias_use_count(self, alias_id: int) -> None:
         """Increment use count for an alias.

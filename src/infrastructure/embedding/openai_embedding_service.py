@@ -3,8 +3,8 @@
 Implements IEmbeddingService using OpenAI's embedding API.
 """
 
-from openai import AsyncOpenAI
 import structlog
+from openai import AsyncOpenAI
 
 from src.domain.exceptions import EmbeddingError
 from src.domain.ports import IEmbeddingService
@@ -49,7 +49,8 @@ class OpenAIEmbeddingService(IEmbeddingService):
         """
         try:
             if not text or not text.strip():
-                raise EmbeddingError("Cannot generate embedding for empty text")
+                msg = "Cannot generate embedding for empty text"
+                raise EmbeddingError(msg)
 
             logger.debug(
                 "generating_embedding",
@@ -64,7 +65,8 @@ class OpenAIEmbeddingService(IEmbeddingService):
             )
 
             if not response.data:
-                raise EmbeddingError("No embedding data in response")
+                msg = "No embedding data in response"
+                raise EmbeddingError(msg)
 
             embedding = response.data[0].embedding
 
@@ -90,7 +92,8 @@ class OpenAIEmbeddingService(IEmbeddingService):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            raise EmbeddingError(f"Failed to generate embedding: {e}") from e
+            msg = f"Failed to generate embedding: {e}"
+            raise EmbeddingError(msg) from e
 
     async def generate_embeddings_batch(
         self, texts: list[str]
@@ -115,11 +118,13 @@ class OpenAIEmbeddingService(IEmbeddingService):
             # Filter out empty texts
             valid_texts = [t for t in texts if t and t.strip()]
             if not valid_texts:
-                raise EmbeddingError("All texts are empty")
+                msg = "All texts are empty"
+                raise EmbeddingError(msg)
 
             if len(valid_texts) > self.MAX_BATCH_SIZE:
+                msg = f"Batch size {len(valid_texts)} exceeds max {self.MAX_BATCH_SIZE}"
                 raise EmbeddingError(
-                    f"Batch size {len(valid_texts)} exceeds max {self.MAX_BATCH_SIZE}"
+                    msg
                 )
 
             logger.debug(
@@ -135,8 +140,9 @@ class OpenAIEmbeddingService(IEmbeddingService):
             )
 
             if not response.data or len(response.data) != len(valid_texts):
+                msg = f"Expected {len(valid_texts)} embeddings, got {len(response.data)}"
                 raise EmbeddingError(
-                    f"Expected {len(valid_texts)} embeddings, got {len(response.data)}"
+                    msg
                 )
 
             # Extract embeddings in order
@@ -164,7 +170,8 @@ class OpenAIEmbeddingService(IEmbeddingService):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            raise EmbeddingError(f"Failed to generate embeddings batch: {e}") from e
+            msg = f"Failed to generate embeddings batch: {e}"
+            raise EmbeddingError(msg) from e
 
     @property
     def embedding_dimensions(self) -> int:

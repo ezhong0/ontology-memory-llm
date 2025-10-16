@@ -4,11 +4,11 @@ Defines the contract for memory summary data access.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 import numpy as np
+import numpy.typing as npt
 
-from src.domain.value_objects.consolidation import MemorySummary
+from src.domain.entities.memory_summary import MemorySummary
 from src.domain.value_objects.memory_candidate import MemoryCandidate
 
 
@@ -23,10 +23,10 @@ class ISummaryRepository(ABC):
     async def find_similar(
         self,
         user_id: str,
-        query_embedding: np.ndarray,
+        query_embedding: npt.NDArray[np.float64],
         limit: int = 5,
-        scope_type: Optional[str] = None,
-    ) -> List[MemoryCandidate]:
+        scope_type: str | None = None,
+    ) -> list[MemoryCandidate]:
         """Find similar memory summaries using pgvector.
 
         Args:
@@ -38,7 +38,6 @@ class ISummaryRepository(ABC):
         Returns:
             List of memory candidates from summary layer
         """
-        pass
 
     @abstractmethod
     async def find_by_scope(
@@ -46,7 +45,7 @@ class ISummaryRepository(ABC):
         user_id: str,
         scope_type: str,
         scope_identifier: str,
-    ) -> Optional[MemoryCandidate]:
+    ) -> MemoryCandidate | None:
         """Find summary by scope.
 
         Args:
@@ -57,7 +56,6 @@ class ISummaryRepository(ABC):
         Returns:
             Memory candidate if found, None otherwise
         """
-        pass
 
     @abstractmethod
     async def create(self, summary: MemorySummary) -> MemorySummary:
@@ -72,12 +70,11 @@ class ISummaryRepository(ABC):
         Raises:
             RepositoryError: If creation fails
         """
-        pass
 
     @abstractmethod
     async def get_by_id(
-        self, summary_id: int, user_id: Optional[str] = None
-    ) -> Optional[MemorySummary]:
+        self, summary_id: int, user_id: str | None = None
+    ) -> MemorySummary | None:
         """Get memory summary by ID.
 
         Args:
@@ -90,4 +87,3 @@ class ISummaryRepository(ABC):
         Raises:
             RepositoryError: If query fails
         """
-        pass

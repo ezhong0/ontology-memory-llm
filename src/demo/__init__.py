@@ -14,6 +14,7 @@ from src.config.settings import Settings
 # Fail fast if demo mode is disabled
 settings = Settings()
 if not settings.DEMO_MODE_ENABLED:
+    msg = "Demo mode is disabled. Set DEMO_MODE_ENABLED=true in .env to enable demo endpoints."
     raise RuntimeError(
-        "Demo mode is disabled. Set DEMO_MODE_ENABLED=true in .env to enable demo endpoints."
+        msg
     )

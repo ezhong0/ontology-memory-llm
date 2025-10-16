@@ -53,8 +53,7 @@ async def create_semantic_memory(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement after chat pipeline ready")
-async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: AsyncClient):
+async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 1: Overdue invoice follow-up with preference recall
 
@@ -72,20 +71,39 @@ async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: As
              Memory update: add episodic note that an invoice reminder was initiated today.
     """
     # ARRANGE: Seed domain database
-    await seed_domain_db({
+    from datetime import date
+
+    ids = await domain_seeder.seed({
         "customers": [{
-            "customer_id": "kai_123",
-            "name": "Kai Media"
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }],
+        "sales_orders": [{
+            "customer": "kai_123",
+            "so_number": "SO-1001",
+            "title": "Album Fulfillment",
+            "status": "fulfilled",
+            "id": "so_1001"
         }],
         "invoices": [{
-            "invoice_id": "inv_1009",
-            "customer_id": "kai_123",
+            "sales_order": "so_1001",
             "invoice_number": "INV-1009",
             "amount": 1200.00,
-            "due_date": "2025-09-30",
-            "status": "open"
+            "due_date": date(2025, 9, 30),
+            "status": "open",
+            "id": "inv_1009"
         }]
     })
+
+    # ARRANGE: Create canonical entity for Kai Media in memory system
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",  # Use underscore format per CanonicalEntity.generate_entity_id()
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
 
     # ARRANGE: Seed memory (prior session stated preference)
     await api_client.post("/api/v1/chat", json={

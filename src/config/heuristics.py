@@ -112,8 +112,11 @@ SEMANTIC_HALF_LIFE_DAYS = 90  # Semantic facts decay slower
 # ==============================================================================
 
 # Conflict Resolution
-CONFIDENCE_GAP_THRESHOLD = 0.30  # Gap to trust higher confidence
-AGE_THRESHOLD_DAYS = 60  # Age to trust recency
+CONFLICT_TEMPORAL_THRESHOLD_DAYS = 30  # Days difference for temporal resolution
+CONFLICT_CONFIDENCE_THRESHOLD = 0.2  # Confidence difference threshold
+CONFLICT_REINFORCEMENT_THRESHOLD = 3  # Reinforcement count difference threshold
+CONFIDENCE_GAP_THRESHOLD = 0.30  # Gap to trust higher confidence (legacy)
+AGE_THRESHOLD_DAYS = 60  # Age to trust recency (legacy)
 MIN_CONFIDENCE_FOR_CONFLICT = 0.4  # Below this, just replace
 
 # ==============================================================================

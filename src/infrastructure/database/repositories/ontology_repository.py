@@ -3,10 +3,9 @@
 Implements domain ontology retrieval using SQLAlchemy and PostgreSQL.
 """
 
-from typing import List
 
 import structlog
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.exceptions import RepositoryError
@@ -30,7 +29,7 @@ class OntologyRepository(IOntologyRepository):
         """
         self.session = session
 
-    async def get_relations_for_type(self, entity_type: str) -> List[OntologyRelation]:
+    async def get_relations_for_type(self, entity_type: str) -> list[OntologyRelation]:
         """Get all ontology relations originating from an entity type.
 
         Args:
@@ -81,9 +80,10 @@ class OntologyRepository(IOntologyRepository):
                 entity_type=entity_type,
                 error=str(e),
             )
-            raise RepositoryError(f"Error getting ontology relations: {e}") from e
+            msg = f"Error getting ontology relations: {e}"
+            raise RepositoryError(msg) from e
 
-    async def get_all_relations(self) -> List[OntologyRelation]:
+    async def get_all_relations(self) -> list[OntologyRelation]:
         """Get all ontology relations.
 
         Returns:
@@ -122,4 +122,5 @@ class OntologyRepository(IOntologyRepository):
 
         except Exception as e:
             logger.error("get_all_relations_error", error=str(e))
-            raise RepositoryError(f"Error getting all ontology relations: {e}") from e
+            msg = f"Error getting all ontology relations: {e}"
+            raise RepositoryError(msg) from e

@@ -8,11 +8,9 @@ Each scenario includes:
 - Expected system behavior
 """
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
-from uuid import UUID
-
+from typing import Any
 
 # =============================================================================
 # Domain Data Setup Structures
@@ -22,8 +20,8 @@ from uuid import UUID
 class CustomerSetup:
     """Definition of a customer to create in domain schema."""
     name: str
-    industry: Optional[str] = None
-    notes: Optional[str] = None
+    industry: str | None = None
+    notes: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,8 +49,8 @@ class WorkOrderSetup:
     sales_order_number: str  # Reference to SO by number
     description: str
     status: str = "queued"  # queued, in_progress, blocked, done
-    technician: Optional[str] = None
-    scheduled_for: Optional[date] = None
+    technician: str | None = None
+    scheduled_for: date | None = None
 
 
 @dataclass(frozen=True)
@@ -60,27 +58,27 @@ class PaymentSetup:
     """Definition of a payment to create in domain schema."""
     invoice_number: str  # Reference to invoice by number
     amount: Decimal
-    method: Optional[str] = None  # ACH, credit_card, check, wire
+    method: str | None = None  # ACH, credit_card, check, wire
 
 
 @dataclass(frozen=True)
 class TaskSetup:
     """Definition of a task to create in domain schema."""
     title: str
-    customer_name: Optional[str] = None  # Reference to customer by name
-    body: Optional[str] = None
+    customer_name: str | None = None  # Reference to customer by name
+    body: str | None = None
     status: str = "todo"  # todo, doing, done
 
 
 @dataclass(frozen=True)
 class DomainDataSetup:
     """All domain data for a scenario."""
-    customers: List[CustomerSetup] = field(default_factory=list)
-    sales_orders: List[SalesOrderSetup] = field(default_factory=list)
-    invoices: List[InvoiceSetup] = field(default_factory=list)
-    work_orders: List[WorkOrderSetup] = field(default_factory=list)
-    payments: List[PaymentSetup] = field(default_factory=list)
-    tasks: List[TaskSetup] = field(default_factory=list)
+    customers: list[CustomerSetup] = field(default_factory=list)
+    sales_orders: list[SalesOrderSetup] = field(default_factory=list)
+    invoices: list[InvoiceSetup] = field(default_factory=list)
+    work_orders: list[WorkOrderSetup] = field(default_factory=list)
+    payments: list[PaymentSetup] = field(default_factory=list)
+    tasks: list[TaskSetup] = field(default_factory=list)
 
 
 # =============================================================================
@@ -93,7 +91,7 @@ class SemanticMemorySetup:
     subject: str  # Entity name (will be resolved to entity_id)
     predicate: str
     predicate_type: str  # preference, requirement, observation, policy, attribute
-    object_value: Dict[str, Any]
+    object_value: dict[str, Any]
     confidence: float = 0.8
 
 
@@ -102,7 +100,7 @@ class EpisodicMemorySetup:
     """Definition of an episodic memory to create."""
     summary: str
     event_type: str  # question, statement, command, correction, confirmation
-    entities: List[str]  # Entity names (will be resolved to entity_ids)
+    entities: list[str]  # Entity names (will be resolved to entity_ids)
     importance: float = 0.5
 
 
@@ -126,8 +124,8 @@ class ScenarioDefinition:
     expected_behavior: str
 
     # Optional memories
-    semantic_memories: List[SemanticMemorySetup] = field(default_factory=list)
-    episodic_memories: List[EpisodicMemorySetup] = field(default_factory=list)
+    semantic_memories: list[SemanticMemorySetup] = field(default_factory=list)
+    episodic_memories: list[EpisodicMemorySetup] = field(default_factory=list)
 
 
 # =============================================================================

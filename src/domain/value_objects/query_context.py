@@ -5,9 +5,9 @@ These objects encapsulate the context needed for memory retrieval and scoring.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 import numpy as np
+import numpy.typing as npt
 
 
 @dataclass(frozen=True)
@@ -28,25 +28,28 @@ class QueryContext:
     """
 
     query_text: str
-    query_embedding: np.ndarray
-    entity_ids: List[str]
+    query_embedding: npt.NDArray[np.float64]
+    entity_ids: list[str]
     user_id: str
-    session_id: Optional[str] = None
-    timestamp: Optional[datetime] = None
+    session_id: str | None = None
+    timestamp: datetime | None = None
     strategy: str = "exploratory"
 
     def __post_init__(self) -> None:
         """Validate query context."""
         if len(self.query_embedding.shape) != 1:
-            raise ValueError(f"query_embedding must be 1D, got shape {self.query_embedding.shape}")
+            msg = f"query_embedding must be 1D, got shape {self.query_embedding.shape}"
+            raise ValueError(msg)
 
         if self.query_embedding.shape[0] != 1536:
+            msg = f"query_embedding must be 1536-dimensional, got {self.query_embedding.shape[0]}"
             raise ValueError(
-                f"query_embedding must be 1536-dimensional, got {self.query_embedding.shape[0]}"
+                msg
             )
 
         if not self.user_id:
-            raise ValueError("user_id is required")
+            msg = "user_id is required"
+            raise ValueError(msg)
 
         valid_strategies = [
             "factual_entity_focused",
@@ -55,7 +58,8 @@ class QueryContext:
             "temporal",
         ]
         if self.strategy not in valid_strategies:
-            raise ValueError(f"strategy must be one of {valid_strategies}, got {self.strategy}")
+            msg = f"strategy must be one of {valid_strategies}, got {self.strategy}"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -72,22 +76,22 @@ class RetrievalFilters:
         min_importance: Minimum importance threshold
     """
 
-    entity_types: Optional[List[str]] = None
-    memory_types: Optional[List[str]] = None
-    min_confidence: Optional[float] = None
-    max_age_days: Optional[int] = None
-    min_importance: Optional[float] = None
+    entity_types: list[str] | None = None
+    memory_types: list[str] | None = None
+    min_confidence: float | None = None
+    max_age_days: int | None = None
+    min_importance: float | None = None
 
     def __post_init__(self) -> None:
         """Validate filters."""
-        if self.min_confidence is not None:
-            if not 0.0 <= self.min_confidence <= 1.0:
-                raise ValueError(f"min_confidence must be in [0, 1], got {self.min_confidence}")
+        if self.min_confidence is not None and not 0.0 <= self.min_confidence <= 1.0:
+            msg = f"min_confidence must be in [0, 1], got {self.min_confidence}"
+            raise ValueError(msg)
 
-        if self.max_age_days is not None:
-            if self.max_age_days < 0:
-                raise ValueError(f"max_age_days must be >= 0, got {self.max_age_days}")
+        if self.max_age_days is not None and self.max_age_days < 0:
+            msg = f"max_age_days must be >= 0, got {self.max_age_days}"
+            raise ValueError(msg)
 
-        if self.min_importance is not None:
-            if not 0.0 <= self.min_importance <= 1.0:
-                raise ValueError(f"min_importance must be in [0, 1], got {self.min_importance}")
+        if self.min_importance is not None and not 0.0 <= self.min_importance <= 1.0:
+            msg = f"min_importance must be in [0, 1], got {self.min_importance}"
+            raise ValueError(msg)

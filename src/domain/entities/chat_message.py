@@ -2,10 +2,10 @@
 
 Represents a message in a conversation (domain representation).
 """
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 
@@ -31,21 +31,24 @@ class ChatMessage:
     user_id: str
     role: str  # user | assistant | system
     content: str
-    event_id: Optional[int] = None  # Set by repository after persistence
-    content_hash: Optional[str] = None  # Auto-computed if not provided
+    event_id: int | None = None  # Set by repository after persistence
+    content_hash: str | None = None  # Auto-computed if not provided
     event_metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Validate message invariants and compute content hash."""
         if not self.user_id:
-            raise ValueError("user_id cannot be empty")
+            msg = "user_id cannot be empty"
+            raise ValueError(msg)
         if not self.content:
-            raise ValueError("content cannot be empty")
+            msg = "content cannot be empty"
+            raise ValueError(msg)
 
         valid_roles = {"user", "assistant", "system"}
         if self.role not in valid_roles:
-            raise ValueError(f"role must be one of {valid_roles}, got: {self.role}")
+            msg = f"role must be one of {valid_roles}, got: {self.role}"
+            raise ValueError(msg)
 
         # Auto-compute content hash if not provided
         if self.content_hash is None:

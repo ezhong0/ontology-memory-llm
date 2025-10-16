@@ -3,7 +3,7 @@
 Represents a resolved, canonical entity in the memory system.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from src.domain.value_objects import EntityReference
@@ -32,29 +32,34 @@ class CanonicalEntity:
     canonical_name: str
     external_ref: EntityReference
     properties: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Validate entity invariants."""
         if not self.entity_id:
-            raise ValueError("entity_id cannot be empty")
+            msg = "entity_id cannot be empty"
+            raise ValueError(msg)
         if not self.entity_type:
-            raise ValueError("entity_type cannot be empty")
+            msg = "entity_type cannot be empty"
+            raise ValueError(msg)
         if not self.canonical_name:
-            raise ValueError("canonical_name cannot be empty")
+            msg = "canonical_name cannot be empty"
+            raise ValueError(msg)
 
         # Validate entity_id format
         if "_" not in self.entity_id:
+            msg = f"entity_id must follow format '{{type}}_{{id}}', got: {self.entity_id}"
             raise ValueError(
-                f"entity_id must follow format '{{type}}_{{id}}', got: {self.entity_id}"
+                msg
             )
 
         # Verify entity_id starts with entity_type
         expected_prefix = f"{self.entity_type}_"
         if not self.entity_id.startswith(expected_prefix):
+            msg = f"entity_id must start with '{expected_prefix}', got: {self.entity_id}"
             raise ValueError(
-                f"entity_id must start with '{expected_prefix}', got: {self.entity_id}"
+                msg
             )
 
     def update_properties(self, new_properties: dict[str, Any]) -> None:
@@ -64,7 +69,7 @@ class CanonicalEntity:
             new_properties: New properties to merge
         """
         self.properties.update(new_properties)
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.

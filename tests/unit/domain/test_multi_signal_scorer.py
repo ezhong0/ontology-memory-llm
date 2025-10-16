@@ -382,8 +382,6 @@ class TestEffectiveConfidence:
 
     def test_semantic_no_decay(self, scorer, validation_service):
         """Semantic memory with no decay should return stored confidence."""
-        validation_service.calculate_confidence_decay.return_value = 0.85
-
         candidate = MemoryCandidate(
             memory_id=1,
             memory_type="semantic",
@@ -398,14 +396,11 @@ class TestEffectiveConfidence:
         )
 
         confidence = scorer._calculate_effective_confidence(candidate)
-        assert confidence == 0.85
+        # Use approx to handle floating point precision from tiny timing differences
+        assert confidence == pytest.approx(0.85, abs=0.01)
 
     def test_semantic_with_decay(self, scorer, validation_service):
-        """Semantic memory with decay should use validation service."""
-        # Override the side_effect for this specific test
-        validation_service.calculate_confidence_decay.side_effect = None
-        validation_service.calculate_confidence_decay.return_value = 0.65
-
+        """Semantic memory with decay should apply exponential decay formula."""
         candidate = MemoryCandidate(
             memory_id=1,
             memory_type="semantic",
@@ -421,9 +416,10 @@ class TestEffectiveConfidence:
 
         confidence = scorer._calculate_effective_confidence(candidate)
 
-        # Verify validation service was called
-        validation_service.calculate_confidence_decay.assert_called_once()
-        assert confidence == 0.65
+        # Calculate expected value: confidence * exp(-decay_rate * days)
+        # = 0.85 * exp(-0.01 * 50) = 0.85 * exp(-0.5) ≈ 0.5156
+        expected = 0.85 * math.exp(-heuristics.DECAY_RATE_PER_DAY * 50)
+        assert confidence == pytest.approx(expected, abs=0.01)
 
     def test_semantic_no_validation_yet(self, scorer):
         """Semantic memory with no validation should use base confidence."""
@@ -484,7 +480,8 @@ class TestSignalBreakdown:
         assert breakdown.recency_score == pytest.approx(1.0, abs=0.01)
         assert breakdown.importance_score == 0.8
         assert breakdown.reinforcement_score == 1.0  # Saturated
-        assert breakdown.effective_confidence == 0.9  # No decay
+        # Use approx to handle floating point precision from tiny timing differences
+        assert breakdown.effective_confidence == pytest.approx(0.9, abs=0.01)
 
 
 class TestEdgeCases:

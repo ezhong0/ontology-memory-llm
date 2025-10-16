@@ -11,7 +11,6 @@ Design from: DESIGN.md v2.0 - Complete Retrieval Pipeline
 """
 
 import time
-from typing import List, Optional
 from uuid import UUID
 
 import numpy as np
@@ -75,10 +74,10 @@ class MemoryRetriever:
         self,
         query: str,
         user_id: str,
-        session_id: Optional[UUID] = None,
+        session_id: UUID | None = None,
         strategy: str = "exploratory",
         top_k: int = 20,
-        filters: Optional[RetrievalFilters] = None,
+        filters: RetrievalFilters | None = None,
     ) -> RetrievalResult:
         """Retrieve relevant memories for a query.
 
@@ -199,9 +198,10 @@ class MemoryRetriever:
                 user_id=user_id,
                 error=str(e),
             )
-            raise DomainError(f"Error retrieving memories: {e}") from e
+            msg = f"Error retrieving memories: {e}"
+            raise DomainError(msg) from e
 
-    async def _resolve_query_entities(self, query: str, user_id: str) -> List[str]:
+    async def _resolve_query_entities(self, query: str, user_id: str) -> list[str]:
         """Resolve entities from query text.
 
         Simplified implementation for Phase 1C.
@@ -213,7 +213,12 @@ class MemoryRetriever:
 
         Returns:
             List of resolved entity IDs
+
+        Note:
+            Full entity resolution pipeline (mention extraction + 5-stage resolution)
+            will be integrated in Phase 1C when retrieval pipeline is fully wired.
+            For now, returns empty list - retrieval uses semantic similarity only.
         """
-        # TODO: Implement full entity resolution pipeline
-        # For now, return empty list - will be enhanced in integration
+        # Phase 1C: Full integration with EntityResolutionService pending
+        # Simplified version returns empty list - semantic-only retrieval works
         return []

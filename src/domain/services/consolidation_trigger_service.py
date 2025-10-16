@@ -5,7 +5,6 @@ Determines when memory consolidation should occur based on thresholds.
 Design from: PHASE1D_PLAN_ITERATION.md
 """
 
-from typing import List
 
 import structlog
 
@@ -102,7 +101,8 @@ class ConsolidationTriggerService:
                 scope=scope.to_dict(),
                 error=str(e),
             )
-            raise DomainError(f"Error checking consolidation threshold: {e}") from e
+            msg = f"Error checking consolidation threshold: {e}"
+            raise DomainError(msg) from e
 
     async def _should_consolidate_entity(self, user_id: str, entity_id: str) -> bool:
         """Check if entity should be consolidated.
@@ -130,11 +130,13 @@ class ConsolidationTriggerService:
             threshold=heuristics.CONSOLIDATION_MIN_EPISODIC,
         )
 
-        # TODO: Implement entity-specific episodic count query
+        # Phase 1D: Automatic triggering deferred - requires count_by_entity() repository method
+        # Implementation:
         # count = await self._episodic_repo.count_by_entity(user_id, entity_id)
         # return count >= heuristics.CONSOLIDATION_MIN_EPISODIC
-
-        return False  # Phase 1: Manual triggering only
+        #
+        # For Phase 1, consolidation is triggered manually via API endpoint
+        return False
 
     async def _should_consolidate_session_window(
         self, user_id: str, num_sessions: int
@@ -160,13 +162,15 @@ class ConsolidationTriggerService:
             threshold=heuristics.CONSOLIDATION_MIN_SESSIONS,
         )
 
-        # TODO: Implement session counting
+        # Phase 1D: Automatic triggering deferred - requires count_recent_sessions() repository method
+        # Implementation:
         # sessions = await self._chat_repo.count_recent_sessions(user_id)
         # return sessions >= heuristics.CONSOLIDATION_MIN_SESSIONS
+        #
+        # For Phase 1, consolidation is triggered manually via API endpoint
+        return False
 
-        return False  # Phase 1: Manual triggering only
-
-    async def get_pending_consolidations(self, user_id: str) -> List[ConsolidationScope]:
+    async def get_pending_consolidations(self, user_id: str) -> list[ConsolidationScope]:
         """Get all scopes that need consolidation.
 
         Scans user's interaction history to find scopes meeting thresholds.
@@ -183,7 +187,7 @@ class ConsolidationTriggerService:
         try:
             logger.info("scanning_pending_consolidations", user_id=user_id)
 
-            pending: List[ConsolidationScope] = []
+            pending: list[ConsolidationScope] = []
 
             # Check session window
             if await self._should_consolidate_session_window(
@@ -195,11 +199,14 @@ class ConsolidationTriggerService:
                     )
                 )
 
-            # TODO: Scan for entities needing consolidation
+            # Phase 1D: Entity scanning deferred - requires _get_active_entities() method
+            # Implementation:
             # entities = await self._get_active_entities(user_id)
             # for entity_id in entities:
             #     if await self._should_consolidate_entity(user_id, entity_id):
             #         pending.append(ConsolidationScope.entity_scope(entity_id))
+            #
+            # For Phase 1, only session window consolidation is checked
 
             logger.info(
                 "pending_consolidations_found",
@@ -215,4 +222,5 @@ class ConsolidationTriggerService:
                 user_id=user_id,
                 error=str(e),
             )
-            raise DomainError(f"Error scanning pending consolidations: {e}") from e
+            msg = f"Error scanning pending consolidations: {e}"
+            raise DomainError(msg) from e

@@ -17,12 +17,13 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
+from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.value_objects.consolidation import (
     ConsolidationScope,
     KeyFact,
     SummaryData,
 )
-from src.domain.value_objects.procedural_memory import Pattern, ProceduralMemory
+from src.domain.value_objects.procedural_memory import Pattern
 
 
 # ============================================================================

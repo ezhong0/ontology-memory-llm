@@ -4,10 +4,12 @@ Responsible for detecting conflicts between new semantic observations
 and existing memories in the knowledge base.
 """
 
-import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
+import structlog
+
+from src.config import heuristics
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.value_objects import (
     ConflictResolution,
@@ -16,7 +18,7 @@ from src.domain.value_objects import (
     SemanticTriple,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ConflictDetectionService:
@@ -34,27 +36,22 @@ class ConflictDetectionService:
     4. Default: Require user clarification
     """
 
-    # Configuration constants
-    TEMPORAL_THRESHOLD_DAYS = 30  # Temporal resolution threshold
-    CONFIDENCE_THRESHOLD = 0.2  # Confidence difference threshold
-    REINFORCEMENT_THRESHOLD = 3  # Reinforcement count difference threshold
-
     def __init__(
         self,
-        temporal_threshold_days: int = TEMPORAL_THRESHOLD_DAYS,
-        confidence_threshold: float = CONFIDENCE_THRESHOLD,
-        reinforcement_threshold: int = REINFORCEMENT_THRESHOLD,
+        temporal_threshold_days: int | None = None,
+        confidence_threshold: float | None = None,
+        reinforcement_threshold: int | None = None,
     ) -> None:
         """Initialize conflict detection service.
 
         Args:
-            temporal_threshold_days: Days difference for temporal resolution
-            confidence_threshold: Confidence difference for resolution
-            reinforcement_threshold: Reinforcement count difference for resolution
+            temporal_threshold_days: Days difference for temporal resolution (defaults to heuristics)
+            confidence_threshold: Confidence difference for resolution (defaults to heuristics)
+            reinforcement_threshold: Reinforcement count difference for resolution (defaults to heuristics)
         """
-        self._temporal_threshold = temporal_threshold_days
-        self._confidence_threshold = confidence_threshold
-        self._reinforcement_threshold = reinforcement_threshold
+        self._temporal_threshold = temporal_threshold_days or heuristics.CONFLICT_TEMPORAL_THRESHOLD_DAYS
+        self._confidence_threshold = confidence_threshold or heuristics.CONFLICT_CONFIDENCE_THRESHOLD
+        self._reinforcement_threshold = reinforcement_threshold or heuristics.CONFLICT_REINFORCEMENT_THRESHOLD
 
     def detect_conflict(
         self,
@@ -77,19 +74,19 @@ class ConflictDetectionService:
         """
         # Validate they're for the same subject + predicate
         if new_triple.subject_entity_id != existing_memory.subject_entity_id:
-            raise ValueError("Subject mismatch - cannot detect conflict")
+            msg = "Subject mismatch - cannot detect conflict"
+            raise ValueError(msg)
 
         if new_triple.predicate != existing_memory.predicate:
-            raise ValueError("Predicate mismatch - cannot detect conflict")
+            msg = "Predicate mismatch - cannot detect conflict"
+            raise ValueError(msg)
 
         # Check if values actually conflict
         if not self._values_conflict(new_triple.object_value, existing_memory.object_value):
             logger.debug(
-                "No conflict - values match",
-                extra={
-                    "subject": new_triple.subject_entity_id,
-                    "predicate": new_triple.predicate,
-                },
+                "no_conflict_values_match",
+                subject=new_triple.subject_entity_id,
+                predicate=new_triple.predicate,
             )
             return None
 
@@ -133,13 +130,11 @@ class ConflictDetectionService:
         )
 
         logger.warning(
-            "Conflict detected",
-            extra={
-                "conflict_type": conflict_type.value,
-                "subject": new_triple.subject_entity_id,
-                "predicate": new_triple.predicate,
-                "resolution": resolution.value,
-            },
+            "conflict_detected",
+            conflict_type=conflict_type.value,
+            subject=new_triple.subject_entity_id,
+            predicate=new_triple.predicate,
+            resolution=resolution.value,
         )
 
         return conflict

@@ -7,7 +7,6 @@ Design from: DESIGN.md v2.0 - Retrieval Pipeline
 """
 
 import asyncio
-from typing import List, Optional, Tuple
 from uuid import UUID
 
 import numpy as np
@@ -17,12 +16,10 @@ from src.config import heuristics
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.exceptions import DomainError
 from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
+from src.domain.ports.semantic_memory_repository import ISemanticMemoryRepository
 from src.domain.ports.summary_repository import ISummaryRepository
 from src.domain.value_objects.memory_candidate import MemoryCandidate
 from src.domain.value_objects.query_context import QueryContext, RetrievalFilters
-from src.infrastructure.database.repositories.semantic_memory_repository import (
-    SemanticMemoryRepository,
-)
 
 logger = structlog.get_logger()
 
@@ -45,16 +42,16 @@ class CandidateGenerator:
 
     def __init__(
         self,
-        semantic_repo: SemanticMemoryRepository,
+        semantic_repo: ISemanticMemoryRepository,
         episodic_repo: IEpisodicMemoryRepository,
         summary_repo: ISummaryRepository,
     ) -> None:
         """Initialize candidate generator.
 
         Args:
-            semantic_repo: Repository for semantic memories
-            episodic_repo: Repository for episodic memories
-            summary_repo: Repository for memory summaries
+            semantic_repo: Repository for semantic memories (port/interface)
+            episodic_repo: Repository for episodic memories (port/interface)
+            summary_repo: Repository for memory summaries (port/interface)
         """
         self._semantic_repo = semantic_repo
         self._episodic_repo = episodic_repo
@@ -63,8 +60,8 @@ class CandidateGenerator:
     async def generate_candidates(
         self,
         query_context: QueryContext,
-        filters: Optional[RetrievalFilters] = None,
-    ) -> List[MemoryCandidate]:
+        filters: RetrievalFilters | None = None,
+    ) -> list[MemoryCandidate]:
         """Generate candidates from all memory layers in parallel.
 
         Args:
@@ -135,13 +132,14 @@ class CandidateGenerator:
                 user_id=query_context.user_id,
                 error=str(e),
             )
-            raise DomainError(f"Error generating candidates: {e}") from e
+            msg = f"Error generating candidates: {e}"
+            raise DomainError(msg) from e
 
     async def _retrieve_semantic_candidates(
         self,
         query_context: QueryContext,
-        filters: Optional[RetrievalFilters],
-    ) -> List[MemoryCandidate]:
+        filters: RetrievalFilters | None,
+    ) -> list[MemoryCandidate]:
         """Retrieve candidates from semantic memory layer.
 
         Args:
@@ -164,7 +162,7 @@ class CandidateGenerator:
 
         # Convert SemanticMemory to MemoryCandidate
         candidates = []
-        for memory, similarity in results:
+        for memory, _similarity in results:
             candidate = self._semantic_to_candidate(memory)
             candidates.append(candidate)
 
@@ -178,8 +176,8 @@ class CandidateGenerator:
     async def _retrieve_episodic_candidates(
         self,
         query_context: QueryContext,
-        filters: Optional[RetrievalFilters],
-    ) -> List[MemoryCandidate]:
+        filters: RetrievalFilters | None,
+    ) -> list[MemoryCandidate]:
         """Retrieve candidates from episodic memory layer.
 
         Args:
@@ -209,8 +207,8 @@ class CandidateGenerator:
     async def _retrieve_summary_candidates(
         self,
         query_context: QueryContext,
-        filters: Optional[RetrievalFilters],
-    ) -> List[MemoryCandidate]:
+        filters: RetrievalFilters | None,
+    ) -> list[MemoryCandidate]:
         """Retrieve candidates from summary layer.
 
         Args:
@@ -237,7 +235,7 @@ class CandidateGenerator:
         return candidates
 
     def _should_retrieve_layer(
-        self, layer_type: str, filters: Optional[RetrievalFilters]
+        self, layer_type: str, filters: RetrievalFilters | None
     ) -> bool:
         """Check if layer should be retrieved based on filters.
 
@@ -286,8 +284,8 @@ class CandidateGenerator:
         )
 
     def _deduplicate_candidates(
-        self, candidates: List[MemoryCandidate]
-    ) -> List[MemoryCandidate]:
+        self, candidates: list[MemoryCandidate]
+    ) -> list[MemoryCandidate]:
         """Deduplicate candidates by (memory_type, memory_id).
 
         Args:

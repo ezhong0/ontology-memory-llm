@@ -1,13 +1,10 @@
 """Registry of all scenario definitions.
 
-Each scenario defines a complete test case for the memory system.
-Scenarios are numbered 1-18 matching ProjectDescription.md.
-
-For Phase 1, we start with Scenario 1 only.
+18 scenarios matching ProjectDescription.md exactly.
+These demonstrate the memory system aligned with the original requirements.
 """
 from datetime import date
 from decimal import Decimal
-from typing import Dict, List, Optional
 
 from src.demo.models.scenario import (
     CustomerSetup,
@@ -25,7 +22,7 @@ from src.demo.models.scenario import (
 class ScenarioRegistry:
     """Registry of all scenario definitions."""
 
-    _scenarios: Dict[int, ScenarioDefinition] = {}
+    _scenarios: dict[int, ScenarioDefinition] = {}
 
     @classmethod
     def register(cls, scenario: ScenarioDefinition) -> None:
@@ -33,23 +30,23 @@ class ScenarioRegistry:
         cls._scenarios[scenario.scenario_id] = scenario
 
     @classmethod
-    def get(cls, scenario_id: int) -> Optional[ScenarioDefinition]:
+    def get(cls, scenario_id: int) -> ScenarioDefinition | None:
         """Get scenario by ID."""
         return cls._scenarios.get(scenario_id)
 
     @classmethod
-    def get_all(cls) -> List[ScenarioDefinition]:
+    def get_all(cls) -> list[ScenarioDefinition]:
         """Get all scenarios."""
         return sorted(cls._scenarios.values(), key=lambda s: s.scenario_id)
 
     @classmethod
-    def get_by_category(cls, category: str) -> List[ScenarioDefinition]:
+    def get_by_category(cls, category: str) -> list[ScenarioDefinition]:
         """Get all scenarios in a category."""
         return [s for s in cls.get_all() if s.category == category]
 
 
 # =============================================================================
-# SCENARIO DEFINITIONS
+# 18 SCENARIOS FROM ProjectDescription.md
 # =============================================================================
 
 # Scenario 1: Overdue invoice follow-up with preference recall
@@ -59,14 +56,12 @@ ScenarioRegistry.register(
         title="Overdue invoice follow-up with preference recall",
         description=(
             "Finance agent wants to nudge customer while honoring delivery preferences. "
-            "System must retrieve invoice from DB and preference from memory."
+            "Retrieval surfaces INV-1009 (open, amount, due date) + memory preference."
         ),
-        category="memory_retrieval",
+        category="financial",
         domain_setup=DomainDataSetup(
             customers=[
-                CustomerSetup(
-                    name="Kai Media", industry="Entertainment", notes="Music distribution company"
-                )
+                CustomerSetup(name="Kai Media", industry="Entertainment")
             ],
             sales_orders=[
                 SalesOrderSetup(
@@ -91,9 +86,10 @@ ScenarioRegistry.register(
             "their preferred delivery day for the next shipment."
         ),
         expected_behavior=(
-            "Retrieval surfaces INV-1009 (open, $1200, due 2025-09-30) + memory "
-            "preference. Reply mentions invoice details and references Friday delivery. "
-            "Memory update: add episodic note that an invoice reminder was initiated today."
+            "System retrieves INV-1009 (open, $1200, due 2025-09-30) from DB + "
+            "'prefers Friday deliveries' from memory. Reply mentions invoice details "
+            "and references Friday delivery. Memory update: adds episodic note that "
+            "invoice reminder was initiated today."
         ),
         semantic_memories=[
             SemanticMemorySetup(
@@ -107,371 +103,614 @@ ScenarioRegistry.register(
     )
 )
 
-# Scenario 2: Multiple preferences recall
+# Scenario 2: Reschedule a work order based on technician availability
 ScenarioRegistry.register(
     ScenarioDefinition(
         scenario_id=2,
-        title="Multiple preferences recall for customer outreach",
+        title="Reschedule work order based on technician availability",
         description=(
-            "Sales agent needs to contact customer about upcoming invoice. "
-            "System must retrieve multiple preferences (contact method, payment terms, timezone)."
+            "Ops manager wants to move a work order. Query WO row, update plan, "
+            "store semantic memory about scheduling preference."
         ),
-        category="memory_retrieval",
+        category="operational",
         domain_setup=DomainDataSetup(
             customers=[
-                CustomerSetup(
-                    name="TechStart Inc",
-                    industry="Technology",
-                    notes="Early-stage startup, rapid growth"
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="Kai Media",
+                    so_number="SO-1001",
+                    title="Album Fulfillment",
+                    status="in_fulfillment",
+                )
+            ],
+            work_orders=[
+                WorkOrderSetup(
+                    sales_order_number="SO-1001",
+                    description="Pick-pack albums",
+                    status="queued",
+                    technician="Alex",
+                    scheduled_for=date(2025, 9, 22),
+                )
+            ],
+        ),
+        expected_query=(
+            "Reschedule Kai Media's pick-pack WO to Friday and keep Alex assigned."
+        ),
+        expected_behavior=(
+            "Tool queries WO row, returns SQL suggestion to update scheduled_for to Friday. "
+            "Stores semantic memory: 'Kai Media prefers Friday; align WO scheduling accordingly.' "
+            "Trace lists WO row used."
+        ),
+    )
+)
+
+# Scenario 3: Ambiguous entity disambiguation
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=3,
+        title="Ambiguous entity disambiguation (two similar names)",
+        description=(
+            "Two customers with similar names. System asks clarification only if "
+            "top-k scores are within small margin; otherwise chooses higher confidence."
+        ),
+        category="entity_resolution",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment"),
+                CustomerSetup(name="Kai Media Europe", industry="Entertainment"),
+            ],
+            invoices=[
+                InvoiceSetup(
+                    sales_order_number="SO-1001",
+                    invoice_number="INV-1001",
+                    amount=Decimal("500.00"),
+                    due_date=date(2025, 10, 1),
+                    status="open",
                 )
             ],
             sales_orders=[
                 SalesOrderSetup(
-                    customer_name="TechStart Inc",
+                    customer_name="Kai Media",
+                    so_number="SO-1001",
+                    title="Album Distribution",
+                    status="fulfilled",
+                )
+            ],
+        ),
+        expected_query="What's Kai's latest invoice?",
+        expected_behavior=(
+            "System asks single-step clarification only if semantic & deterministic "
+            "match scores are within small margin. Otherwise chooses higher-confidence "
+            "entity. Memory update: stores user's clarification for future disambiguation."
+        ),
+    )
+)
+
+# Scenario 4: NET terms learning from conversation
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=4,
+        title="NET terms learning from conversation",
+        description=(
+            "Terms aren't in DB; user states them. Create semantic memory entries. "
+            "Later infer due date using invoice issued_at + NET15 from memory."
+        ),
+        category="memory_extraction",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="TC Boiler", industry="Industrial")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="TC Boiler",
                     so_number="SO-2001",
-                    title="Cloud Infrastructure Setup",
+                    title="On-site repair",
                     status="fulfilled",
                 )
             ],
             invoices=[
                 InvoiceSetup(
                     sales_order_number="SO-2001",
-                    invoice_number="INV-2034",
-                    amount=Decimal("8500.00"),
-                    due_date=date(2025, 10, 15),
+                    invoice_number="INV-2201",
+                    amount=Decimal("3500.00"),
+                    due_date=date(2025, 10, 20),
                     status="open",
                 )
             ],
         ),
         expected_query=(
-            "What's the best way to reach TechStart Inc about their upcoming invoice?"
+            "Remember: TC Boiler is NET15 and prefers ACH over credit card."
         ),
         expected_behavior=(
-            "Retrieval surfaces INV-2034 (open, $8500, due 2025-10-15) + contact preferences. "
-            "Reply mentions Slack as preferred contact method, NET45 payment terms, and PST timezone. "
-            "Memory update: episodic note about outreach attempt."
+            "Create semantic memory entries (payment_terms=NET15, payment_method=ACH). "
+            "On later: 'When should we expect payment from TC Boiler on INV-2201?' → "
+            "system infers due date using invoice issued_at + NET15 from memory."
+        ),
+    )
+)
+
+# Scenario 5: Partial payments and balance calculation
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=5,
+        title="Partial payments and balance calculation",
+        description=(
+            "Invoice has two payments totaling less than invoice amount. "
+            "Join payments to compute remaining balance."
+        ),
+        category="financial",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="TC Boiler", industry="Industrial")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="TC Boiler",
+                    so_number="SO-2002",
+                    title="Equipment repair",
+                    status="fulfilled",
+                )
+            ],
+            invoices=[
+                InvoiceSetup(
+                    sales_order_number="SO-2002",
+                    invoice_number="INV-2201",
+                    amount=Decimal("5000.00"),
+                    due_date=date(2025, 10, 15),
+                    status="open",
+                )
+            ],
+            payments=[
+                PaymentSetup(
+                    invoice_number="INV-2201",
+                    amount=Decimal("2000.00"),
+                    method="ACH",
+                ),
+                PaymentSetup(
+                    invoice_number="INV-2201",
+                    amount=Decimal("1500.00"),
+                    method="ACH",
+                ),
+            ],
+        ),
+        expected_query="How much does TC Boiler still owe on INV-2201?",
+        expected_behavior=(
+            "Join payments to compute: $5000 - ($2000 + $1500) = $1500 remaining. "
+            "Store episodic memory that user asked about balances for this customer "
+            "(improves future weighting for finance intents)."
+        ),
+    )
+)
+
+# Scenario 6: SLA breach detection from tasks + orders
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=6,
+        title="SLA breach detection from tasks + orders",
+        description=(
+            "Support tasks reference an SLA window. Retrieve open task age + SO status; "
+            "reply flags risk and suggests next steps."
+        ),
+        category="sla_monitoring",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+            tasks=[
+                TaskSetup(
+                    customer_name="Kai Media",
+                    title="Investigate shipping SLA for Kai Media",
+                    body="Task created 10 days ago, status=todo",
+                    status="todo",
+                )
+            ],
+        ),
+        expected_query="Are we at risk of an SLA breach for Kai Media?",
+        expected_behavior=(
+            "Retrieve open task age (10 days) + SO status. Reply flags SLA risk and "
+            "suggests next steps. Memory logs risk tag to increase importance for related recalls."
+        ),
+    )
+)
+
+# Scenario 7: Conflicting memories → consolidation rules
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=7,
+        title="Conflicting memories → consolidation rules",
+        description=(
+            "Two sessions recorded delivery preference as Thursday vs Friday. "
+            "Consolidation picks most recent or most reinforced value."
+        ),
+        category="conflict_resolution",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+        ),
+        expected_query="What day should we deliver to Kai Media?",
+        expected_behavior=(
+            "Consolidation picks the most recent or most reinforced value. Reply cites "
+            "confidence and offers to confirm. If confirmed, demote conflicting memory "
+            "via decay and add corrective semantic memory."
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="TechStart Inc",
-                predicate="prefers_contact_method",
+                subject="Kai Media",
+                predicate="prefers_delivery_day",
                 predicate_type="preference",
-                object_value={"method": "Slack", "handle": "@techstart-finance"},
-                confidence=0.90,
+                object_value={"day": "Thursday", "session": "older"},
+                confidence=0.70,
             ),
             SemanticMemorySetup(
-                subject="TechStart Inc",
-                predicate="payment_terms",
-                predicate_type="requirement",
-                object_value={"terms": "NET45", "reason": "cash flow planning"},
-                confidence=0.95,
-            ),
-            SemanticMemorySetup(
-                subject="TechStart Inc",
-                predicate="timezone",
-                predicate_type="attribute",
-                object_value={"timezone": "America/Los_Angeles", "label": "PST/PDT"},
+                subject="Kai Media",
+                predicate="prefers_delivery_day",
+                predicate_type="preference",
+                object_value={"day": "Friday", "session": "recent"},
                 confidence=0.85,
             ),
         ],
     )
 )
 
-# Scenario 3: Historical context and past issues
+# Scenario 8: Multilingual/alias handling
 ScenarioRegistry.register(
     ScenarioDefinition(
-        scenario_id=3,
-        title="Past issue recall for quality-sensitive customer",
+        scenario_id=8,
+        title="Multilingual/alias handling",
         description=(
-            "Sales team preparing quote for customer with past quality issues. "
-            "System must surface historical context to inform current work."
+            "User mixes languages. NER detects entity; memory stored in English canonical "
+            "form with original text preserved. Add alias mapping for multilingual mentions."
         ),
-        category="memory_retrieval",
+        category="entity_resolution",
         domain_setup=DomainDataSetup(
             customers=[
-                CustomerSetup(
-                    name="BuildRight Construction",
-                    industry="Construction",
-                    notes="Mid-sized regional contractor"
-                )
-            ],
-            sales_orders=[
-                SalesOrderSetup(
-                    customer_name="BuildRight Construction",
-                    so_number="SO-3001",
-                    title="Steel Beams - Downtown Project",
-                    status="fulfilled",
-                )
-            ],
-            tasks=[
-                TaskSetup(
-                    customer_name="BuildRight Construction",
-                    title="Prepare quote for new residential project",
-                    body="BuildRight requesting quote for 50-unit development",
-                    status="todo",
-                )
+                CustomerSetup(name="Kai Media", industry="Entertainment")
             ],
         ),
         expected_query=(
-            "Prepare a quote for BuildRight's new project"
+            "Recuérdame que Kai Media prefiere entregas los viernes."
         ),
         expected_behavior=(
-            "Retrieval surfaces task + past issue memory. Reply includes quote but emphasizes "
-            "quality controls, detailed specifications, and reference to resolved past complaint. "
-            "Shows awareness of customer's high standards."
+            "NER detects 'Kai Media'; memory stored in English canonical form "
+            "('prefers Friday deliveries') with original Spanish text preserved. "
+            "Future English queries retrieve it. Add alias mapping."
         ),
-        semantic_memories=[
-            SemanticMemorySetup(
-                subject="BuildRight Construction",
-                predicate="past_issue",
-                predicate_type="observation",
-                object_value={
-                    "issue": "Quality complaint on SO-3001",
-                    "resolution": "Replaced 3 beams, added extra QC step",
-                    "date": "2025-08-15",
-                    "resolved": True
-                },
-                confidence=0.95,
-            ),
-            SemanticMemorySetup(
-                subject="BuildRight Construction",
-                predicate="requires_detailed_specs",
-                predicate_type="requirement",
-                object_value={
-                    "detail_level": "high",
-                    "includes": ["material certs", "tolerance specs", "delivery schedule"]
-                },
-                confidence=0.88,
-            ),
-        ],
     )
 )
 
-# Scenario 4: Payment behavior patterns
+# Scenario 9: Cold-start grounding to DB facts
 ScenarioRegistry.register(
     ScenarioDefinition(
-        scenario_id=4,
-        title="Payment behavior prediction for collections",
+        scenario_id=9,
+        title="Cold-start grounding to DB facts",
         description=(
-            "Finance team managing collections for customer with known payment patterns. "
-            "System must retrieve behavioral observations to predict payment timing."
+            "No prior memories. System returns purely DB-grounded answer from "
+            "sales_orders/work_orders, creates episodic memory."
         ),
-        category="memory_retrieval",
+        category="db_grounding",
         domain_setup=DomainDataSetup(
             customers=[
-                CustomerSetup(
-                    name="MediCare Plus",
-                    industry="Healthcare",
-                    notes="Regional healthcare provider network"
-                )
+                CustomerSetup(name="TC Boiler", industry="Industrial")
             ],
             sales_orders=[
                 SalesOrderSetup(
-                    customer_name="MediCare Plus",
-                    so_number="SO-4001",
-                    title="Medical Supplies - Q3 Batch",
-                    status="fulfilled",
-                )
-            ],
-            invoices=[
-                InvoiceSetup(
-                    sales_order_number="SO-4001",
-                    invoice_number="INV-4045",
-                    amount=Decimal("15000.00"),
-                    due_date=date(2025, 10, 1),
-                    status="open",
-                )
-            ],
-            payments=[
-                PaymentSetup(
-                    invoice_number="INV-4045",
-                    amount=Decimal("5000.00"),
-                    method="wire",
-                )
-            ],
-        ),
-        expected_query=(
-            "When should we expect payment from MediCare for INV-4045?"
-        ),
-        expected_behavior=(
-            "Retrieval surfaces invoice ($15k due Oct 1, $5k paid, $10k outstanding) + payment patterns. "
-            "Reply predicts payment 2-3 days after due date based on history, mentions wire transfer preference, "
-            "notes PO number requirement for remaining balance."
-        ),
-        semantic_memories=[
-            SemanticMemorySetup(
-                subject="MediCare Plus",
-                predicate="payment_timing_pattern",
-                predicate_type="observation",
-                object_value={
-                    "pattern": "typically_late",
-                    "average_days_late": 2.5,
-                    "sample_size": 12
-                },
-                confidence=0.87,
-            ),
-            SemanticMemorySetup(
-                subject="MediCare Plus",
-                predicate="payment_method_preference",
-                predicate_type="preference",
-                object_value={"method": "wire", "reason": "accounting policy"},
-                confidence=0.92,
-            ),
-            SemanticMemorySetup(
-                subject="MediCare Plus",
-                predicate="requires_po_number",
-                predicate_type="requirement",
-                object_value={"required": True, "for_amounts_over": 1000},
-                confidence=0.95,
-            ),
-        ],
-    )
-)
-
-# Scenario 5: Organizational relationships and policies
-ScenarioRegistry.register(
-    ScenarioDefinition(
-        scenario_id=5,
-        title="Corporate hierarchy and policy enforcement",
-        description=(
-            "Sales team handling subsidiary request that requires understanding of "
-            "parent company policies and organizational structure."
-        ),
-        category="memory_retrieval",
-        domain_setup=DomainDataSetup(
-            customers=[
-                CustomerSetup(
-                    name="Global Dynamics Corp",
-                    industry="Manufacturing",
-                    notes="Fortune 500 parent company"
-                ),
-                CustomerSetup(
-                    name="Global Dynamics EU",
-                    industry="Manufacturing",
-                    notes="European subsidiary of Global Dynamics Corp"
-                )
-            ],
-            sales_orders=[
-                SalesOrderSetup(
-                    customer_name="Global Dynamics EU",
-                    so_number="SO-5001",
-                    title="Industrial Equipment - Frankfurt Facility",
-                    status="draft",
-                )
-            ],
-        ),
-        expected_query=(
-            "Can we fast-track the order for Global Dynamics EU?"
-        ),
-        expected_behavior=(
-            "Retrieval surfaces SO-5001 (draft) + parent company relationship + policy. "
-            "Reply explains that Global Dynamics EU is a subsidiary, all contracts require "
-            "legal review by parent company regardless of subsidiary, cannot fast-track without "
-            "parent approval."
-        ),
-        semantic_memories=[
-            SemanticMemorySetup(
-                subject="Global Dynamics EU",
-                predicate="parent_company",
-                predicate_type="attribute",
-                object_value={
-                    "parent": "Global Dynamics Corp",
-                    "relationship": "wholly_owned_subsidiary"
-                },
-                confidence=0.98,
-            ),
-            SemanticMemorySetup(
-                subject="Global Dynamics Corp",
-                predicate="contract_policy",
-                predicate_type="policy",
-                object_value={
-                    "requirement": "legal_review_required",
-                    "applies_to": ["parent", "all_subsidiaries"],
-                    "minimum_review_time_days": 5
-                },
-                confidence=0.95,
-            ),
-        ],
-    )
-)
-
-# Scenario 6: Multi-entity task prioritization
-ScenarioRegistry.register(
-    ScenarioDefinition(
-        scenario_id=6,
-        title="Multi-customer task and context management",
-        description=(
-            "Sales rep reviewing daily priorities across multiple customers. "
-            "System must surface tasks and relevant context for each customer."
-        ),
-        category="memory_retrieval",
-        domain_setup=DomainDataSetup(
-            customers=[
-                CustomerSetup(
-                    name="Zephyr Airlines",
-                    industry="Transportation",
-                    notes="Budget airline, cost-conscious"
-                ),
-                CustomerSetup(
-                    name="Acme Manufacturing",
-                    industry="Manufacturing",
-                    notes="High-volume repeat customer"
-                )
-            ],
-            tasks=[
-                TaskSetup(
-                    customer_name="Zephyr Airlines",
-                    title="Follow-up call about Q4 contract renewal",
-                    body="Zephyr contract expires Nov 30, discuss renewal terms",
-                    status="todo",
-                ),
-                TaskSetup(
-                    customer_name="Acme Manufacturing",
-                    title="Expedite shipping for rush order SO-6002",
-                    body="Acme needs delivery by Oct 20 for production deadline",
-                    status="doing",
-                )
-            ],
-            sales_orders=[
-                SalesOrderSetup(
-                    customer_name="Acme Manufacturing",
-                    so_number="SO-6002",
-                    title="Steel Components - Rush Order",
+                    customer_name="TC Boiler",
+                    so_number="SO-2002",
+                    title="On-site repair",
                     status="in_fulfillment",
                 )
             ],
+            work_orders=[
+                WorkOrderSetup(
+                    sales_order_number="SO-2002",
+                    description="Replace valve",
+                    status="in_progress",
+                    technician="Alex",
+                )
+            ],
         ),
-        expected_query=(
-            "What are my priorities for today?"
-        ),
+        expected_query="What's the status of TC Boiler's order?",
         expected_behavior=(
-            "Retrieval surfaces both tasks + customer context. Reply lists: "
-            "(1) Expedite Acme shipping (in progress, high priority, customer values speed). "
-            "(2) Call Zephyr about renewal (emphasize value/cost savings, customer is price-sensitive). "
-            "Shows understanding of different customer priorities."
+            "System returns purely DB-grounded answer: SO-2002 is in_fulfillment, "
+            "WO in_progress (Alex replacing valve). Creates episodic memory summarizing "
+            "the question and returned facts."
+        ),
+    )
+)
+
+# Scenario 10: Active recall to validate stale facts
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=10,
+        title="Active recall to validate stale facts",
+        description=(
+            "Preference older than 90 days with low reinforcement. Before finalizing, "
+            "system asks: 'We have Friday preference on record from 2025-05-10; still accurate?'"
+        ),
+        category="confidence_management",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+        ),
+        expected_query="Schedule a delivery for Kai Media next week.",
+        expected_behavior=(
+            "Before finalizing, system asks: 'We have Friday preference on record from "
+            "2025-05-10; still accurate?' If confirmed, resets decay; if changed, "
+            "updates semantic memory and writes summary."
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="Zephyr Airlines",
-                predicate="price_sensitivity",
-                predicate_type="observation",
-                object_value={
-                    "sensitivity": "high",
-                    "pattern": "always_requests_discount",
-                    "decision_factor": "primary"
-                },
+                subject="Kai Media",
+                predicate="prefers_delivery_day",
+                predicate_type="preference",
+                object_value={"day": "Friday", "last_validated": "2025-05-10"},
+                confidence=0.60,  # Decayed
+            )
+        ],
+    )
+)
+
+# Scenario 11: Cross-object reasoning (SO → WO → Invoice chain)
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=11,
+        title="Cross-object reasoning (SO → WO → Invoice chain)",
+        description=(
+            "Use chain: if work_orders.status=done for SO and no invoices exist, "
+            "recommend generating invoice. Memory stores policy preference."
+        ),
+        category="operational",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="TC Boiler", industry="Industrial")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="TC Boiler",
+                    so_number="SO-2002",
+                    title="On-site repair",
+                    status="fulfilled",
+                )
+            ],
+            work_orders=[
+                WorkOrderSetup(
+                    sales_order_number="SO-2002",
+                    description="Replace valve",
+                    status="done",
+                    technician="Alex",
+                )
+            ],
+        ),
+        expected_query="Can we invoice as soon as the repair is done?",
+        expected_behavior=(
+            "Use chain: WO status=done for SO-2002, no invoices exist → recommend "
+            "generating invoice. If invoice exists and is open, suggest sending it. "
+            "Memory stores policy: 'Invoice immediately upon WO=done'."
+        ),
+    )
+)
+
+# Scenario 12: Conversation-driven entity linking with fuzzy match
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=12,
+        title="Conversation-driven entity linking with fuzzy match",
+        description=(
+            "User types 'Kay Media'. Fuzzy match exceeds threshold to 'Kai Media'; "
+            "system confirms once, then stores alias to avoid repeated confirmations."
+        ),
+        category="entity_resolution",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+        ),
+        expected_query="Open a WO for Kay Media for packaging.",
+        expected_behavior=(
+            "Fuzzy match exceeds threshold to 'Kai Media'. System confirms once: "
+            "'Did you mean Kai Media?' Then stores alias 'Kay Media' → 'Kai Media' "
+            "in entity_aliases to avoid repeated confirmations."
+        ),
+    )
+)
+
+# Scenario 13: Policy & PII guardrail memory
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=13,
+        title="Policy & PII guardrail memory",
+        description=(
+            "User provides PII. Redact before storage per PII policy (store masked token + purpose). "
+            "Later use masked contact, not raw PII."
+        ),
+        category="pii_safety",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Demo User", industry="Internal")
+            ],
+        ),
+        expected_query="Remember my personal cell: 415-555-0199 for urgent alerts.",
+        expected_behavior=(
+            "Redact before storage per PII policy: store masked token '[PHONE_REDACTED]' + "
+            "purpose 'urgent_alerts'. On later: 'Alert me about any overdue invoice today' → "
+            "system uses masked contact, not raw PII."
+        ),
+    )
+)
+
+# Scenario 14: Session window consolidation example
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=14,
+        title="Session window consolidation example",
+        description=(
+            "Three sessions discuss TC Boiler terms, rush WO, payment plan. "
+            "/consolidate generates single summary."
+        ),
+        category="consolidation",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="TC Boiler", industry="Industrial")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="TC Boiler",
+                    so_number="SO-2002",
+                    title="Rush repair",
+                    status="fulfilled",
+                )
+            ],
+        ),
+        expected_query=(
+            "What are TC Boiler's agreed terms and current commitments?"
+        ),
+        expected_behavior=(
+            "/consolidate generates single summary capturing: NET15 terms, rush WO "
+            "linked to SO-2002, payment plan. Subsequent retrieval uses this summary."
+        ),
+        semantic_memories=[
+            SemanticMemorySetup(
+                subject="TC Boiler",
+                predicate="payment_terms",
+                predicate_type="requirement",
+                object_value={"terms": "NET15"},
                 confidence=0.90,
             ),
-            SemanticMemorySetup(
-                subject="Acme Manufacturing",
-                predicate="values_speed",
-                predicate_type="preference",
-                object_value={
-                    "priority": "delivery_speed",
-                    "willing_to_pay_premium": True
-                },
-                confidence=0.88,
-            ),
         ],
+    )
+)
+
+# Scenario 15: Audit trail / explainability
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=15,
+        title="Audit trail / explainability",
+        description=(
+            "/explain returns memory IDs, similarity scores, specific chat event that "
+            "created the memory, plus any reinforcing confirmations."
+        ),
+        category="explainability",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+        ),
+        expected_query="Why did you say Kai Media prefers Fridays?",
+        expected_behavior=(
+            "/explain returns: memory ID 42, similarity score 0.92, chat_event_id 108 "
+            "(created 2025-08-15), reinforced 3 times (event IDs 115, 127, 134)."
+        ),
+        semantic_memories=[
+            SemanticMemorySetup(
+                subject="Kai Media",
+                predicate="prefers_delivery_day",
+                predicate_type="preference",
+                object_value={"day": "Friday"},
+                confidence=0.92,
+            )
+        ],
+    )
+)
+
+# Scenario 16: Reminder creation from conversational intent
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=16,
+        title="Reminder creation from conversational intent",
+        description=(
+            "Store semantic policy memory. On future /chat calls involving invoices, "
+            "system checks due dates and surfaces proactive notices."
+        ),
+        category="procedural_memory",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Demo User", industry="Internal")
+            ],
+        ),
+        expected_query=(
+            "If an invoice is still open 3 days before due, remind me."
+        ),
+        expected_behavior=(
+            "Store semantic policy memory: 'reminder_rule: open_invoice_3_days_before_due'. "
+            "On future /chat calls involving invoices, system checks due dates and "
+            "surfaces proactive notices."
+        ),
+    )
+)
+
+# Scenario 17: Error handling when DB and memory disagree
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=17,
+        title="Error handling when DB and memory disagree",
+        description=(
+            "Memory says 'SO-1001 is fulfilled' but DB shows 'in_fulfillment'. "
+            "Prefer authoritative DB; mark outdated memory for decay."
+        ),
+        category="conflict_resolution",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="Kai Media",
+                    so_number="SO-1001",
+                    title="Album Fulfillment",
+                    status="in_fulfillment",  # DB truth
+                )
+            ],
+        ),
+        expected_query="Is SO-1001 complete?",
+        expected_behavior=(
+            "Memory says 'SO-1001 is fulfilled' but DB shows 'in_fulfillment'. "
+            "Prefer authoritative DB; respond with DB truth and mark outdated memory "
+            "for decay and corrective summary."
+        ),
+        semantic_memories=[
+            SemanticMemorySetup(
+                subject="SO-1001",
+                predicate="status",
+                predicate_type="observation",
+                object_value={"status": "fulfilled"},  # Outdated memory
+                confidence=0.80,
+            )
+        ],
+    )
+)
+
+# Scenario 18: Task completion via conversation
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=18,
+        title="Task completion via conversation",
+        description=(
+            "Return SQL patch suggestion (or mocked effect), store summary as semantic memory."
+        ),
+        category="task_management",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Kai Media", industry="Entertainment")
+            ],
+            tasks=[
+                TaskSetup(
+                    customer_name="Kai Media",
+                    title="SLA investigation task for Kai Media",
+                    body="Investigate shipping SLA compliance",
+                    status="doing",
+                )
+            ],
+        ),
+        expected_query=(
+            "Mark the SLA investigation task for Kai Media as done and summarize what we learned."
+        ),
+        expected_behavior=(
+            "Return SQL patch suggestion: UPDATE tasks SET status='done' WHERE title LIKE '%SLA investigation%'. "
+            "Store summary as semantic memory: 'SLA investigation completed; compliance verified'."
+        ),
     )
 )

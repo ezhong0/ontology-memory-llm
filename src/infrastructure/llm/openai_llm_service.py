@@ -7,9 +7,9 @@ and semantic triple extraction.
 import json
 from typing import Any
 
+import structlog
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
-import structlog
 
 from src.domain.exceptions import LLMServiceError
 from src.domain.ports import ILLMService
@@ -127,7 +127,8 @@ class OpenAILLMService(ILLMService):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            raise LLMServiceError(f"LLM coreference resolution failed: {e}") from e
+            msg = f"LLM coreference resolution failed: {e}"
+            raise LLMServiceError(msg) from e
 
     async def extract_entity_mentions(self, text: str) -> list[EntityMention]:
         """Extract entity mentions from text using LLM.
@@ -144,9 +145,12 @@ class OpenAILLMService(ILLMService):
         Raises:
             NotImplementedError: Not implemented in Phase 1A
         """
-        raise NotImplementedError(
+        msg = (
             "LLM-based mention extraction not implemented in Phase 1A. "
             "Use simple pattern-based extraction for now."
+        )
+        raise NotImplementedError(
+            msg
         )
 
     async def extract_semantic_triples(
@@ -235,7 +239,8 @@ class OpenAILLMService(ILLMService):
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            raise LLMServiceError(f"Semantic triple extraction failed: {e}") from e
+            msg = f"Semantic triple extraction failed: {e}"
+            raise LLMServiceError(msg) from e
 
     def _build_extraction_prompt(
         self,
@@ -254,7 +259,7 @@ class OpenAILLMService(ILLMService):
         # Format entities as JSON
         entities_json = json.dumps(resolved_entities, indent=2)
 
-        prompt = f"""Extract semantic triples (subject-predicate-object) from the message below.
+        return f"""Extract semantic triples (subject-predicate-object) from the message below.
 
 Resolved Entities:
 {entities_json}
@@ -297,7 +302,6 @@ Output Format (JSON):
 Respond with ONLY the JSON object. If no triples can be extracted, return {{"triples": []}}.
 """
 
-        return prompt
 
     def _parse_extraction_response(
         self,
@@ -330,12 +334,14 @@ Respond with ONLY the JSON object. If no triples can be extracted, return {{"tri
             parsed = json.loads(response_text)
 
             if not isinstance(parsed, dict):
-                raise ValueError("Response is not a JSON object")
+                msg = "Response is not a JSON object"
+                raise ValueError(msg)
 
             triples = parsed.get("triples", [])
 
             if not isinstance(triples, list):
-                raise ValueError("triples field is not a list")
+                msg = "triples field is not a list"
+                raise ValueError(msg)
 
             logger.debug(
                 "parsed_extraction_response",
@@ -381,7 +387,7 @@ Respond with ONLY the JSON object. If no triples can be extracted, return {{"tri
         for entity_id, name in context.recent_entities[-5:]:
             candidates += f"- {name} (id: {entity_id})\n"
 
-        prompt = f"""Resolve the pronoun reference in this conversation.
+        return f"""Resolve the pronoun reference in this conversation.
 
 Recent conversation:
 {recent_msgs}
@@ -402,7 +408,6 @@ Instructions:
 
 Response (entity_id or UNKNOWN):"""
 
-        return prompt
 
     def _parse_coreference_response(
         self,

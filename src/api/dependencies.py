@@ -2,7 +2,8 @@
 
 Dependency injection for API routes.
 """
-from typing import Annotated, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,13 +11,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.application.use_cases import ProcessChatMessageUseCase
 from src.domain.services import (
     ConflictDetectionService,
+    ConsolidationService,
+    ConsolidationTriggerService,
+    DomainAugmentationService,
     MemoryValidationService,
+    MultiSignalScorer,
+    ProceduralMemoryService,
     SemanticExtractionService,
 )
 from src.infrastructure.database.repositories import (
     ChatEventRepository,
+    DomainDatabaseRepository,
     EntityRepository,
+    EpisodicMemoryRepository,
+    ProceduralMemoryRepository,
     SemanticMemoryRepository,
+    SummaryRepository,
 )
 from src.infrastructure.database.session import get_db_session
 from src.infrastructure.di.container import container
@@ -66,8 +76,15 @@ async def get_process_chat_message_use_case(
         db: Database session (injected by FastAPI)
 
     Returns:
-        Fully wired use case instance
+        Fully wired use case instance with Phase 1A, 1B, 1C, and 1D use cases
     """
+    from src.application.use_cases import (
+        AugmentWithDomainUseCase,
+        ExtractSemanticsUseCase,
+        ResolveEntitiesUseCase,
+        ScoreMemoriesUseCase,
+    )
+
     # Create repositories with the session
     entity_repo = EntityRepository(db)
     chat_repo = ChatEventRepository(db)
@@ -88,17 +105,152 @@ async def get_process_chat_message_use_case(
     memory_validation_service = MemoryValidationService()
     conflict_detection_service = ConflictDetectionService()
 
-    # Create and return use case
-    use_case = ProcessChatMessageUseCase(
+    # Create Phase 1C services
+    domain_db_repo = DomainDatabaseRepository(db)
+    domain_augmentation_service = DomainAugmentationService(domain_db_port=domain_db_repo)
+    llm_reply_generator = container.llm_reply_generator()
+
+    # Create Phase 1D services
+    multi_signal_scorer = MultiSignalScorer(validation_service=memory_validation_service)
+
+    # Create individual use cases (refactored architecture)
+    resolve_entities_use_case = ResolveEntitiesUseCase(
         entity_repository=entity_repo,
         chat_repository=chat_repo,
         entity_resolution_service=entity_resolution_service,
         mention_extractor=mention_extractor,
+    )
+
+    extract_semantics_use_case = ExtractSemanticsUseCase(
+        semantic_memory_repository=semantic_memory_repo,
         semantic_extraction_service=semantic_extraction_service,
         memory_validation_service=memory_validation_service,
         conflict_detection_service=conflict_detection_service,
-        semantic_memory_repository=semantic_memory_repo,
         embedding_service=embedding_service,
     )
 
-    return use_case
+    augment_with_domain_use_case = AugmentWithDomainUseCase(
+        domain_augmentation_service=domain_augmentation_service,
+    )
+
+    score_memories_use_case = ScoreMemoriesUseCase(
+        multi_signal_scorer=multi_signal_scorer,
+        embedding_service=embedding_service,
+        semantic_memory_repository=semantic_memory_repo,
+    )
+
+    # Create orchestrator use case
+    return ProcessChatMessageUseCase(
+        chat_repository=chat_repo,
+        resolve_entities_use_case=resolve_entities_use_case,
+        extract_semantics_use_case=extract_semantics_use_case,
+        augment_with_domain_use_case=augment_with_domain_use_case,
+        score_memories_use_case=score_memories_use_case,
+        llm_reply_generator=llm_reply_generator,
+    )
+
+
+
+async def get_consolidation_service(
+    db: AsyncSession = Depends(get_db),
+) -> ConsolidationService:
+    """Get ConsolidationService with dependencies injected.
+
+    Args:
+        db: Database session (injected by FastAPI)
+
+    Returns:
+        Fully wired consolidation service instance
+    """
+    # Create repositories
+    episodic_repo = EpisodicMemoryRepository(db)
+    semantic_repo = SemanticMemoryRepository(db)
+    summary_repo = SummaryRepository(db)
+
+    # Get services from container
+    llm_service = container.llm_service()
+    embedding_service = container.embedding_service()
+
+    # Create and return consolidation service
+    return ConsolidationService(
+        episodic_repo=episodic_repo,
+        semantic_repo=semantic_repo,
+        summary_repo=summary_repo,
+        llm_service=llm_service,
+        embedding_service=embedding_service,
+    )
+
+
+
+async def get_consolidation_trigger_service(
+    db: AsyncSession = Depends(get_db),
+) -> ConsolidationTriggerService:
+    """Get ConsolidationTriggerService with dependencies injected.
+
+    Args:
+        db: Database session (injected by FastAPI)
+
+    Returns:
+        Fully wired consolidation trigger service instance
+    """
+    # Create repositories
+    episodic_repo = EpisodicMemoryRepository(db)
+    chat_repo = ChatEventRepository(db)
+
+    # Create and return trigger service
+    return ConsolidationTriggerService(
+        episodic_repo=episodic_repo,
+        chat_repo=chat_repo,
+    )
+
+
+
+async def get_summary_repository(
+    db: AsyncSession = Depends(get_db),
+) -> SummaryRepository:
+    """Get SummaryRepository with database session.
+
+    Args:
+        db: Database session (injected by FastAPI)
+
+    Returns:
+        Summary repository instance
+    """
+    return SummaryRepository(db)
+
+
+async def get_procedural_service(
+    db: AsyncSession = Depends(get_db),
+) -> ProceduralMemoryService:
+    """Get ProceduralMemoryService with dependencies injected.
+
+    Args:
+        db: Database session (injected by FastAPI)
+
+    Returns:
+        Fully wired procedural memory service instance
+    """
+    # Create repositories
+    episodic_repo = EpisodicMemoryRepository(db)
+    procedural_repo = ProceduralMemoryRepository(db)
+
+    # Create and return service
+    return ProceduralMemoryService(
+        episodic_repo=episodic_repo,
+        procedural_repo=procedural_repo,
+    )
+
+
+
+async def get_procedural_repository(
+    db: AsyncSession = Depends(get_db),
+) -> ProceduralMemoryRepository:
+    """Get ProceduralMemoryRepository with database session.
+
+    Args:
+        db: Database session (injected by FastAPI)
+
+    Returns:
+        Procedural memory repository instance
+    """
+    return ProceduralMemoryRepository(db)

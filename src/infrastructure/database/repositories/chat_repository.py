@@ -2,12 +2,11 @@
 
 Implements IChatEventRepository using SQLAlchemy and PostgreSQL.
 """
-from typing import Optional
 from uuid import UUID
 
+import structlog
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-import structlog
 
 from src.domain.entities import ChatMessage
 from src.domain.exceptions import RepositoryError
@@ -94,9 +93,10 @@ class ChatEventRepository(IChatEventRepository):
                 session_id=str(message.session_id),
                 error=str(e),
             )
-            raise RepositoryError(f"Error creating chat event: {e}") from e
+            msg = f"Error creating chat event: {e}"
+            raise RepositoryError(msg) from e
 
-    async def get_by_event_id(self, event_id: int) -> Optional[ChatMessage]:
+    async def get_by_event_id(self, event_id: int) -> ChatMessage | None:
         """Get a chat message by event ID.
 
         Args:
@@ -114,7 +114,8 @@ class ChatEventRepository(IChatEventRepository):
 
         except Exception as e:
             logger.error("get_by_event_id_error", event_id=event_id, error=str(e))
-            raise RepositoryError(f"Error getting chat event: {e}") from e
+            msg = f"Error getting chat event: {e}"
+            raise RepositoryError(msg) from e
 
     async def get_recent_for_user(
         self, user_id: str, limit: int = 10
@@ -146,7 +147,8 @@ class ChatEventRepository(IChatEventRepository):
 
         except Exception as e:
             logger.error("get_recent_for_user_error", user_id=user_id, error=str(e))
-            raise RepositoryError(f"Error getting recent messages: {e}") from e
+            msg = f"Error getting recent messages: {e}"
+            raise RepositoryError(msg) from e
 
     async def get_recent_for_session(
         self, session_id: UUID, limit: int = 10
@@ -179,7 +181,8 @@ class ChatEventRepository(IChatEventRepository):
                 session_id=str(session_id),
                 error=str(e),
             )
-            raise RepositoryError(f"Error getting session messages: {e}") from e
+            msg = f"Error getting session messages: {e}"
+            raise RepositoryError(msg) from e
 
     def _to_domain_message(self, model: ChatEventModel) -> ChatMessage:
         """Convert ORM model to domain entity.

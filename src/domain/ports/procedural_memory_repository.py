@@ -4,12 +4,11 @@ Interface for procedural memory persistence and retrieval.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 import numpy as np
 from numpy import typing as npt
 
-from src.domain.value_objects.procedural_memory import ProceduralMemory
+from src.domain.entities.procedural_memory import ProceduralMemory
 
 
 class IProceduralMemoryRepository(ABC):
@@ -32,12 +31,11 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If creation fails
         """
-        pass
 
     @abstractmethod
     async def get_by_id(
-        self, memory_id: int, user_id: Optional[str] = None
-    ) -> Optional[ProceduralMemory]:
+        self, memory_id: int, user_id: str | None = None
+    ) -> ProceduralMemory | None:
         """Get procedural memory by ID.
 
         Args:
@@ -50,7 +48,6 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If query fails
         """
-        pass
 
     @abstractmethod
     async def find_by_user(
@@ -58,7 +55,7 @@ class IProceduralMemoryRepository(ABC):
         user_id: str,
         min_confidence: float = 0.5,
         limit: int = 100,
-    ) -> List[ProceduralMemory]:
+    ) -> list[ProceduralMemory]:
         """Find all procedural memories for a user.
 
         Args:
@@ -72,7 +69,6 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If query fails
         """
-        pass
 
     @abstractmethod
     async def find_similar(
@@ -81,7 +77,7 @@ class IProceduralMemoryRepository(ABC):
         query_embedding: npt.NDArray[np.float64],
         limit: int = 10,
         min_confidence: float = 0.5,
-    ) -> List[ProceduralMemory]:
+    ) -> list[ProceduralMemory]:
         """Find procedural memories similar to query.
 
         Uses pgvector cosine similarity on trigger_pattern embeddings.
@@ -100,7 +96,6 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If query fails
         """
-        pass
 
     @abstractmethod
     async def update(self, memory: ProceduralMemory) -> ProceduralMemory:
@@ -117,7 +112,6 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If update fails or memory_id not found
         """
-        pass
 
     @abstractmethod
     async def delete(self, memory_id: int, user_id: str) -> bool:
@@ -133,18 +127,17 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If deletion fails
         """
-        pass
 
     @abstractmethod
     async def find_by_trigger_features(
         self,
         user_id: str,
-        intent: Optional[str] = None,
-        entity_types: Optional[List[str]] = None,
-        topics: Optional[List[str]] = None,
+        intent: str | None = None,
+        entity_types: list[str] | None = None,
+        topics: list[str] | None = None,
         min_confidence: float = 0.5,
         limit: int = 20,
-    ) -> List[ProceduralMemory]:
+    ) -> list[ProceduralMemory]:
         """Find procedural memories matching trigger features.
 
         Deterministic matching based on JSONB trigger_features.
@@ -163,4 +156,3 @@ class IProceduralMemoryRepository(ABC):
         Raises:
             RepositoryError: If query fails
         """
-        pass

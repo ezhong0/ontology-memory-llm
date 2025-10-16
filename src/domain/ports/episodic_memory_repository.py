@@ -4,10 +4,10 @@ Defines the contract for episodic memory data access.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 from uuid import UUID
 
 import numpy as np
+import numpy.typing as npt
 
 from src.domain.value_objects.memory_candidate import MemoryCandidate
 
@@ -23,10 +23,10 @@ class IEpisodicMemoryRepository(ABC):
     async def find_similar(
         self,
         user_id: str,
-        query_embedding: np.ndarray,
+        query_embedding: npt.NDArray[np.float64],
         limit: int = 50,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find similar episodic memories using pgvector.
 
         Args:
@@ -38,15 +38,14 @@ class IEpisodicMemoryRepository(ABC):
         Returns:
             List of memory candidates from episodic layer
         """
-        pass
 
     @abstractmethod
     async def find_recent(
         self,
         user_id: str,
         limit: int = 10,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find recent episodic memories (chronological order).
 
         Args:
@@ -57,17 +56,16 @@ class IEpisodicMemoryRepository(ABC):
         Returns:
             List of recent memory candidates
         """
-        pass
 
     @abstractmethod
     async def find_by_user(
         self,
         user_id: str,
-        since: Optional[object] = None,
-        until: Optional[object] = None,
+        since: object | None = None,
+        until: object | None = None,
         limit: int = 500,
-        session_id: Optional[UUID] = None,
-    ) -> List[MemoryCandidate]:
+        session_id: UUID | None = None,
+    ) -> list[MemoryCandidate]:
         """Find episodic memories for a user within a time range.
 
         Used for pattern detection and consolidation.
@@ -82,4 +80,3 @@ class IEpisodicMemoryRepository(ABC):
         Returns:
             List of memory candidates ordered by created_at DESC
         """
-        pass

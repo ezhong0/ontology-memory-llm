@@ -3,7 +3,6 @@
 Implements semantic memory storage using SQLAlchemy and PostgreSQL with pgvector.
 """
 
-from typing import Optional
 
 import structlog
 from sqlalchemy import and_, select
@@ -71,9 +70,10 @@ class SemanticMemoryRepository:
                 predicate=memory.predicate,
                 error=str(e),
             )
-            raise RepositoryError(f"Error creating semantic memory: {e}") from e
+            msg = f"Error creating semantic memory: {e}"
+            raise RepositoryError(msg) from e
 
-    async def find_by_id(self, memory_id: int) -> Optional[SemanticMemory]:
+    async def find_by_id(self, memory_id: int) -> SemanticMemory | None:
         """Find semantic memory by ID.
 
         Args:
@@ -93,7 +93,8 @@ class SemanticMemoryRepository:
 
         except Exception as e:
             logger.error("find_by_id_error", memory_id=memory_id, error=str(e))
-            raise RepositoryError(f"Error finding memory by ID: {e}") from e
+            msg = f"Error finding memory by ID: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_subject_predicate(
         self,
@@ -145,7 +146,8 @@ class SemanticMemoryRepository:
                 predicate=predicate,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding memories: {e}") from e
+            msg = f"Error finding memories: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_similar(
         self,
@@ -168,37 +170,40 @@ class SemanticMemoryRepository:
         try:
             # Use pgvector's cosine similarity operator <=>
             # Note: We filter to active memories with sufficient confidence
-            from sqlalchemy import func, text
+            from sqlalchemy import text
+
+            # Convert embedding to string format for pgvector
+            # pgvector accepts: '[0.1,0.2,0.3,...]' (no spaces)
+            if isinstance(query_embedding, list):
+                embedding_str = str(query_embedding).replace(" ", "")
+            else:
+                embedding_str = str(query_embedding.tolist()).replace(" ", "")
 
             # Build raw SQL for pgvector similarity
             # Using 1 - (embedding <=> query) to get similarity (higher = more similar)
+            # We embed the vector string directly in SQL since asyncpg can't bind it as a parameter
             stmt = text(
-                """
+                f"""
                 SELECT
                     memory_id, user_id, subject_entity_id, predicate, predicate_type,
                     object_value, confidence, confidence_factors, reinforcement_count,
                     last_validated_at, source_type, source_memory_id, extracted_from_event_id,
                     status, superseded_by_memory_id, embedding, importance,
                     created_at, updated_at,
-                    1 - (embedding <=> :query_embedding::vector) as similarity
+                    1 - (embedding <=> '{embedding_str}'::vector) as similarity
                 FROM app.semantic_memories
                 WHERE user_id = :user_id
                   AND status = 'active'
                   AND confidence >= :min_confidence
                   AND embedding IS NOT NULL
-                ORDER BY embedding <=> :query_embedding::vector
+                ORDER BY embedding <=> '{embedding_str}'::vector
                 LIMIT :limit
                 """
             )
 
             result = await self.session.execute(
                 stmt,
-                {
-                    "query_embedding": query_embedding,
-                    "user_id": user_id,
-                    "min_confidence": min_confidence,
-                    "limit": limit,
-                },
+                {"user_id": user_id, "min_confidence": min_confidence, "limit": limit},
             )
 
             matches: list[tuple[SemanticMemory, float]] = []
@@ -222,7 +227,8 @@ class SemanticMemoryRepository:
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding similar memories: {e}") from e
+            msg = f"Error finding similar memories: {e}"
+            raise RepositoryError(msg) from e
 
     async def update(self, memory: SemanticMemory) -> SemanticMemory:
         """Update an existing semantic memory.
@@ -238,7 +244,8 @@ class SemanticMemoryRepository:
         """
         try:
             if memory.memory_id is None:
-                raise RepositoryError("Cannot update memory without memory_id")
+                msg = "Cannot update memory without memory_id"
+                raise RepositoryError(msg)
 
             stmt = select(SemanticMemoryModel).where(
                 SemanticMemoryModel.memory_id == memory.memory_id
@@ -247,7 +254,8 @@ class SemanticMemoryRepository:
             model = result.scalar_one_or_none()
 
             if not model:
-                raise RepositoryError(f"Memory {memory.memory_id} not found")
+                msg = f"Memory {memory.memory_id} not found"
+                raise RepositoryError(msg)
 
             # Update fields (only fields that can change)
             model.confidence = memory.confidence
@@ -280,7 +288,8 @@ class SemanticMemoryRepository:
                 memory_id=memory.memory_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error updating semantic memory: {e}") from e
+            msg = f"Error updating semantic memory: {e}"
+            raise RepositoryError(msg) from e
 
     def _to_domain_entity(self, model: SemanticMemoryModel) -> SemanticMemory:
         """Convert ORM model to domain entity.
@@ -300,6 +309,11 @@ class SemanticMemoryRepository:
         if not source_event_ids and model.extracted_from_event_id:
             source_event_ids = [model.extracted_from_event_id]
 
+        # Convert embedding to list if present (handle both None and numpy array)
+        embedding = None
+        if model.embedding is not None:
+            embedding = list(model.embedding) if hasattr(model.embedding, "__iter__") else model.embedding
+
         return SemanticMemory(
             memory_id=model.memory_id,
             user_id=model.user_id,
@@ -311,7 +325,7 @@ class SemanticMemoryRepository:
             status=self._map_status_from_orm(model.status),
             reinforcement_count=model.reinforcement_count,
             source_event_ids=source_event_ids,
-            embedding=list(model.embedding) if model.embedding else None,
+            embedding=embedding,
             created_at=model.created_at,
             updated_at=model.updated_at,
             last_validated_at=model.last_validated_at,
@@ -335,6 +349,19 @@ class SemanticMemoryRepository:
         if not source_event_ids and row.extracted_from_event_id:
             source_event_ids = [row.extracted_from_event_id]
 
+        # Convert embedding to list if present
+        # pgvector returns embeddings as strings from raw SQL: '[0.1,0.2,...]'
+        embedding = None
+        if row.embedding is not None:
+            if isinstance(row.embedding, str):
+                # Parse string representation to list of floats
+                import json
+                embedding = json.loads(row.embedding.replace("'", '"'))
+            elif hasattr(row.embedding, "__iter__"):
+                embedding = list(row.embedding)
+            else:
+                embedding = row.embedding
+
         return SemanticMemory(
             memory_id=row.memory_id,
             user_id=row.user_id,
@@ -346,7 +373,7 @@ class SemanticMemoryRepository:
             status=self._map_status_from_orm(row.status),
             reinforcement_count=row.reinforcement_count,
             source_event_ids=source_event_ids,
-            embedding=list(row.embedding) if row.embedding else None,
+            embedding=embedding,
             created_at=row.created_at,
             updated_at=row.updated_at,
             last_validated_at=row.last_validated_at,

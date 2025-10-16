@@ -5,6 +5,8 @@ Core business entities with identity and lifecycle.
 from src.domain.entities.canonical_entity import CanonicalEntity
 from src.domain.entities.chat_message import ChatMessage
 from src.domain.entities.entity_alias import EntityAlias
+from src.domain.entities.memory_summary import MemorySummary
+from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.entities.semantic_memory import SemanticMemory
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "EntityAlias",
     "ChatMessage",
     "SemanticMemory",
+    "MemorySummary",
+    "ProceduralMemory",
 ]

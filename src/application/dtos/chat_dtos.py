@@ -3,7 +3,8 @@
 Data Transfer Objects for application layer.
 """
 from dataclasses import dataclass
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 
@@ -52,6 +53,52 @@ class SemanticMemoryDTO:
 
 
 @dataclass
+class DomainFactDTO:
+    """DTO for domain fact from database (Phase 1C).
+
+    Attributes:
+        fact_type: Type of fact (invoice_status, order_chain, sla_risk)
+        entity_id: Canonical entity ID
+        content: Human-readable summary
+        metadata: Structured data
+        source_table: Source table(s) in domain schema
+        source_rows: UUIDs of specific rows
+        retrieved_at: Timestamp when fact was retrieved
+    """
+
+    fact_type: str
+    entity_id: str
+    content: str
+    metadata: dict[str, Any]
+    source_table: str
+    source_rows: list[str]
+    retrieved_at: datetime
+
+
+@dataclass
+class RetrievedMemoryDTO:
+    """DTO for retrieved memory from Phase 1D scoring.
+
+    Attributes:
+        memory_id: Database primary key
+        memory_type: Type of memory (episodic, semantic, summary)
+        content: Human-readable content
+        relevance_score: Multi-signal relevance score [0.0, 1.0]
+        confidence: Memory confidence [0.0, 0.95]
+        predicate: Predicate name (semantic memories only)
+        object_value: Object value dict (semantic memories only)
+    """
+
+    memory_id: int
+    memory_type: str
+    content: str
+    relevance_score: float
+    confidence: float
+    predicate: str | None = None
+    object_value: dict[str, Any] | None = None
+
+
+@dataclass
 class ProcessChatMessageInput:
     """Input DTO for processing a chat message.
 
@@ -67,7 +114,7 @@ class ProcessChatMessageInput:
     session_id: UUID
     content: str
     role: str = "user"
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -82,6 +129,9 @@ class ProcessChatMessageOutput:
         resolution_success_rate: Percentage of mentions successfully resolved
         semantic_memories: List of semantic memories extracted (Phase 1B)
         conflict_count: Number of conflicts detected (Phase 1B)
+        domain_facts: List of domain facts retrieved (Phase 1C)
+        retrieved_memories: List of memories retrieved from past conversations (Phase 1D)
+        reply: Generated natural language reply (Phase 1C)
     """
 
     event_id: int
@@ -91,3 +141,6 @@ class ProcessChatMessageOutput:
     resolution_success_rate: float
     semantic_memories: list[SemanticMemoryDTO]
     conflict_count: int
+    domain_facts: list[DomainFactDTO]
+    retrieved_memories: list[RetrievedMemoryDTO]
+    reply: str

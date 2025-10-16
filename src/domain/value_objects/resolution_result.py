@@ -44,16 +44,20 @@ class ResolutionResult:
     def __post_init__(self) -> None:
         """Validate resolution result invariants."""
         if not self.entity_id and self.method != ResolutionMethod.FAILED:
-            raise ValueError("entity_id required unless method is FAILED")
+            msg = "entity_id required unless method is FAILED"
+            raise ValueError(msg)
 
         if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
+            msg = f"confidence must be in [0.0, 1.0], got {self.confidence}"
+            raise ValueError(msg)
 
         if not self.mention_text:
-            raise ValueError("mention_text cannot be empty")
+            msg = "mention_text cannot be empty"
+            raise ValueError(msg)
 
         if self.method == ResolutionMethod.FAILED and self.confidence > 0.0:
-            raise ValueError("Failed resolution must have confidence 0.0")
+            msg = "Failed resolution must have confidence 0.0"
+            raise ValueError(msg)
 
     @property
     def is_high_confidence(self) -> bool:

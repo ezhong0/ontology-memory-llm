@@ -4,10 +4,15 @@ Exposes consolidation and summary retrieval via REST API.
 """
 
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 import structlog
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import (
+    get_consolidation_service,
+    get_consolidation_trigger_service,
+    get_current_user_id,
+    get_summary_repository,
+)
 from src.api.models.consolidation import (
     ConsolidationRequest,
     ConsolidationResponse,
@@ -15,6 +20,8 @@ from src.api.models.consolidation import (
     TriggerStatusResponse,
 )
 from src.domain.exceptions import DomainError
+from src.domain.services import ConsolidationService, ConsolidationTriggerService
+from src.infrastructure.database.repositories import SummaryRepository
 
 router = APIRouter(prefix="/api/v1", tags=["consolidation"])
 logger = structlog.get_logger(__name__)
@@ -50,7 +57,7 @@ logger = structlog.get_logger(__name__)
 async def consolidate_memories(
     request: ConsolidationRequest,
     user_id: str = Depends(get_current_user_id),
-    # consolidation_service: ConsolidationService = Depends(get_consolidation_service),  # TODO: DI
+    consolidation_service: ConsolidationService = Depends(get_consolidation_service),
 ) -> ConsolidationResponse:
     """Consolidate memories for a scope.
 
@@ -73,51 +80,42 @@ async def consolidate_memories(
     )
 
     try:
-        # TODO: Inject ConsolidationService via dependency injection
-        # For Phase 1, return placeholder indicating implementation needed
+        from src.api.models.consolidation import KeyFactResponse
+        from src.domain.value_objects.consolidation import ConsolidationScope
 
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Consolidation endpoint implementation in progress. "
-            "ConsolidationService needs dependency injection setup.",
+        scope = ConsolidationScope(
+            type=request.scope_type,
+            identifier=request.scope_identifier,
         )
 
-        # Future implementation:
-        # from src.domain.value_objects.consolidation import ConsolidationScope
-        #
-        # scope = ConsolidationScope(
-        #     type=request.scope_type,
-        #     identifier=request.scope_identifier,
-        # )
-        #
-        # summary = await consolidation_service.consolidate(
-        #     user_id=user_id,
-        #     scope=scope,
-        #     force=request.force,
-        # )
-        #
-        # # Convert to API response
-        # key_facts_response = {
-        #     name: KeyFactResponse(
-        #         value=fact["value"],
-        #         confidence=fact["confidence"],
-        #         reinforced=fact["reinforced"],
-        #         source_memory_ids=fact["source_memory_ids"],
-        #     )
-        #     for name, fact in summary.key_facts.items()
-        # }
-        #
-        # return ConsolidationResponse(
-        #     summary_id=summary.summary_id,
-        #     scope_type=summary.scope_type,
-        #     scope_identifier=summary.scope_identifier,
-        #     summary_text=summary.summary_text,
-        #     key_facts=key_facts_response,
-        #     interaction_patterns=summary.source_data.get("interaction_patterns", []),
-        #     needs_validation=summary.source_data.get("needs_validation", []),
-        #     confidence=summary.confidence,
-        #     created_at=summary.created_at.isoformat(),
-        # )
+        summary = await consolidation_service.consolidate(
+            user_id=user_id,
+            scope=scope,
+            force=request.force,
+        )
+
+        # Convert to API response
+        key_facts_response = {
+            name: KeyFactResponse(
+                value=fact["value"],
+                confidence=fact["confidence"],
+                reinforced=fact["reinforced"],
+                source_memory_ids=fact["source_memory_ids"],
+            )
+            for name, fact in summary.key_facts.items()
+        }
+
+        return ConsolidationResponse(
+            summary_id=summary.summary_id or 0,
+            scope_type=summary.scope_type,
+            scope_identifier=summary.scope_identifier or "",
+            summary_text=summary.summary_text,
+            key_facts=key_facts_response,
+            interaction_patterns=summary.source_data.get("interaction_patterns", []),
+            needs_validation=summary.source_data.get("needs_validation", []),
+            confidence=summary.confidence,
+            created_at=summary.created_at.isoformat(),
+        )
 
     except DomainError as e:
         logger.error(
@@ -173,7 +171,7 @@ async def get_summaries(
     limit: int = Query(10, ge=1, le=100, description="Maximum number of summaries"),
     min_confidence: float = Query(0.5, ge=0.0, le=1.0, description="Minimum confidence"),
     user_id: str = Depends(get_current_user_id),
-    # summary_repo: ISummaryRepository = Depends(get_summary_repository),  # TODO: DI
+    summary_repo: SummaryRepository = Depends(get_summary_repository),
 ) -> GetSummariesResponse:
     """Get summaries for a scope.
 
@@ -200,49 +198,41 @@ async def get_summaries(
     )
 
     try:
-        # TODO: Inject ISummaryRepository via dependency injection
-        # For Phase 1, return placeholder
+        from src.api.models.consolidation import SummaryMetadataResponse
 
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Get summaries endpoint implementation in progress. "
-            "SummaryRepository needs dependency injection setup.",
+        # Get summaries from repository
+        summaries = await summary_repo.find_by_scope_with_filters(
+            user_id=user_id,
+            scope_type=scope_type,
+            scope_identifier=scope_identifier,
+            limit=limit,
+            min_confidence=min_confidence,
         )
 
-        # Future implementation:
-        # # Get summaries from repository
-        # summaries = await summary_repo.find_by_scope_with_filters(
-        #     user_id=user_id,
-        #     scope_type=scope_type,
-        #     scope_identifier=scope_identifier,
-        #     limit=limit,
-        #     min_confidence=min_confidence,
-        # )
-        #
-        # if not summaries:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_404_NOT_FOUND,
-        #         detail=f"No summaries found for {scope_type}:{scope_identifier}",
-        #     )
-        #
-        # # Convert to API response
-        # summary_responses = [
-        #     SummaryMetadataResponse(
-        #         summary_id=s.summary_id,
-        #         scope_type=s.scope_type,
-        #         scope_identifier=s.scope_identifier,
-        #         summary_text=s.summary_text[:200] + "..." if len(s.summary_text) > 200 else s.summary_text,
-        #         confidence=s.confidence,
-        #         key_fact_count=len(s.key_facts),
-        #         created_at=s.created_at.isoformat(),
-        #     )
-        #     for s in summaries
-        # ]
-        #
-        # return GetSummariesResponse(
-        #     summaries=summary_responses,
-        #     total_count=len(summary_responses),
-        # )
+        if not summaries:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No summaries found for {scope_type}:{scope_identifier}",
+            )
+
+        # Convert to API response
+        summary_responses = [
+            SummaryMetadataResponse(
+                summary_id=s.summary_id or 0,
+                scope_type=s.scope_type,
+                scope_identifier=s.scope_identifier or "",
+                summary_text=s.summary_text[:200] + "..." if len(s.summary_text) > 200 else s.summary_text,
+                confidence=s.confidence,
+                key_fact_count=len(s.key_facts),
+                created_at=s.created_at.isoformat(),
+            )
+            for s in summaries
+        ]
+
+        return GetSummariesResponse(
+            summaries=summary_responses,
+            total_count=len(summary_responses),
+        )
 
     except HTTPException:
         raise
@@ -294,7 +284,7 @@ async def get_summaries(
 )
 async def get_consolidation_status(
     user_id: str = Depends(get_current_user_id),
-    # trigger_service: ConsolidationTriggerService = Depends(get_trigger_service),  # TODO: DI
+    trigger_service: ConsolidationTriggerService = Depends(get_consolidation_trigger_service),
 ) -> TriggerStatusResponse:
     """Check consolidation status for user.
 
@@ -310,33 +300,25 @@ async def get_consolidation_status(
     logger.info("consolidation_status_request", user_id=user_id)
 
     try:
-        # TODO: Inject ConsolidationTriggerService via dependency injection
-        # For Phase 1, return placeholder
+        from datetime import UTC, datetime
 
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Consolidation status endpoint implementation in progress. "
-            "ConsolidationTriggerService needs dependency injection setup.",
+        pending_scopes = await trigger_service.get_pending_consolidations(user_id)
+
+        pending_scope_dicts = [
+            {
+                "scope_type": scope.type,
+                "scope_identifier": scope.identifier,
+                "reason": f"Threshold met for {scope.type} consolidation",
+            }
+            for scope in pending_scopes
+        ]
+
+        return TriggerStatusResponse(
+            user_id=user_id,
+            should_consolidate=len(pending_scopes) > 0,
+            pending_scopes=pending_scope_dicts,
+            checked_at=datetime.now(UTC).isoformat(),
         )
-
-        # Future implementation:
-        # pending_scopes = await trigger_service.get_pending_consolidations(user_id)
-        #
-        # pending_scope_dicts = [
-        #     {
-        #         "scope_type": scope.type,
-        #         "scope_identifier": scope.identifier,
-        #         "reason": f"Threshold met for {scope.type} consolidation",
-        #     }
-        #     for scope in pending_scopes
-        # ]
-        #
-        # return TriggerStatusResponse(
-        #     user_id=user_id,
-        #     should_consolidate=len(pending_scopes) > 0,
-        #     pending_scopes=pending_scope_dicts,
-        #     checked_at=datetime.utcnow().isoformat(),
-        # )
 
     except DomainError as e:
         logger.error(

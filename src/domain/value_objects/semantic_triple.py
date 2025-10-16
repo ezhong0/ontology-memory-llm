@@ -45,15 +45,20 @@ class SemanticTriple:
     def __post_init__(self) -> None:
         """Validate semantic triple invariants."""
         if not self.subject_entity_id:
-            raise ValueError("subject_entity_id cannot be empty")
+            msg = "subject_entity_id cannot be empty"
+            raise ValueError(msg)
         if not self.predicate:
-            raise ValueError("predicate cannot be empty")
+            msg = "predicate cannot be empty"
+            raise ValueError(msg)
         if not isinstance(self.predicate_type, PredicateType):
-            raise ValueError(f"predicate_type must be PredicateType enum, got: {type(self.predicate_type)}")
+            msg = f"predicate_type must be PredicateType enum, got: {type(self.predicate_type)}"
+            raise ValueError(msg)
         if not isinstance(self.object_value, dict):
-            raise ValueError(f"object_value must be dict, got: {type(self.object_value)}")
+            msg = f"object_value must be dict, got: {type(self.object_value)}"
+            raise ValueError(msg)
         if not (0.0 <= self.confidence <= 1.0):
-            raise ValueError(f"confidence must be in [0.0, 1.0], got: {self.confidence}")
+            msg = f"confidence must be in [0.0, 1.0], got: {self.confidence}"
+            raise ValueError(msg)
 
     @property
     def is_high_confidence(self) -> bool:

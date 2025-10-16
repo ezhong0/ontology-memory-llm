@@ -39,7 +39,8 @@ class ConsolidationRequest(BaseModel):
         """Validate scope type."""
         valid_types = ["entity", "topic", "session_window"]
         if v not in valid_types:
-            raise ValueError(f"scope_type must be one of {valid_types}, got {v}")
+            msg = f"scope_type must be one of {valid_types}, got {v}"
+            raise ValueError(msg)
         return v
 
 

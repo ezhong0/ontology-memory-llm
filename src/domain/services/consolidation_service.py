@@ -7,12 +7,13 @@ Vision: "Replace many specific memories with one abstract summary" - graceful fo
 Design from: PHASE1D_IMPLEMENTATION_PLAN.md
 """
 
-from datetime import UTC, datetime
 import json
+from datetime import UTC, datetime
 
 import structlog
 
 from src.config import heuristics
+from src.domain.entities.memory_summary import MemorySummary
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.exceptions import DomainError
 from src.domain.ports.embedding_service import IEmbeddingService
@@ -22,7 +23,6 @@ from src.domain.ports.semantic_memory_repository import ISemanticMemoryRepositor
 from src.domain.ports.summary_repository import ISummaryRepository
 from src.domain.value_objects.consolidation import (
     ConsolidationScope,
-    MemorySummary,
     SummaryData,
 )
 from src.domain.value_objects.memory_candidate import MemoryCandidate
@@ -124,7 +124,8 @@ class ConsolidationService:
                     max_retries=max_retries,
                 )
             else:
-                raise DomainError(f"Unknown consolidation scope type: {scope.type}")
+                msg = f"Unknown consolidation scope type: {scope.type}"
+                raise DomainError(msg)
 
         except Exception as e:
             logger.error(
@@ -133,7 +134,8 @@ class ConsolidationService:
                 scope=scope.to_dict(),
                 error=str(e),
             )
-            raise DomainError(f"Error consolidating memories: {e}") from e
+            msg = f"Error consolidating memories: {e}"
+            raise DomainError(msg) from e
 
     async def consolidate_entity(
         self, user_id: str, entity_id: str, max_retries: int = 3
@@ -237,11 +239,12 @@ class ConsolidationService:
             predicate_pattern=predicate_pattern,
         )
 
-        scope = ConsolidationScope.topic_scope(predicate_pattern)
+        ConsolidationScope.topic_scope(predicate_pattern)
 
         # For Phase 1, topic consolidation is simplified
         # Would need semantic memory filtering by predicate pattern
-        raise DomainError("Topic consolidation not yet implemented in Phase 1")
+        msg = "Topic consolidation not yet implemented in Phase 1"
+        raise DomainError(msg)
 
     async def consolidate_session_window(
         self, user_id: str, num_sessions: int = 5, max_retries: int = 3
@@ -262,11 +265,12 @@ class ConsolidationService:
             num_sessions=num_sessions,
         )
 
-        scope = ConsolidationScope.session_window_scope(num_sessions)
+        ConsolidationScope.session_window_scope(num_sessions)
 
         # For Phase 1, session window consolidation is simplified
         # Would need to fetch episodic memories from last N sessions
-        raise DomainError("Session window consolidation not yet implemented in Phase 1")
+        msg = "Session window consolidation not yet implemented in Phase 1"
+        raise DomainError(msg)
 
     async def _fetch_memories(
         self, user_id: str, scope: ConsolidationScope
@@ -330,7 +334,7 @@ class ConsolidationService:
         episodic_text = self._format_episodic_memories(episodic)
         semantic_text = self._format_semantic_memories(semantic)
 
-        prompt = f"""Synthesize a consolidated summary from these memories.
+        f"""Synthesize a consolidated summary from these memories.
 
 **Scope**: {scope.type} - {scope.identifier}
 
@@ -383,7 +387,8 @@ class ConsolidationService:
             return SummaryData.from_llm_response(response)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error("invalid_llm_response", response=response_text, error=str(e))
-            raise ValueError(f"Invalid LLM response: {e}") from e
+            msg = f"Invalid LLM response: {e}"
+            raise ValueError(msg) from e
 
     def _format_episodic_memories(self, episodic: list[MemoryCandidate]) -> str:
         """Format episodic memories for LLM prompt."""

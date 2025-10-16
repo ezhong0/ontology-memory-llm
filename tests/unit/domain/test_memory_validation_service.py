@@ -137,6 +137,7 @@ class TestMemoryValidationService:
 
         memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -164,6 +165,7 @@ class TestMemoryValidationService:
         """Test decay doesn't go below MIN_CONFIDENCE (0.0)."""
         old_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -184,7 +186,7 @@ class TestMemoryValidationService:
         )
 
         # Should not go below 0.0
-        assert decayed >= validation_service.MIN_CONFIDENCE
+        assert decayed >= validation_service._min_confidence
         assert decayed >= 0.0
 
     def test_calculate_confidence_decay_custom_rate(
@@ -222,8 +224,9 @@ class TestMemoryValidationService:
 
         # Confidence should increase
         assert sample_memory.confidence > old_confidence
-        # Boost should be applied (0.05)
-        assert sample_memory.confidence == old_confidence + validation_service._reinforcement_boost
+        # Boost should be applied (0.15), but capped at MAX_CONFIDENCE (0.95)
+        expected = min(validation_service._max_confidence, old_confidence + validation_service._reinforcement_boost)
+        assert sample_memory.confidence == expected
 
         # Reinforcement count should increase
         assert sample_memory.reinforcement_count == old_count + 1
@@ -237,6 +240,7 @@ class TestMemoryValidationService:
         """Test reinforcement respects MAX_CONFIDENCE cap."""
         high_confidence_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -264,7 +268,7 @@ class TestMemoryValidationService:
         )
 
         # Should be capped at MAX_CONFIDENCE
-        assert high_confidence_memory.confidence <= validation_service.MAX_CONFIDENCE
+        assert high_confidence_memory.confidence <= validation_service._max_confidence
         assert high_confidence_memory.confidence == 0.95
 
     def test_reinforce_memory_subject_mismatch_error(
@@ -317,6 +321,7 @@ class TestMemoryValidationService:
         """Test decay is applied when memory is stale."""
         old_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -343,8 +348,12 @@ class TestMemoryValidationService:
         self, validation_service
     ):
         """Test decay is not applied when memory is recent."""
+        # Use single timestamp to avoid microsecond differences
+        now = datetime.now(timezone.utc)
+
         recent_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -352,16 +361,16 @@ class TestMemoryValidationService:
             confidence=0.8,
             source_event_ids=[1],
             reinforcement_count=1,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            last_validated_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
+            last_validated_at=now,
         )
 
         old_confidence = recent_memory.confidence
 
         was_applied = validation_service.apply_decay_if_needed(
             memory=recent_memory,
-            current_date=datetime.now(timezone.utc),
+            current_date=now,  # Same timestamp = zero time elapsed
         )
 
         assert not was_applied
@@ -375,6 +384,7 @@ class TestMemoryValidationService:
         """Test low confidence memories should be deactivated."""
         low_confidence_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -396,6 +406,7 @@ class TestMemoryValidationService:
         """Test adequate confidence memories should not be deactivated."""
         good_memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,
@@ -417,6 +428,7 @@ class TestMemoryValidationService:
         """Test deactivation with custom threshold."""
         memory = SemanticMemory(
             memory_id=1,
+            user_id="user_test_123",
             subject_entity_id="entity_1",
             predicate="test",
             predicate_type=PredicateType.ATTRIBUTE,

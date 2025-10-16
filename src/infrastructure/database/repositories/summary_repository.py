@@ -3,17 +3,16 @@
 Implements memory summary storage and retrieval using SQLAlchemy and PostgreSQL with pgvector.
 """
 
-from typing import List, Optional
 
 import numpy as np
 import structlog
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.entities.memory_summary import MemorySummary
 from src.domain.exceptions import RepositoryError
 from src.domain.ports.embedding_service import IEmbeddingService
 from src.domain.ports.summary_repository import ISummaryRepository
-from src.domain.value_objects.consolidation import MemorySummary
 from src.domain.value_objects.memory_candidate import MemoryCandidate
 from src.infrastructure.database.models import MemorySummary as MemorySummaryModel
 
@@ -31,7 +30,7 @@ class SummaryRepository(ISummaryRepository):
     """
 
     def __init__(
-        self, session: AsyncSession, embedding_service: Optional[IEmbeddingService] = None
+        self, session: AsyncSession, embedding_service: IEmbeddingService | None = None
     ):
         """Initialize repository.
 
@@ -47,8 +46,8 @@ class SummaryRepository(ISummaryRepository):
         user_id: str,
         query_embedding: np.ndarray,
         limit: int = 5,
-        scope_type: Optional[str] = None,
-    ) -> List[MemoryCandidate]:
+        scope_type: str | None = None,
+    ) -> list[MemoryCandidate]:
         """Find similar memory summaries using pgvector.
 
         Args:
@@ -127,14 +126,15 @@ class SummaryRepository(ISummaryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding similar summaries: {e}") from e
+            msg = f"Error finding similar summaries: {e}"
+            raise RepositoryError(msg) from e
 
     async def find_by_scope(
         self,
         user_id: str,
         scope_type: str,
         scope_identifier: str,
-    ) -> Optional[MemoryCandidate]:
+    ) -> MemoryCandidate | None:
         """Find summary by scope.
 
         Args:
@@ -204,7 +204,77 @@ class SummaryRepository(ISummaryRepository):
                 scope_identifier=scope_identifier,
                 error=str(e),
             )
-            raise RepositoryError(f"Error finding summary by scope: {e}") from e
+            msg = f"Error finding summary by scope: {e}"
+            raise RepositoryError(msg) from e
+
+    async def find_by_scope_with_filters(
+        self,
+        user_id: str,
+        scope_type: str,
+        scope_identifier: str,
+        limit: int = 10,
+        min_confidence: float = 0.5,
+    ) -> list[MemorySummary]:
+        """Find summaries by scope with filtering.
+
+        Args:
+            user_id: User identifier
+            scope_type: Scope type (entity, topic, session_window)
+            scope_identifier: Scope identifier
+            limit: Maximum number of results
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of memory summaries matching filters
+        """
+        try:
+            stmt = select(MemorySummaryModel).where(
+                MemorySummaryModel.user_id == user_id,
+                MemorySummaryModel.scope_type == scope_type,
+                MemorySummaryModel.scope_identifier == scope_identifier,
+                MemorySummaryModel.confidence >= min_confidence,
+            ).order_by(MemorySummaryModel.created_at.desc()).limit(limit)
+
+            result = await self.session.execute(stmt)
+            models = result.scalars().all()
+
+            summaries = [
+                MemorySummary(
+                    summary_id=model.summary_id,
+                    user_id=model.user_id,
+                    scope_type=model.scope_type,
+                    scope_identifier=model.scope_identifier,
+                    summary_text=model.summary_text,
+                    key_facts=model.key_facts,
+                    source_data=model.source_data,
+                    confidence=model.confidence,
+                    embedding=list(model.embedding) if model.embedding else None,
+                    created_at=model.created_at,
+                    supersedes_summary_id=model.supersedes_summary_id,
+                )
+                for model in models
+            ]
+
+            logger.debug(
+                "found_summaries_with_filters",
+                user_id=user_id,
+                scope_type=scope_type,
+                scope_identifier=scope_identifier,
+                count=len(summaries),
+            )
+
+            return summaries
+
+        except Exception as e:
+            logger.error(
+                "find_summaries_with_filters_error",
+                user_id=user_id,
+                scope_type=scope_type,
+                scope_identifier=scope_identifier,
+                error=str(e),
+            )
+            msg = f"Error finding summaries with filters: {e}"
+            raise RepositoryError(msg) from e
 
     async def create(self, summary: MemorySummary) -> MemorySummary:
         """Create a new memory summary.
@@ -223,9 +293,12 @@ class SummaryRepository(ISummaryRepository):
             embedding_vector = summary.embedding
             if embedding_vector is None:
                 if self._embedding_service is None:
-                    raise RepositoryError(
+                    msg = (
                         "Cannot create summary without embedding: "
                         "embedding_service not provided"
+                    )
+                    raise RepositoryError(
+                        msg
                     )
 
                 logger.debug(
@@ -285,13 +358,14 @@ class SummaryRepository(ISummaryRepository):
                 scope_type=summary.scope_type,
                 error=str(e),
             )
-            raise RepositoryError(f"Error creating summary: {e}") from e
+            msg = f"Error creating summary: {e}"
+            raise RepositoryError(msg) from e
 
     async def get_by_id(
         self,
         summary_id: int,
-        user_id: Optional[str] = None,
-    ) -> Optional[MemorySummary]:
+        user_id: str | None = None,
+    ) -> MemorySummary | None:
         """Get memory summary by ID.
 
         Args:
@@ -352,9 +426,10 @@ class SummaryRepository(ISummaryRepository):
                 user_id=user_id,
                 error=str(e),
             )
-            raise RepositoryError(f"Error retrieving summary: {e}") from e
+            msg = f"Error retrieving summary: {e}"
+            raise RepositoryError(msg) from e
 
-    def _extract_entity_ids(self, key_facts_jsonb: dict) -> List[str]:
+    def _extract_entity_ids(self, key_facts_jsonb: dict) -> list[str]:
         """Extract entity IDs from key_facts JSONB.
 
         Args:

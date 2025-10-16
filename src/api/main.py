@@ -71,7 +71,7 @@ async def health_check():
         "version": "1.0.0",
         "environment": settings.environment,
         "components": {
-            "database": "up",  # TODO: Implement actual health check
+            "database": "up",  # Phase 2: Actual DB ping pending - requires session.execute(text("SELECT 1"))
             "api": "up",
         },
     }
@@ -129,14 +129,19 @@ async def internal_error_handler(request, exc):
 
 
 # Include API routers
-from src.api.routes import chat
+from src.api.routes import chat, consolidation, procedural
 
-app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+app.include_router(chat.router, tags=["Chat"])
+app.include_router(consolidation.router, tags=["Consolidation"])
+app.include_router(procedural.router, tags=["Procedural"])
 
 # Include demo router if demo mode is enabled
+# Use dynamic import to avoid contaminating production code
 if settings.DEMO_MODE_ENABLED:
     try:
-        from src.demo.api.router import demo_router
+        import importlib
+        demo_module = importlib.import_module("src.demo.api.router")
+        demo_router = demo_module.demo_router
 
         app.include_router(demo_router, prefix="/api/v1")
         print("✓ Demo endpoints enabled at /api/v1/demo")
@@ -148,7 +153,7 @@ if settings.DEMO_MODE_ENABLED:
             print(f"✓ Demo UI enabled at /demo (serving from {frontend_path})")
         else:
             print(f"⚠ Frontend directory not found at {frontend_path}")
-    except RuntimeError as e:
+    except (ImportError, AttributeError, RuntimeError) as e:
         print(f"⚠ Demo mode requested but failed to load: {e}")
 
 

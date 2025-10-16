@@ -4,13 +4,14 @@ Responsible for extracting structured SPO (Subject-Predicate-Object) triples
 from natural language chat messages using LLM.
 """
 
-import logging
 from typing import Any, Protocol
+
+import structlog
 
 from src.domain.entities.chat_message import ChatMessage
 from src.domain.value_objects import PredicateType, SemanticTriple
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LLMPort(Protocol):
@@ -73,20 +74,18 @@ class SemanticExtractionService:
             ValueError: If message or entities are invalid
         """
         if not message.content or not message.content.strip():
-            logger.warning("Empty message content, skipping extraction")
+            logger.warning("empty_message_content_skipping_extraction")
             return []
 
         if not resolved_entities:
-            logger.info("No resolved entities, skipping triple extraction")
+            logger.info("no_resolved_entities_skipping_extraction")
             return []
 
         # Call LLM for extraction
         logger.info(
-            "Extracting semantic triples",
-            extra={
-                "event_id": message.event_id,
-                "entity_count": len(resolved_entities),
-            },
+            "extracting_semantic_triples",
+            event_id=message.event_id,
+            entity_count=len(resolved_entities),
         )
 
         try:
@@ -96,8 +95,9 @@ class SemanticExtractionService:
             )
         except Exception as e:
             logger.error(
-                "LLM extraction failed",
-                extra={"error": str(e), "event_id": message.event_id},
+                "llm_extraction_failed",
+                error=str(e),
+                event_id=message.event_id,
             )
             return []
 
@@ -112,17 +112,16 @@ class SemanticExtractionService:
                 validated_triples.append(triple)
             except ValueError as e:
                 logger.warning(
-                    "Invalid triple from LLM",
-                    extra={"error": str(e), "raw_triple": raw_triple},
+                    "invalid_triple_from_llm",
+                    error=str(e),
+                    raw_triple=raw_triple,
                 )
                 continue
 
         logger.info(
-            "Extraction complete",
-            extra={
-                "event_id": message.event_id,
-                "triple_count": len(validated_triples),
-            },
+            "extraction_complete",
+            event_id=message.event_id,
+            triple_count=len(validated_triples),
         )
 
         return validated_triples
@@ -154,29 +153,36 @@ class SemanticExtractionService:
         ]
         for field in required_fields:
             if field not in raw_triple:
-                raise ValueError(f"Missing required field: {field}")
+                msg = f"Missing required field: {field}"
+                raise ValueError(msg)
 
         # Parse predicate type
         try:
             predicate_type = PredicateType(raw_triple["predicate_type"])
-        except ValueError:
-            raise ValueError(
+        except ValueError as e:
+            msg = (
                 f"Invalid predicate_type: {raw_triple['predicate_type']}. "
                 f"Must be one of: {[t.value for t in PredicateType]}"
             )
+            raise ValueError(
+                msg
+            ) from e
 
         # Validate object_value is dict
         if not isinstance(raw_triple["object_value"], dict):
+            msg = f"object_value must be dict, got: {type(raw_triple['object_value'])}"
             raise ValueError(
-                f"object_value must be dict, got: {type(raw_triple['object_value'])}"
+                msg
             )
 
         # Validate confidence
         confidence = raw_triple["confidence"]
-        if not isinstance(confidence, (int, float)):
-            raise ValueError(f"confidence must be numeric, got: {type(confidence)}")
+        if not isinstance(confidence, int | float):
+            msg = f"confidence must be numeric, got: {type(confidence)}"
+            raise ValueError(msg)
         if not (0.0 <= confidence <= 1.0):
-            raise ValueError(f"confidence must be in [0.0, 1.0], got: {confidence}")
+            msg = f"confidence must be in [0.0, 1.0], got: {confidence}"
+            raise ValueError(msg)
 
         # Build metadata
         metadata = {

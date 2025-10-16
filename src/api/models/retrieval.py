@@ -1,6 +1,6 @@
 """API models for memory retrieval endpoints."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -21,7 +21,7 @@ class RetrievalRequest(BaseModel):
         description="Retrieval strategy",
     )
     top_k: int = Field(default=20, ge=1, le=100, description="Number of results to return")
-    filters: Optional[Dict[str, Any]] = Field(
+    filters: dict[str, Any] | None = Field(
         default=None,
         description="Optional filters (entity_types, memory_types, min_confidence, etc.)",
     )
@@ -32,7 +32,8 @@ class RetrievalRequest(BaseModel):
         """Validate retrieval strategy."""
         valid_strategies = ["factual_entity_focused", "procedural", "exploratory", "temporal"]
         if v not in valid_strategies:
-            raise ValueError(f"strategy must be one of {valid_strategies}")
+            msg = f"strategy must be one of {valid_strategies}"
+            raise ValueError(msg)
         return v
 
 
@@ -57,8 +58,8 @@ class ScoredMemoryResponse(BaseModel):
     signal_breakdown: SignalBreakdownResponse
     created_at: str
     importance: float
-    confidence: Optional[float] = None
-    reinforcement_count: Optional[int] = None
+    confidence: float | None = None
+    reinforcement_count: int | None = None
 
 
 class RetrievalMetadataResponse(BaseModel):
@@ -74,7 +75,7 @@ class QueryContextResponse(BaseModel):
     """Query context information."""
 
     query_text: str
-    entity_ids: List[str]
+    entity_ids: list[str]
     user_id: str
     strategy: str
 
@@ -88,6 +89,6 @@ class RetrievalResponse(BaseModel):
         metadata: Metadata about the retrieval operation
     """
 
-    memories: List[ScoredMemoryResponse]
+    memories: list[ScoredMemoryResponse]
     query_context: QueryContextResponse
     metadata: RetrievalMetadataResponse

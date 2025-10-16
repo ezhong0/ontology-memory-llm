@@ -4,7 +4,7 @@ Encapsulates the result of a memory retrieval operation with metadata.
 """
 
 from dataclasses import dataclass
-from typing import List
+from typing import Any
 
 from src.domain.value_objects.memory_candidate import ScoredMemory
 from src.domain.value_objects.query_context import QueryContext
@@ -29,7 +29,7 @@ class RetrievalMetadata:
     top_score: float
     retrieval_time_ms: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "candidates_generated": self.candidates_generated,
@@ -52,11 +52,11 @@ class RetrievalResult:
         metadata: Metadata about the retrieval operation
     """
 
-    memories: List[ScoredMemory]
+    memories: list[ScoredMemory]
     query_context: QueryContext
     metadata: RetrievalMetadata
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "memories": [m.to_dict() for m in self.memories],

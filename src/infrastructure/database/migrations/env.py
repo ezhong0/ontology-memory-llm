@@ -7,9 +7,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from src.infrastructure.database.domain_models import DomainBase
+
 # Import Base metadata from models
 from src.infrastructure.database.models import Base
-from src.infrastructure.database.domain_models import DomainBase
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -24,6 +25,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # Combine both app schema (Base) and domain schema (DomainBase) metadata
 from sqlalchemy import MetaData
+
 combined_metadata = MetaData()
 for table in Base.metadata.tables.values():
     table.to_metadata(combined_metadata)

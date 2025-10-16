@@ -3,7 +3,7 @@
 Represents a reference to an external domain database entity (immutable).
 """
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -25,18 +25,22 @@ class EntityReference:
     primary_key: str
     primary_value: Any  # Can be int, str, UUID, etc.
     display_name: str
-    properties: Optional[dict[str, Any]] = None
+    properties: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Validate entity reference invariants."""
         if not self.table:
-            raise ValueError("table name cannot be empty")
+            msg = "table name cannot be empty"
+            raise ValueError(msg)
         if not self.primary_key:
-            raise ValueError("primary_key name cannot be empty")
+            msg = "primary_key name cannot be empty"
+            raise ValueError(msg)
         if self.primary_value is None:
-            raise ValueError("primary_value cannot be None")
+            msg = "primary_value cannot be None"
+            raise ValueError(msg)
         if not self.display_name:
-            raise ValueError("display_name cannot be empty")
+            msg = "display_name cannot be empty"
+            raise ValueError(msg)
 
     @property
     def external_id(self) -> str:
@@ -85,4 +89,4 @@ class EntityReference:
 
     def __str__(self) -> str:
         """String representation for logging."""
-        return f'{self.display_name} (external_id={self.external_id})'
+        return f"{self.display_name} (external_id={self.external_id})"

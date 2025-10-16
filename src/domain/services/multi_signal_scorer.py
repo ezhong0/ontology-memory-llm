@@ -15,7 +15,6 @@ Design from: DESIGN.md v2.0 - Multi-Signal Retrieval Algorithm
 
 import math
 from datetime import datetime
-from typing import Dict, List
 
 import numpy as np
 import structlog
@@ -58,9 +57,9 @@ class MultiSignalScorer:
 
     def score_candidates(
         self,
-        candidates: List[MemoryCandidate],
+        candidates: list[MemoryCandidate],
         query_context: QueryContext,
-    ) -> List[ScoredMemory]:
+    ) -> list[ScoredMemory]:
         """Score all candidates using weighted multi-signal formula.
 
         Args:
@@ -102,7 +101,7 @@ class MultiSignalScorer:
         self,
         candidate: MemoryCandidate,
         query_context: QueryContext,
-        weights: Dict[str, float],
+        weights: dict[str, float],
     ) -> ScoredMemory:
         """Score a single candidate.
 
@@ -190,7 +189,7 @@ class MultiSignalScorer:
         return max(0.0, min(1.0, cosine_similarity))
 
     def _calculate_entity_overlap(
-        self, query_entities: List[str], memory_entities: List[str]
+        self, query_entities: list[str], memory_entities: list[str]
     ) -> float:
         """Calculate entity overlap using Jaccard similarity.
 
@@ -278,7 +277,7 @@ class MultiSignalScorer:
             Effective confidence [0.0, 1.0]
 
         For semantic memories:
-            Uses MemoryValidationService to apply passive decay
+            Applies exponential decay formula (same as MemoryValidationService)
         For others:
             Returns 1.0 (full confidence)
         """
@@ -293,9 +292,10 @@ class MultiSignalScorer:
         now = datetime.now(candidate.last_validated_at.tzinfo)
         days_since_validation = (now - candidate.last_validated_at).total_seconds() / 86400.0
 
-        # Apply passive decay
-        effective_confidence = self._validation_service.calculate_confidence_decay(
-            initial_confidence=candidate.confidence, days_elapsed=days_since_validation
-        )
+        # Apply exponential decay (same formula as MemoryValidationService)
+        # confidence(t) = initial_confidence * exp(-decay_rate * days)
+        decay_rate = heuristics.DECAY_RATE_PER_DAY
+        decay_factor = math.exp(-decay_rate * days_since_validation)
+        effective_confidence = candidate.confidence * decay_factor
 
         return max(0.0, min(1.0, effective_confidence))

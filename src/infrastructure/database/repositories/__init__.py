@@ -3,6 +3,9 @@
 SQLAlchemy-based implementations of domain repository interfaces.
 """
 from src.infrastructure.database.repositories.chat_repository import ChatEventRepository
+from src.infrastructure.database.repositories.domain_database_repository import (
+    DomainDatabaseRepository,
+)
 from src.infrastructure.database.repositories.entity_repository import EntityRepository
 from src.infrastructure.database.repositories.episodic_memory_repository import (
     EpisodicMemoryRepository,
@@ -21,11 +24,12 @@ from src.infrastructure.database.repositories.summary_repository import (
 )
 
 __all__ = [
-    "EntityRepository",
     "ChatEventRepository",
+    "DomainDatabaseRepository",
+    "EntityRepository",
     "EpisodicMemoryRepository",
-    "SemanticMemoryRepository",
-    "SummaryRepository",
     "OntologyRepository",
     "ProceduralMemoryRepository",
+    "SemanticMemoryRepository",
+    "SummaryRepository",
 ]

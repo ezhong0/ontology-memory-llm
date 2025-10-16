@@ -3,7 +3,6 @@
 Represents conversation context needed for entity resolution (immutable).
 """
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
 
@@ -33,9 +32,11 @@ class ConversationContext:
     def __post_init__(self) -> None:
         """Validate conversation context invariants."""
         if not self.user_id:
-            raise ValueError("user_id cannot be empty")
+            msg = "user_id cannot be empty"
+            raise ValueError(msg)
         if not self.current_message:
-            raise ValueError("current_message cannot be empty")
+            msg = "current_message cannot be empty"
+            raise ValueError(msg)
 
     @property
     def has_recent_entities(self) -> bool:
@@ -69,7 +70,7 @@ class ConversationContext:
 
         return "\n".join(lines) if lines else "No recent context"
 
-    def get_most_recent_entity(self) -> Optional[tuple[str, str]]:
+    def get_most_recent_entity(self) -> tuple[str, str] | None:
         """Get the most recently mentioned entity.
 
         Returns:

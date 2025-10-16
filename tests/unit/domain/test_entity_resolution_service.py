@@ -116,7 +116,7 @@ class TestEntityResolutionService:
         assert result.entity_id == "company_acme_123"
         assert result.canonical_name == "Acme Corporation"
         assert result.method == ResolutionMethod.EXACT_MATCH
-        assert result.confidence == resolution_service.HIGH_CONFIDENCE_THRESHOLD
+        assert result.confidence == resolution_service.high_confidence
         mock_entity_repo.find_by_canonical_name.assert_called_once_with("Acme Corp")
 
     @pytest.mark.asyncio
@@ -160,7 +160,7 @@ class TestEntityResolutionService:
         assert result.is_successful
         assert result.entity_id == "company_acme_123"
         assert result.method == ResolutionMethod.USER_ALIAS
-        assert result.confidence == resolution_service.MEDIUM_CONFIDENCE_THRESHOLD
+        assert result.confidence == resolution_service.medium_confidence
         mock_entity_repo.find_by_alias.assert_called_once_with(
             "Acme Corp", "test-user-123"
         )
@@ -209,7 +209,7 @@ class TestEntityResolutionService:
         assert result.is_successful
         assert result.entity_id == "company_acme_123"
         assert result.method == ResolutionMethod.FUZZY_MATCH
-        assert result.confidence <= resolution_service.MEDIUM_CONFIDENCE_THRESHOLD
+        assert result.confidence <= resolution_service.medium_confidence
         mock_entity_repo.fuzzy_search.assert_called_once()
 
     @pytest.mark.asyncio

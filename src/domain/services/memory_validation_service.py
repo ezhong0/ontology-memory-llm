@@ -4,14 +4,16 @@ Responsible for managing semantic memory lifecycle: confidence decay,
 reinforcement from repeated observations, and validation tracking.
 """
 
-import logging
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import structlog
+
+from src.config import heuristics
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.value_objects import SemanticTriple
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class MemoryValidationService:
@@ -23,30 +25,26 @@ class MemoryValidationService:
     - Validation tracking
 
     Design:
-    - Decay rate: 0.01 per day (memories decay slowly)
-    - Max confidence: 0.95 (never 100% certain)
-    - Reinforcement boost: 0.05 per observation
+    - Decay rate: Loaded from heuristics (calibrated in Phase 2)
+    - Max confidence: 0.95 (never 100% certain - epistemic humility)
+    - Reinforcement boost: Loaded from heuristics with diminishing returns
     """
-
-    # Configuration constants
-    DECAY_RATE_PER_DAY = 0.01  # 1% decay per day
-    REINFORCEMENT_BOOST = 0.05  # 5% boost per reinforcement
-    MAX_CONFIDENCE = 0.95  # Cap at 95% confidence
-    MIN_CONFIDENCE = 0.0  # Floor at 0% confidence
 
     def __init__(
         self,
-        decay_rate: float = DECAY_RATE_PER_DAY,
-        reinforcement_boost: float = REINFORCEMENT_BOOST,
+        decay_rate: float | None = None,
+        reinforcement_boost: float | None = None,
     ) -> None:
         """Initialize validation service.
 
         Args:
-            decay_rate: Confidence decay rate per day (default: 0.01)
-            reinforcement_boost: Confidence boost per reinforcement (default: 0.05)
+            decay_rate: Confidence decay rate per day (defaults to heuristics)
+            reinforcement_boost: Confidence boost per reinforcement (defaults to heuristics)
         """
-        self._decay_rate = decay_rate
-        self._reinforcement_boost = reinforcement_boost
+        self._decay_rate = decay_rate or heuristics.DECAY_RATE_PER_DAY
+        self._reinforcement_boost = reinforcement_boost or heuristics.REINFORCEMENT_BOOSTS[0]
+        self._max_confidence = heuristics.MAX_CONFIDENCE
+        self._min_confidence = 0.0  # Conceptual floor
 
     def calculate_confidence_decay(
         self,
@@ -66,7 +64,7 @@ class MemoryValidationService:
             Decayed confidence value [0.0, 1.0]
         """
         if current_date is None:
-            current_date = datetime.now(timezone.utc)
+            current_date = datetime.now(UTC)
 
         # If never validated, use creation date
         last_validation = memory.last_validated_at or memory.created_at
@@ -83,16 +81,14 @@ class MemoryValidationService:
         decayed_confidence = memory.confidence * decay_factor
 
         # Apply floor
-        decayed_confidence = max(self.MIN_CONFIDENCE, decayed_confidence)
+        decayed_confidence = max(self._min_confidence, decayed_confidence)
 
         logger.debug(
-            "Calculated confidence decay",
-            extra={
-                "memory_id": memory.memory_id,
-                "days_elapsed": days_elapsed,
-                "original_confidence": memory.confidence,
-                "decayed_confidence": decayed_confidence,
-            },
+            "calculated_confidence_decay",
+            memory_id=memory.memory_id,
+            days_elapsed=days_elapsed,
+            original_confidence=memory.confidence,
+            decayed_confidence=decayed_confidence,
         )
 
         return decayed_confidence
@@ -118,15 +114,21 @@ class MemoryValidationService:
         """
         # Validate observation matches memory
         if new_observation.subject_entity_id != memory.subject_entity_id:
-            raise ValueError(
+            msg = (
                 f"Subject mismatch: {new_observation.subject_entity_id} "
                 f"!= {memory.subject_entity_id}"
             )
+            raise ValueError(
+                msg
+            )
 
         if new_observation.predicate != memory.predicate:
-            raise ValueError(
+            msg = (
                 f"Predicate mismatch: {new_observation.predicate} "
                 f"!= {memory.predicate}"
+            )
+            raise ValueError(
+                msg
             )
 
         # Apply reinforcement (uses entity method)
@@ -137,15 +139,13 @@ class MemoryValidationService:
         )
 
         logger.info(
-            "Memory reinforced",
-            extra={
-                "memory_id": memory.memory_id,
-                "subject": memory.subject_entity_id,
-                "predicate": memory.predicate,
-                "old_confidence": old_confidence,
-                "new_confidence": memory.confidence,
-                "reinforcement_count": memory.reinforcement_count,
-            },
+            "memory_reinforced",
+            memory_id=memory.memory_id,
+            subject=memory.subject_entity_id,
+            predicate=memory.predicate,
+            old_confidence=old_confidence,
+            new_confidence=memory.confidence,
+            reinforcement_count=memory.reinforcement_count,
         )
 
     def apply_decay_if_needed(
@@ -163,7 +163,7 @@ class MemoryValidationService:
             True if decay was applied, False otherwise
         """
         if current_date is None:
-            current_date = datetime.now(timezone.utc)
+            current_date = datetime.now(UTC)
 
         # Calculate what confidence should be
         decayed_confidence = self.calculate_confidence_decay(
@@ -177,12 +177,10 @@ class MemoryValidationService:
             memory.apply_decay(decayed_confidence)
 
             logger.info(
-                "Confidence decay applied",
-                extra={
-                    "memory_id": memory.memory_id,
-                    "old_confidence": old_confidence,
-                    "new_confidence": memory.confidence,
-                },
+                "confidence_decay_applied",
+                memory_id=memory.memory_id,
+                old_confidence=old_confidence,
+                new_confidence=memory.confidence,
             )
             return True
 
@@ -191,15 +189,16 @@ class MemoryValidationService:
     def should_deactivate(
         self,
         memory: SemanticMemory,
-        min_confidence_threshold: float = 0.3,
+        min_confidence_threshold: float | None = None,
     ) -> bool:
         """Check if memory should be deactivated due to low confidence.
 
         Args:
             memory: Memory to check
-            min_confidence_threshold: Minimum confidence to remain active (default: 0.3)
+            min_confidence_threshold: Minimum confidence to remain active (defaults to heuristics)
 
         Returns:
             True if memory should be deactivated
         """
-        return memory.confidence < min_confidence_threshold
+        threshold = min_confidence_threshold or heuristics.MIN_CONFIDENCE_FOR_USE
+        return memory.confidence < threshold

@@ -97,13 +97,14 @@ class TestSemanticExtractionService:
     async def test_extract_triples_empty_message(
         self, extraction_service, mock_llm_service, sample_resolved_entities
     ):
-        """Test extraction with empty message content."""
+        """Test extraction with empty/whitespace message content."""
+        # Use whitespace to pass ChatMessage validation but trigger empty check in service
         empty_message = ChatMessage(
             event_id=1,
             user_id="user_1",
             session_id=uuid4(),
             role="user",
-            content="",
+            content="   ",  # Whitespace only
             created_at=datetime.now(timezone.utc),
         )
 

@@ -4,9 +4,9 @@ Defines the contract for semantic memory data access.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 import numpy as np
+import numpy.typing as npt
 
 from src.domain.entities.semantic_memory import SemanticMemory
 
@@ -28,10 +28,9 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             Created memory with assigned memory_id
         """
-        pass
 
     @abstractmethod
-    async def find_by_id(self, memory_id: int) -> Optional[SemanticMemory]:
+    async def find_by_id(self, memory_id: int) -> SemanticMemory | None:
         """Find semantic memory by ID.
 
         Args:
@@ -40,12 +39,11 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             Semantic memory if found, None otherwise
         """
-        pass
 
     @abstractmethod
     async def find_by_subject_predicate(
         self, user_id: str, subject_entity_id: str, predicate: str
-    ) -> List[SemanticMemory]:
+    ) -> list[SemanticMemory]:
         """Find semantic memories by subject and predicate.
 
         Used for conflict detection.
@@ -58,16 +56,15 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             List of matching semantic memories
         """
-        pass
 
     @abstractmethod
     async def find_similar(
         self,
         user_id: str,
-        query_embedding: np.ndarray,
+        query_embedding: npt.NDArray[np.float64],
         limit: int = 50,
-        min_confidence: Optional[float] = None,
-    ) -> List[SemanticMemory]:
+        min_confidence: float | None = None,
+    ) -> list[SemanticMemory]:
         """Find similar semantic memories using pgvector.
 
         Args:
@@ -79,7 +76,6 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             List of similar semantic memories, ordered by similarity
         """
-        pass
 
     @abstractmethod
     async def update(self, memory: SemanticMemory) -> SemanticMemory:
@@ -91,4 +87,3 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             Updated memory
         """
-        pass

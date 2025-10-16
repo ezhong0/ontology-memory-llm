@@ -1,11 +1,10 @@
 """API endpoints for scenario management."""
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.demo.services.scenario_loader import ScenarioLoaderService, ScenarioLoadError
+from src.demo.services.scenario_loader import ScenarioLoadError, ScenarioLoaderService
 from src.demo.services.scenario_registry import ScenarioRegistry
 from src.infrastructure.database.session import get_db
 
@@ -60,8 +59,8 @@ class ResetResponse(BaseModel):
 # =============================================================================
 
 
-@router.get("", response_model=List[ScenarioSummaryResponse])
-async def list_scenarios() -> List[ScenarioSummaryResponse]:
+@router.get("", response_model=list[ScenarioSummaryResponse])
+async def list_scenarios() -> list[ScenarioSummaryResponse]:
     """List all available scenarios.
 
     Returns:
@@ -152,18 +151,18 @@ async def load_scenario(
             raise HTTPException(
                 status_code=404,
                 detail=f"Scenario {scenario_id} not found. Available scenarios: 1-18."
-            )
+            ) from None
         # Provide user-friendly error messages
         if "IntegrityError" in error_msg or "duplicate key" in error_msg.lower():
             raise HTTPException(
                 status_code=409,
                 detail=f"Scenario {scenario_id} data conflicts with existing data. Use reset endpoint first."
-            )
+            ) from None
         # Generic error with sanitized message
         raise HTTPException(
             status_code=500,
             detail=f"Failed to load scenario {scenario_id}. Please check server logs for details."
-        )
+        ) from None
 
 
 @router.post("/reset", response_model=ResetResponse)
@@ -186,8 +185,8 @@ async def reset_all(session: AsyncSession = Depends(get_db)) -> ResetResponse:
         loader = ScenarioLoaderService(session)
         await loader.reset()
         return ResetResponse(message="All demo data reset successfully")
-    except ScenarioLoadError as e:
+    except ScenarioLoadError:
         raise HTTPException(
             status_code=500,
             detail="Failed to reset demo data. Please check server logs for details."
-        )
+        ) from None

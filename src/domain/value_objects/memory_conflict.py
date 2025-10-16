@@ -60,9 +60,11 @@ class MemoryConflict:
     def __post_init__(self) -> None:
         """Validate conflict invariants."""
         if not self.subject_entity_id:
-            raise ValueError("subject_entity_id cannot be empty")
+            msg = "subject_entity_id cannot be empty"
+            raise ValueError(msg)
         if not self.predicate:
-            raise ValueError("predicate cannot be empty")
+            msg = "predicate cannot be empty"
+            raise ValueError(msg)
 
     @property
     def is_severe(self) -> bool:

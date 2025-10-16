@@ -2,7 +2,7 @@
 
 Defines the contract for entity persistence without implementation details.
 """
-from typing import Optional, Protocol
+from typing import Protocol
 
 from src.domain.entities import CanonicalEntity, EntityAlias
 
@@ -16,7 +16,7 @@ class IEntityRepository(Protocol):
     Infrastructure layer will implement this using SQLAlchemy/PostgreSQL.
     """
 
-    async def find_by_canonical_name(self, name: str) -> Optional[CanonicalEntity]:
+    async def find_by_canonical_name(self, name: str) -> CanonicalEntity | None:
         """Find entity by exact canonical name.
 
         Args:
@@ -27,7 +27,7 @@ class IEntityRepository(Protocol):
         """
         ...
 
-    async def find_by_entity_id(self, entity_id: str) -> Optional[CanonicalEntity]:
+    async def find_by_entity_id(self, entity_id: str) -> CanonicalEntity | None:
         """Find entity by entity ID.
 
         Args:
@@ -39,8 +39,8 @@ class IEntityRepository(Protocol):
         ...
 
     async def find_by_alias(
-        self, alias: str, user_id: Optional[str] = None
-    ) -> Optional[CanonicalEntity]:
+        self, alias: str, user_id: str | None = None
+    ) -> CanonicalEntity | None:
         """Find entity by alias (user-specific or global).
 
         Searches in priority order:

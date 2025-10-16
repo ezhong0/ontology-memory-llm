@@ -3,8 +3,8 @@
 Represents an alias/alternative name for a canonical entity.
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 @dataclass
@@ -32,32 +32,38 @@ class EntityAlias:
     alias_text: str
     alias_source: str  # exact | fuzzy | learned | user_stated
     confidence: float
-    alias_id: Optional[int] = None  # Set by repository after persistence
-    user_id: Optional[str] = None  # None = global alias
+    alias_id: int | None = None  # Set by repository after persistence
+    user_id: str | None = None  # None = global alias
     use_count: int = 1
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Validate alias invariants."""
         if not self.canonical_entity_id:
-            raise ValueError("canonical_entity_id cannot be empty")
+            msg = "canonical_entity_id cannot be empty"
+            raise ValueError(msg)
         if not self.alias_text:
-            raise ValueError("alias_text cannot be empty")
+            msg = "alias_text cannot be empty"
+            raise ValueError(msg)
         if not self.alias_source:
-            raise ValueError("alias_source cannot be empty")
+            msg = "alias_source cannot be empty"
+            raise ValueError(msg)
 
         valid_sources = {"exact", "fuzzy", "learned", "user_stated"}
         if self.alias_source not in valid_sources:
+            msg = f"alias_source must be one of {valid_sources}, got: {self.alias_source}"
             raise ValueError(
-                f"alias_source must be one of {valid_sources}, got: {self.alias_source}"
+                msg
             )
 
         if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
+            msg = f"confidence must be in [0.0, 1.0], got {self.confidence}"
+            raise ValueError(msg)
 
         if self.use_count < 1:
-            raise ValueError(f"use_count must be >= 1, got {self.use_count}")
+            msg = f"use_count must be >= 1, got {self.use_count}"
+            raise ValueError(msg)
 
     def increment_use_count(self) -> None:
         """Increment usage counter and potentially boost confidence."""

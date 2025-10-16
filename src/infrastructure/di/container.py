@@ -4,13 +4,32 @@ Uses dependency-injector to wire all application components.
 """
 from dependency_injector import containers, providers
 
-from src.application.use_cases import ProcessChatMessageUseCase
+from src.application.use_cases import (
+    AugmentWithDomainUseCase,
+    ExtractSemanticsUseCase,
+    ProcessChatMessageUseCase,
+    ResolveEntitiesUseCase,
+    ScoreMemoriesUseCase,
+)
 from src.config.settings import Settings
-from src.domain.services import EntityResolutionService, SimpleMentionExtractor
-from src.infrastructure.database.repositories import ChatEventRepository, EntityRepository
+from src.domain.services import (
+    ConflictDetectionService,
+    DomainAugmentationService,
+    EntityResolutionService,
+    LLMReplyGenerator,
+    MemoryValidationService,
+    MultiSignalScorer,
+    SemanticExtractionService,
+    SimpleMentionExtractor,
+)
+from src.infrastructure.database.repositories import (
+    ChatEventRepository,
+    EntityRepository,
+    SemanticMemoryRepository,
+)
 from src.infrastructure.database.session import async_session_factory
 from src.infrastructure.embedding import OpenAIEmbeddingService
-from src.infrastructure.llm import OpenAILLMService
+from src.infrastructure.llm import OpenAILLMService, OpenAIProvider
 
 
 class Container(containers.DeclarativeContainer):
@@ -32,6 +51,12 @@ class Container(containers.DeclarativeContainer):
     # Infrastructure - LLM and Embedding Services
     llm_service = providers.Singleton(
         OpenAILLMService,
+        api_key=settings.provided.openai_api_key,
+    )
+
+    # OpenAI Provider for LLMReplyGenerator (hexagonal architecture port/adapter)
+    openai_provider = providers.Singleton(
+        OpenAIProvider,
         api_key=settings.provided.openai_api_key,
     )
 
@@ -57,6 +82,10 @@ class Container(containers.DeclarativeContainer):
         ChatEventRepository,
     )
 
+    semantic_memory_repository_factory = providers.Factory(
+        SemanticMemoryRepository,
+    )
+
     # Domain Services
     mention_extractor = providers.Singleton(
         SimpleMentionExtractor,
@@ -69,13 +98,78 @@ class Container(containers.DeclarativeContainer):
         llm_service=llm_service,
     )
 
+    # Phase 1B Services
+    semantic_extraction_service = providers.Singleton(
+        SemanticExtractionService,
+        llm_service=llm_service,
+    )
+
+    memory_validation_service = providers.Singleton(
+        MemoryValidationService,
+    )
+
+    conflict_detection_service = providers.Singleton(
+        ConflictDetectionService,
+    )
+
+    # Phase 1C Services
+    domain_augmentation_service = providers.Singleton(
+        DomainAugmentationService,
+    )
+
+    llm_reply_generator = providers.Singleton(
+        LLMReplyGenerator,
+        llm_provider=openai_provider,
+    )
+
+    # Phase 1D Services
+    multi_signal_scorer = providers.Singleton(
+        MultiSignalScorer,
+    )
+
     # Use Cases
-    process_chat_message_use_case_factory = providers.Factory(
-        ProcessChatMessageUseCase,
-        # Repositories will be provided per-request
-        # Services are singletons
+    # Phase 1A: Entity Resolution
+    resolve_entities_use_case_factory = providers.Factory(
+        ResolveEntitiesUseCase,
+        # Repositories provided per-request
         entity_resolution_service=entity_resolution_service_factory,
         mention_extractor=mention_extractor,
+    )
+
+    # Phase 1B: Semantic Extraction
+    extract_semantics_use_case_factory = providers.Factory(
+        ExtractSemanticsUseCase,
+        # Repository provided per-request
+        semantic_extraction_service=semantic_extraction_service,
+        memory_validation_service=memory_validation_service,
+        conflict_detection_service=conflict_detection_service,
+        embedding_service=embedding_service,
+    )
+
+    # Phase 1C: Domain Augmentation
+    augment_with_domain_use_case_factory = providers.Factory(
+        AugmentWithDomainUseCase,
+        domain_augmentation_service=domain_augmentation_service,
+    )
+
+    # Phase 1D: Memory Scoring
+    score_memories_use_case_factory = providers.Factory(
+        ScoreMemoriesUseCase,
+        multi_signal_scorer=multi_signal_scorer,
+        embedding_service=embedding_service,
+        # Repository provided per-request
+    )
+
+    # Orchestrator: Coordinates all phases
+    process_chat_message_use_case_factory = providers.Factory(
+        ProcessChatMessageUseCase,
+        # Repositories provided per-request
+        # Use cases are factories
+        resolve_entities_use_case=resolve_entities_use_case_factory,
+        extract_semantics_use_case=extract_semantics_use_case_factory,
+        augment_with_domain_use_case=augment_with_domain_use_case_factory,
+        score_memories_use_case=score_memories_use_case_factory,
+        llm_reply_generator=llm_reply_generator,
     )
 
 

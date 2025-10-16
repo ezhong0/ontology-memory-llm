@@ -5,7 +5,7 @@ in the domain database.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -34,18 +34,19 @@ class OntologyRelation:
     to_entity_type: str
     cardinality: str
     relation_semantics: str
-    join_spec: Dict[str, Any]
-    constraints: Optional[Dict[str, Any]] = None
+    join_spec: dict[str, Any]
+    constraints: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Validate ontology relation."""
         valid_cardinalities = ["one_to_one", "one_to_many", "many_to_many"]
         if self.cardinality not in valid_cardinalities:
+            msg = f"cardinality must be one of {valid_cardinalities}, got {self.cardinality}"
             raise ValueError(
-                f"cardinality must be one of {valid_cardinalities}, got {self.cardinality}"
+                msg
             )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "relation_id": self.relation_id,
@@ -74,10 +75,10 @@ class EntityGraph:
 
     root_entity_id: str
     root_entity_type: str
-    related_entities: Dict[str, List[Dict[str, Any]]]
+    related_entities: dict[str, list[dict[str, Any]]]
     traversal_depth: int
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "root_entity_id": self.root_entity_id,

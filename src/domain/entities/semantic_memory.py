@@ -3,8 +3,8 @@
 Represents a stored piece of semantic knowledge (SPO triple with metadata).
 """
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from src.domain.value_objects import PredicateType
 
@@ -43,30 +43,38 @@ class SemanticMemory:
     status: str = "active"
     reinforcement_count: int = 1
     source_event_ids: list[int] = field(default_factory=list)
-    embedding: Optional[list[float]] = None
-    memory_id: Optional[int] = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_validated_at: Optional[datetime] = None
+    embedding: list[float] | None = None
+    memory_id: int | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_validated_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate semantic memory invariants."""
         if not self.user_id:
-            raise ValueError("user_id cannot be empty")
+            msg = "user_id cannot be empty"
+            raise ValueError(msg)
         if not self.subject_entity_id:
-            raise ValueError("subject_entity_id cannot be empty")
+            msg = "subject_entity_id cannot be empty"
+            raise ValueError(msg)
         if not self.predicate:
-            raise ValueError("predicate cannot be empty")
+            msg = "predicate cannot be empty"
+            raise ValueError(msg)
         if not isinstance(self.predicate_type, PredicateType):
-            raise ValueError(f"predicate_type must be PredicateType, got: {type(self.predicate_type)}")
+            msg = f"predicate_type must be PredicateType, got: {type(self.predicate_type)}"
+            raise ValueError(msg)
         if not isinstance(self.object_value, dict):
-            raise ValueError(f"object_value must be dict, got: {type(self.object_value)}")
+            msg = f"object_value must be dict, got: {type(self.object_value)}"
+            raise ValueError(msg)
         if not (0.0 <= self.confidence <= 1.0):
-            raise ValueError(f"confidence must be in [0.0, 1.0], got: {self.confidence}")
+            msg = f"confidence must be in [0.0, 1.0], got: {self.confidence}"
+            raise ValueError(msg)
         if self.status not in ["active", "inactive", "conflicted"]:
-            raise ValueError(f"status must be active/inactive/conflicted, got: {self.status}")
+            msg = f"status must be active/inactive/conflicted, got: {self.status}"
+            raise ValueError(msg)
         if self.reinforcement_count < 1:
-            raise ValueError(f"reinforcement_count must be >= 1, got: {self.reinforcement_count}")
+            msg = f"reinforcement_count must be >= 1, got: {self.reinforcement_count}"
+            raise ValueError(msg)
 
     @property
     def is_active(self) -> bool:
@@ -97,7 +105,7 @@ class SemanticMemory:
         """
         if self.last_validated_at is None:
             return None
-        delta = datetime.now(timezone.utc) - self.last_validated_at
+        delta = datetime.now(UTC) - self.last_validated_at
         return delta.days
 
     def reinforce(self, new_event_id: int, confidence_boost: float = 0.05) -> None:
@@ -111,8 +119,8 @@ class SemanticMemory:
         self.confidence = min(0.95, self.confidence + confidence_boost)
         if new_event_id not in self.source_event_ids:
             self.source_event_ids.append(new_event_id)
-        self.last_validated_at = datetime.now(timezone.utc)
-        self.updated_at = datetime.now(timezone.utc)
+        self.last_validated_at = datetime.now(UTC)
+        self.updated_at = datetime.now(UTC)
 
     def apply_decay(self, decayed_confidence: float) -> None:
         """Apply temporal confidence decay.
@@ -122,17 +130,17 @@ class SemanticMemory:
         """
         if decayed_confidence < self.confidence:
             self.confidence = max(0.0, decayed_confidence)
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
 
     def mark_as_conflicted(self) -> None:
         """Mark memory as conflicted."""
         self.status = "conflicted"
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def mark_as_inactive(self) -> None:
         """Mark memory as inactive."""
         self.status = "inactive"
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization.

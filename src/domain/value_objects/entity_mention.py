@@ -32,11 +32,14 @@ class EntityMention:
     def __post_init__(self) -> None:
         """Validate mention invariants."""
         if not self.text:
-            raise ValueError("Entity mention text cannot be empty")
+            msg = "Entity mention text cannot be empty"
+            raise ValueError(msg)
         if self.position < 0:
-            raise ValueError("Entity mention position cannot be negative")
+            msg = "Entity mention position cannot be negative"
+            raise ValueError(msg)
         if len(self.text) > 500:
-            raise ValueError("Entity mention text too long (max 500 characters)")
+            msg = "Entity mention text too long (max 500 characters)"
+            raise ValueError(msg)
 
     @property
     def requires_coreference(self) -> bool:

@@ -1,5 +1,4 @@
 """API endpoints for memory data exploration."""
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -33,7 +32,7 @@ class SemanticMemoryResponse(BaseModel):
     confidence: float
     reinforcement_count: int
     created_at: str
-    last_validated_at: Optional[str] = None
+    last_validated_at: str | None = None
 
     class Config:
         from_attributes = True
@@ -45,8 +44,8 @@ class CanonicalEntityResponse(BaseModel):
     entity_id: str
     entity_type: str
     canonical_name: str
-    external_ref: Optional[dict] = None
-    properties: Optional[dict] = None
+    external_ref: dict | None = None
+    properties: dict | None = None
     alias_count: int
     created_at: str
 
@@ -75,10 +74,10 @@ class EntityAliasResponse(BaseModel):
 # =============================================================================
 
 
-@router.get("/semantic", response_model=List[SemanticMemoryResponse])
+@router.get("/semantic", response_model=list[SemanticMemoryResponse])
 async def list_semantic_memories(
     user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
-) -> List[SemanticMemoryResponse]:
+) -> list[SemanticMemoryResponse]:
     """Get all semantic memories for a user with entity names resolved.
 
     Args:
@@ -119,10 +118,10 @@ async def list_semantic_memories(
     ]
 
 
-@router.get("/entities", response_model=List[CanonicalEntityResponse])
+@router.get("/entities", response_model=list[CanonicalEntityResponse])
 async def list_canonical_entities(
-    entity_type: Optional[str] = None, session: AsyncSession = Depends(get_db)
-) -> List[CanonicalEntityResponse]:
+    entity_type: str | None = None, session: AsyncSession = Depends(get_db)
+) -> list[CanonicalEntityResponse]:
     """Get all canonical entities with alias counts.
 
     Args:
@@ -166,10 +165,10 @@ async def list_canonical_entities(
     return responses
 
 
-@router.get("/aliases", response_model=List[EntityAliasResponse])
+@router.get("/aliases", response_model=list[EntityAliasResponse])
 async def list_entity_aliases(
-    user_id: Optional[str] = "demo-user", session: AsyncSession = Depends(get_db)
-) -> List[EntityAliasResponse]:
+    user_id: str | None = "demo-user", session: AsyncSession = Depends(get_db)
+) -> list[EntityAliasResponse]:
     """Get all entity aliases with canonical names.
 
     Args:

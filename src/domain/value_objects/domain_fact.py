@@ -4,7 +4,7 @@ Represents a fact retrieved from the domain database with full provenance.
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 

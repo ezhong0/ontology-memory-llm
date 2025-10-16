@@ -4,7 +4,6 @@ Defines the contract for domain ontology data access.
 """
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from src.domain.value_objects.ontology import OntologyRelation
 
@@ -17,7 +16,7 @@ class IOntologyRepository(ABC):
     """
 
     @abstractmethod
-    async def get_relations_for_type(self, entity_type: str) -> List[OntologyRelation]:
+    async def get_relations_for_type(self, entity_type: str) -> list[OntologyRelation]:
         """Get all ontology relations originating from an entity type.
 
         Args:
@@ -26,13 +25,11 @@ class IOntologyRepository(ABC):
         Returns:
             List of ontology relations
         """
-        pass
 
     @abstractmethod
-    async def get_all_relations(self) -> List[OntologyRelation]:
+    async def get_all_relations(self) -> list[OntologyRelation]:
         """Get all ontology relations.
 
         Returns:
             List of all ontology relations in the system
         """
-        pass

@@ -65,8 +65,10 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 def test_database_url() -> str:
-    """Test database URL (isolated from production)"""
-    return "postgresql+asyncpg://test:test@localhost:5432/memory_test"
+    """Test database URL (uses production database with transaction rollback for isolation)"""
+    # Use the same database as production, but tests will use transaction rollback
+    # for isolation (see test_db_session fixture)
+    return "postgresql+asyncpg://memoryuser:memorypass@localhost:5432/memorydb"
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -102,10 +104,14 @@ async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with async_session() as session:
-        # Begin transaction
-        async with session.begin():
+        # Start transaction
+        await session.begin()
+
+        try:
             yield session
-            # Rollback happens automatically after yield
+        finally:
+            # Always rollback for test isolation (never commit)
+            await session.rollback()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -164,6 +170,46 @@ def mock_domain_db_service():
 
 
 # ============================================================================
+# E2E Test Fixtures (NEW - for scenario testing)
+# ============================================================================
+
+@pytest_asyncio.fixture
+async def domain_seeder(test_db_session) -> "DomainSeeder":
+    """
+    Domain database seeder for E2E tests.
+
+    Provides helper to populate domain.* tables with test data.
+
+    Usage:
+        await domain_seeder.seed({
+            "customers": [{"name": "Kai Media", "industry": "Entertainment"}],
+            "invoices": [{"invoice_number": "INV-1009", "amount": 1200.00}]
+        })
+    """
+    from tests.fixtures.domain_seeder import DomainSeeder
+    return DomainSeeder(test_db_session)
+
+
+@pytest_asyncio.fixture
+async def memory_factory(test_db_session) -> "MemoryFactory":
+    """
+    Memory factory for E2E tests.
+
+    Provides helpers to create memories programmatically (bypass chat pipeline).
+
+    Usage:
+        await memory_factory.create_semantic_memory(
+            user_id="test_user",
+            subject_entity_id="customer:kai_123",
+            predicate="prefers_delivery_day",
+            object_value={"day": "Friday"}
+        )
+    """
+    from tests.fixtures.memory_factory import MemoryFactory
+    return MemoryFactory(test_db_session)
+
+
+# ============================================================================
 # API Client Fixtures
 # ============================================================================
 
@@ -174,19 +220,20 @@ async def api_client(test_db_session) -> AsyncGenerator[AsyncClient, None]:
 
     Uses test database session for isolation.
     """
-    # from src.api.main import app
+    from src.api.main import app
+    from src.api.dependencies import get_db
 
-    # Override database dependency
-    # async def override_get_db():
-    #     yield test_db_session
-    #
-    # app.dependency_overrides[get_db] = override_get_db
+    # Override database dependency to use test session
+    async def override_get_db():
+        yield test_db_session
 
-    async with AsyncClient(base_url="http://test") as client:
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
     # Cleanup
-    # app.dependency_overrides.clear()
+    app.dependency_overrides.clear()
 
 
 # ============================================================================

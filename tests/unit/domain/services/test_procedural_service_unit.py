@@ -15,9 +15,10 @@ from unittest.mock import AsyncMock
 import numpy as np
 import pytest
 
+from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.services.procedural_memory_service import ProceduralMemoryService
 from src.domain.value_objects.memory_candidate import MemoryCandidate
-from src.domain.value_objects.procedural_memory import Pattern, ProceduralMemory
+from src.domain.value_objects.procedural_memory import Pattern
 
 
 @pytest.fixture

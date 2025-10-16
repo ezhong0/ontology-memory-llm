@@ -7,7 +7,7 @@ Vision: "Foreign keys connect tables. Ontology connects meaning."
 Design from: DESIGN.md v2.0 - Ontology-Aware Traversal
 """
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import structlog
 
@@ -43,7 +43,7 @@ class OntologyService:
         """
         self._ontology_repo = ontology_repo
 
-    async def get_relations_for_type(self, entity_type: str) -> List[OntologyRelation]:
+    async def get_relations_for_type(self, entity_type: str) -> list[OntologyRelation]:
         """Get all ontology relations for an entity type.
 
         Args:
@@ -63,13 +63,14 @@ class OntologyService:
                 entity_type=entity_type,
                 error=str(e),
             )
-            raise DomainError(f"Error getting ontology relations: {e}") from e
+            msg = f"Error getting ontology relations: {e}"
+            raise DomainError(msg) from e
 
     async def traverse_graph(
         self,
         entity_id: str,
         max_hops: int = 2,
-        relation_filter: Optional[List[str]] = None,
+        relation_filter: list[str] | None = None,
     ) -> EntityGraph:
         """Traverse domain graph from starting entity.
 
@@ -109,8 +110,7 @@ class OntologyService:
 
             # Initialize BFS queue: (current_entity_id, current_depth)
             queue = [(entity_id, entity_type, 0)]
-            visited: Set[str] = {entity_id}
-            related_entities: Dict[str, List[Dict[str, Any]]] = {}
+            related_entities: dict[str, list[dict[str, Any]]] = {}
 
             while queue:
                 current_id, current_type, depth = queue.pop(0)
@@ -166,7 +166,8 @@ class OntologyService:
                 entity_id=entity_id,
                 error=str(e),
             )
-            raise DomainError(f"Error traversing entity graph: {e}") from e
+            msg = f"Error traversing entity graph: {e}"
+            raise DomainError(msg) from e
 
     def _extract_entity_type(self, entity_id: str) -> str:
         """Extract entity type from entity ID.
@@ -181,6 +182,7 @@ class OntologyService:
             DomainError: If entity_id format is invalid
         """
         if "_" not in entity_id:
-            raise DomainError(f"Invalid entity_id format: {entity_id}. Expected 'type_identifier'")
+            msg = f"Invalid entity_id format: {entity_id}. Expected 'type_identifier'"
+            raise DomainError(msg)
 
         return entity_id.split("_")[0]
