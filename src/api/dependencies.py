@@ -146,6 +146,7 @@ async def get_process_chat_message_use_case(
         extract_semantics_use_case=extract_semantics_use_case,
         augment_with_domain_use_case=augment_with_domain_use_case,
         score_memories_use_case=score_memories_use_case,
+        conflict_detection_service=conflict_detection_service,
         llm_reply_generator=llm_reply_generator,
     )
 

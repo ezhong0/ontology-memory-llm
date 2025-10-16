@@ -1,604 +1,1104 @@
-# Code Review Interview Guide
+# Code Review Interview Guide - Founding Engineer Role
 
-> **Goal**: Demonstrate technical depth, clear communication, and good judgment in 45 minutes.
+> **Critical Context**: This is a FOUNDING ENGINEER role. They're not just evaluating your technical skills - they're asking: "Will this person set the right trajectory for our company?"
 
-## The 5-Minute Framework
+## What This Interview Is Really About
 
-### Step 1: Understand Context (2 minutes)
-- Read PR title and description
-- Understand the WHAT and WHY
-- Note what problem this solves
+The interview guide explicitly states three signals:
+1. **Technical depth** - Can you spot issues that will bite us in production?
+2. **Communication** - Can you give feedback that makes the team better?
+3. **Judgment** - Can you make good trade-off decisions?
 
-### Step 2: Systematic Review (35 minutes)
-Review in priority order - focus on high-impact issues first:
-
-1. **Correctness & Security** (Critical - MUST find these)
-2. **Architecture & Design** (Important - Shows depth)
-3. **Testing** (Important - Shows thoroughness)
-4. **Performance** (Medium - Shows experience)
-5. **Code Quality** (Low - Only if egregious)
-
-### Step 3: Write Decision (5 minutes)
-- Summarize findings
-- Make clear decision: APPROVE or REQUEST CHANGES
-- Justify decision
-
-### Step 4: Final Pass (3 minutes)
-- Check tone (constructive, not harsh?)
-- Verify specificity (line numbers, examples?)
-- Balance (found positives too?)
+**Judgment is the most important.** Anyone can find bugs. Founding engineers need to know:
+- What's critical vs. what's a nitpick?
+- When "good enough to ship" is the right call vs. when "we need to fix this first"
+- When to push back vs. when to let things go
+- How to balance speed and quality
 
 ---
 
-## Priority 1: Correctness & Security (CRITICAL)
+## The Founding Engineer Mindset
 
-**These are blocking issues. Find these and you'll make a strong impression.**
+### Think Like an Owner, Not a Code Reviewer
+
+**❌ Code Reviewer Mindset**:
+- "This violates clean architecture principles"
+- "We should refactor this for better maintainability"
+- "This could be more elegant"
+
+**✅ Founding Engineer Mindset**:
+- "Will this cause production issues or can we ship it?" (Risk assessment)
+- "Does this block us from iterating quickly or is it fine for now?" (Speed vs. quality)
+- "Will this make future features harder or is it isolated?" (Technical debt evaluation)
+- "Is this the right problem to solve right now?" (Prioritization)
+
+### The Startup Context
+
+Early-stage startups operate differently:
+- **Speed matters** - Getting to product-market fit is priority #1
+- **Perfect is the enemy of shipped** - Over-engineering is a real risk
+- **Technical debt is a tool** - Strategic debt is fine, reckless debt is not
+- **Team standards matter** - You're setting patterns for future engineers
+
+### What They're Really Testing
+
+When you review code, they're asking:
+
+**Technical Depth**:
+- Can you spot security holes? (Critical - will cause real damage)
+- Can you spot correctness bugs? (Critical - will break production)
+- Do you understand architecture? (Important - shows system thinking)
+- Do you know performance patterns? (Good to have - shows experience)
+
+**Communication**:
+- Are you constructive or just critical?
+- Do you explain WHY things matter?
+- Do you suggest solutions, not just problems?
+- Would people want to work with you?
+
+**Judgment** (Most Important):
+- Can you distinguish "ship-blocking" from "nice-to-have"?
+- Do you understand trade-offs between speed and quality?
+- Can you think about business impact, not just code quality?
+- Do you know when to push back vs. when to approve?
+
+---
+
+## The 45-Minute Strategy
+
+### Format Expectations
+
+The guide says: "Utilize in-line code comments to communicate your detailed feedback"
+
+This means **GitHub PR review format**:
+- In-line comments on specific lines (like GitHub's review feature)
+- Overall summary at the end
+- Clear APPROVE or REQUEST CHANGES decision
+
+### Time Breakdown
+
+**Minutes 0-3: Understand the Business Context**
+- What problem is this solving?
+- Why is this change needed?
+- What's the customer impact?
+- Is this on the critical path?
+
+**Minutes 3-25: Systematic Review (In Priority Order)**
+
+Focus on what actually matters:
+
+1. **Critical Issues (5-8 min)**: Will break production or cause security holes
+   - Security vulnerabilities
+   - Correctness bugs
+   - Data loss risks
+
+2. **Important Issues (8-12 min)**: Will cause problems down the line
+   - Architecture violations
+   - Missing tests
+   - Performance problems at scale
+
+3. **Judgment Calls (5-8 min)**: Need trade-off decisions
+   - Is this technical debt acceptable?
+   - Does this pattern scale?
+   - Is this the right abstraction?
+
+**Minutes 25-40: Write In-Line Comments**
+- Use GitHub-style in-line comments
+- Be specific with line numbers
+- Suggest solutions, not just problems
+
+**Minutes 40-45: Write Overall Summary & Decision**
+- Summarize key concerns
+- Make clear decision with rationale
+- Show you understand the business context
+
+---
+
+## Priority 1: Critical Issues (Ship-Blocking)
+
+**These are non-negotiable. Find these and call them out strongly.**
 
 ### 🔴 Security Vulnerabilities
 
+These will cause real damage in production. Always blocking.
+
 #### SQL Injection
 ```python
-# ❌ CRITICAL: SQL injection vulnerability
+# Line 23-25
 def get_user(user_id):
     query = f"SELECT * FROM users WHERE id = {user_id}"
     return db.execute(query)
+```
 
-# Your feedback:
-🔴 CRITICAL (Line 23): This query is vulnerable to SQL injection because
-user input is directly interpolated into the SQL string. An attacker could
-pass `1 OR 1=1` to access all users, or `1; DROP TABLE users;--` to delete
-data. Use parameterized queries:
+**Your in-line comment:**
+```
+🔴 BLOCKING: SQL injection vulnerability
+
+This query directly interpolates user input, allowing an attacker to execute arbitrary SQL:
+- Input: `1 OR 1=1` → Returns all users
+- Input: `1; DROP TABLE users;--` → Deletes the table
+
+This is a critical security hole that must be fixed before merging.
+
+**Fix**: Use parameterized queries:
 ```python
 query = "SELECT * FROM users WHERE id = ?"
 return db.execute(query, [user_id])
 ```
+
+**Why it matters**: SQL injection is #1 on OWASP Top 10. This could lead to complete database compromise.
 ```
 
 #### Exposed Secrets
 ```python
-# ❌ CRITICAL: Hardcoded credentials
+# Line 5-6
 API_KEY = "sk-proj-abc123xyz789"
-db_password = "admin123"
-
-# Your feedback:
-🔴 CRITICAL (Lines 5-6): Hardcoded secrets in source code create security
-risks - these will be committed to git history and accessible to anyone with
-repo access. Move to environment variables:
-```python
-API_KEY = os.getenv("API_KEY")
-db_password = os.getenv("DB_PASSWORD")
+STRIPE_SECRET = "sk_live_51abc..."
 ```
-And add to .gitignore if not already there.
+
+**Your in-line comment:**
+```
+🔴 BLOCKING: Hardcoded secrets in source code
+
+These credentials will be committed to git history and accessible to anyone with repo access. This is a security breach waiting to happen.
+
+**Impact**: If this repo is ever compromised or shared, these API keys give full access to our systems.
+
+**Fix**:
+1. Move to environment variables: `API_KEY = os.getenv("API_KEY")`
+2. Rotate these keys immediately (they're now in git history)
+3. Add `.env` to `.gitignore` if not already there
+4. Consider using a secrets manager (AWS Secrets Manager, Vault, etc.)
+
+**For now**: At minimum, move to .env file before merging.
 ```
 
 #### Missing Authentication
 ```python
-# ❌ CRITICAL: No auth check
+# Line 45-47
 @app.delete("/api/users/{user_id}")
 async def delete_user(user_id: str):
     return await db.delete_user(user_id)
+```
 
-# Your feedback:
-🔴 CRITICAL (Line 45): This endpoint allows deleting any user without
-authentication or authorization checks. Any anonymous caller could delete
-users. Add authentication middleware and verify the requesting user has
-permission to delete this specific user_id.
+**Your in-line comment:**
+```
+🔴 BLOCKING: No authentication or authorization
+
+This endpoint allows anyone to delete any user without authentication. An attacker could delete all user accounts.
+
+**What's missing**:
+1. Authentication: Who is making this request?
+2. Authorization: Do they have permission to delete this specific user?
+
+**Fix**: Add auth middleware and permission check:
+```python
+@app.delete("/api/users/{user_id}")
+@require_auth  # Verify user is logged in
+async def delete_user(user_id: str, current_user: User = Depends(get_current_user)):
+    # Only admins or the user themselves can delete
+    if not current_user.is_admin and current_user.id != user_id:
+        raise HTTPException(403, "Not authorized")
+    return await db.delete_user(user_id)
+```
+
+**Why it matters**: This is a P0 security hole. Must fix before shipping.
 ```
 
 ### 🔴 Correctness Bugs
 
-#### Null/Undefined Handling
+These will break production. Blocking unless low-risk.
+
+#### Null/None Handling
 ```python
-# ❌ BUG: Potential null reference
+# Line 12-13
 def process_order(order):
-    customer_name = order.customer.name  # customer could be None
-    return f"Processing order for {customer_name}"
-
-# Your feedback:
-🔴 CRITICAL (Line 12): If order.customer is None, this will raise
-AttributeError. Based on the database schema, customer is optional for
-guest checkouts. Add null check:
-```python
-if order.customer is None:
-    customer_name = "Guest"
-else:
     customer_name = order.customer.name
-```
-```
-
-#### Off-by-One Errors
-```python
-# ❌ BUG: Off-by-one
-def get_last_n_items(items, n):
-    return items[-n-1:]  # Wrong!
-
-# Your feedback:
-🔴 CRITICAL (Line 34): This slicing is off-by-one. For n=3, this returns 4
-items because it includes index -4. Should be:
-```python
-return items[-n:]
-```
-Add test case: `assert get_last_n_items([1,2,3,4,5], 3) == [3,4,5]`
+    return f"Processing order for {customer_name}"
 ```
 
-#### Error Handling
+**Your in-line comment:**
+```
+🔴 BLOCKING: Null reference error for guest checkouts
+
+Looking at the schema, `order.customer` is optional (guests don't have customer records). This will crash with AttributeError on guest orders.
+
+**Impact**: Every guest checkout will fail with a 500 error.
+
+**Fix**:
 ```python
-# ❌ BUG: Swallowing exceptions
+def process_order(order):
+    customer_name = order.customer.name if order.customer else "Guest"
+    return f"Processing order for {customer_name}"
+```
+
+**Question**: Are guest checkouts a core flow? If yes, this is definitely blocking. If it's edge case we're not supporting yet, we could add validation to reject guest orders earlier with a clear error.
+```
+
+#### Silent Failures
+```python
+# Line 18-21
 def save_user(user):
     try:
         db.save(user)
     except:
-        pass  # Silent failure!
+        pass  # Ignore errors
+```
 
-# Your feedback:
-🔴 CRITICAL (Lines 18-21): This silently swallows all exceptions, making
-failures invisible. If the database is down or user data is invalid, this
-returns success but doesn't save anything. Either:
-1. Let the exception propagate (remove try/except)
-2. Log the error and re-raise
-3. Return a Result type indicating success/failure
+**Your in-line comment:**
+```
+🔴 BLOCKING: Silent failure hides critical errors
 
-Never silently ignore errors.
+This swallows ALL exceptions, making failures invisible:
+- Database down? Returns success, but nothing saved
+- Invalid data? Returns success, but nothing saved
+- Network error? Returns success, but nothing saved
+
+**Impact**: Data loss with no visibility. Users will think their actions succeeded when they didn't.
+
+**Fix Options**:
+1. **Remove try/except** - Let exceptions propagate (simplest)
+2. **Log and re-raise** - For observability:
+```python
+try:
+    db.save(user)
+except Exception as e:
+    logger.error("Failed to save user", user_id=user.id, error=str(e))
+    raise
+```
+
+**Why it matters**: Silent data loss is one of the worst bugs. Users lose trust immediately.
 ```
 
 ---
 
-## Priority 2: Architecture & Design (IMPORTANT)
+## Priority 2: Important Issues (Should Fix)
 
-**These show you understand system design and scalability.**
+**These will cause problems but might not be ship-blocking depending on context.**
 
-### 🟡 Separation of Concerns
+### 🟡 Architecture & Design Issues
 
 #### Business Logic in Wrong Layer
 ```python
-# ❌ ISSUE: Business logic in API controller
+# Line 23-38
 @app.post("/api/orders")
 async def create_order(request: OrderRequest):
-    # Validation
-    if request.total < 0:
-        raise HTTPException(400, "Invalid total")
-
-    # Business logic (should be in service layer!)
+    # Discount calculation in API endpoint
     if request.total > 10000:
         discount = request.total * 0.1
     else:
         discount = 0
 
     final_total = request.total - discount
-
-    # Database access (should be in repository!)
     db.execute("INSERT INTO orders VALUES (?)", [final_total])
-
     return {"order_id": "123"}
-
-# Your feedback:
-🟡 IMPORTANT (Lines 23-38): This endpoint contains business logic (discount
-calculation) and direct database access, violating separation of concerns.
-This makes the logic:
-- Untestable without spinning up the API
-- Not reusable from other contexts
-- Hard to maintain as rules grow
-
-Consider refactoring:
-1. Move discount logic to `OrderService.calculate_discount()`
-2. Move database operations to `OrderRepository.create()`
-3. Keep controller thin - just coordinate between service and repository
-
-This pattern scales better as complexity grows.
 ```
 
-### 🟡 Wrong Abstraction Layer
-
-```python
-# ❌ ISSUE: Infrastructure import in domain layer
-# File: domain/services/user_service.py
-from infrastructure.database.models import UserModel  # Wrong layer!
-
-class UserService:
-    def create_user(self, name: str):
-        user = UserModel(name=name)  # Domain depends on infrastructure!
-        return user
-
-# Your feedback:
-🟡 IMPORTANT (Line 2): Domain layer is importing from infrastructure layer,
-which inverts the dependency direction in hexagonal architecture. Domain
-should be pure business logic with no infrastructure dependencies.
-
-Create a domain entity (User) and repository port (UserRepositoryPort), then
-inject the repository:
-```python
-# domain/entities/user.py
-class User:
-    def __init__(self, id: str, name: str):
-        self.id = id
-        self.name = name
-
-# domain/ports/user_repository.py
-class UserRepositoryPort(ABC):
-    @abstractmethod
-    async def create(self, user: User) -> User:
-        pass
-
-# domain/services/user_service.py
-class UserService:
-    def __init__(self, user_repo: UserRepositoryPort):
-        self.user_repo = user_repo
-
-    async def create_user(self, name: str):
-        user = User(id=generate_id(), name=name)
-        return await self.user_repo.create(user)
+**Your in-line comment:**
 ```
-This keeps domain layer testable and infrastructure-independent.
+🟡 SHOULD FIX: Business logic in API layer
+
+This mixes three concerns in one endpoint:
+1. HTTP handling (request/response)
+2. Business logic (discount calculation)
+3. Data access (direct DB call)
+
+**Why this matters**:
+- Can't test discount logic without spinning up the API
+- Can't reuse discount logic from batch jobs or other contexts
+- As discount rules grow (multiple tiers, promo codes, etc.), this endpoint becomes a mess
+- Direct DB access in controller makes it hard to swap databases or add caching
+
+**Refactoring suggestion**:
+```python
+# api/routes/orders.py
+@app.post("/api/orders")
+async def create_order(request: OrderRequest, order_service: OrderService):
+    order = await order_service.create_order(request.total)
+    return {"order_id": order.id}
+
+# domain/services/order_service.py
+class OrderService:
+    def __init__(self, order_repo: OrderRepository):
+        self.order_repo = order_repo
+
+    async def create_order(self, total: float) -> Order:
+        discount = self._calculate_discount(total)
+        final_total = total - discount
+        return await self.order_repo.create(final_total)
+
+    def _calculate_discount(self, total: float) -> float:
+        return total * 0.1 if total > 10000 else 0
 ```
 
----
+**Trade-off consideration**: This refactoring takes time. Questions:
+- How often will discount logic change? (If frequently, worth refactoring now)
+- Are we adding promo codes soon? (If yes, refactor now to avoid rewrite)
+- Is this MVP code we're testing with users? (If yes, maybe ship as-is and refactor after validation)
 
-## Priority 3: Testing (IMPORTANT)
-
-**Missing tests or poor test quality shows lack of production experience.**
-
-### 🟡 Missing Test Coverage
-
-```python
-# ❌ ISSUE: New feature with no tests
-def calculate_discount(order_total: float, user_tier: str) -> float:
-    """Calculate discount based on order total and user tier."""
-    if user_tier == "gold":
-        return order_total * 0.2
-    elif user_tier == "silver":
-        return order_total * 0.1
-    elif order_total > 1000:
-        return order_total * 0.05
-    else:
-        return 0.0
-
-# Your feedback:
-🟡 IMPORTANT: This new discount calculation logic has no test coverage.
-Business logic like this should have comprehensive tests covering:
-- Each tier level (gold, silver, none)
-- Large order discount (>$1000)
-- Edge cases (total=0, total=1000 exactly, negative total)
-- Invalid tier values
-
-Suggest adding:
-```python
-def test_gold_tier_gets_20_percent_discount():
-    assert calculate_discount(100.0, "gold") == 20.0
-
-def test_large_order_with_no_tier_gets_5_percent():
-    assert calculate_discount(1500.0, "none") == 75.0
-
-def test_edge_case_exactly_1000_dollars():
-    assert calculate_discount(1000.0, "none") == 0.0  # Not > 1000
-```
+**Recommendation**: If this is core business logic we'll iterate on, refactor now. If it's MVP throwaway code, shipping as-is is reasonable with a TODO.
 ```
 
-### 🟡 Weak Tests
+### 🟡 Performance Issues
 
+#### N+1 Query Problem
 ```python
-# ❌ ISSUE: Test doesn't actually test anything
-def test_create_user():
-    user = create_user("Alice")
-    assert user is not None  # Too vague!
-
-# Your feedback:
-🟡 IMPORTANT: This test is too vague - it only checks that something was
-returned, not that it's correct. Tests should verify specific behavior:
-```python
-def test_create_user_returns_user_with_correct_name():
-    user = create_user("Alice")
-    assert user.name == "Alice"
-    assert user.id is not None
-    assert isinstance(user.created_at, datetime)
-```
-
-Also consider testing edge cases:
-- Empty name: `create_user("")` - should it raise ValueError?
-- Very long name: `create_user("A" * 1000)` - should it truncate?
-- Special characters: `create_user("Alice O'Brien")` - handled correctly?
-```
-
----
-
-## Priority 4: Performance (MEDIUM)
-
-**Shows you think about scale and efficiency.**
-
-### 🟡 N+1 Query Problem
-
-```python
-# ❌ ISSUE: N+1 queries
+# Line 45-50
 def get_users_with_orders():
     users = db.query("SELECT * FROM users")
     result = []
     for user in users:
-        # This executes a query for EACH user! (N queries)
         orders = db.query("SELECT * FROM orders WHERE user_id = ?", [user.id])
         result.append({"user": user, "orders": orders})
     return result
+```
 
-# Your feedback:
-🟡 IMPORTANT (Lines 45-50): Classic N+1 query problem. If there are 1000
-users, this executes 1001 queries (1 for users + 1000 for orders). This will
-be slow and put unnecessary load on the database.
+**Your in-line comment:**
+```
+🟡 PERFORMANCE: N+1 query problem
 
-Use a JOIN or fetch all orders in one query:
+This executes 1 + N queries (1 for users, then 1 per user for orders). With 1000 users, that's 1001 queries.
+
+**Impact assessment**:
+- If this endpoint is called frequently → Big problem, will slow down significantly
+- If users count is < 100 → Probably fine for MVP, optimize later
+- If this is for admin dashboard used once a day → Not urgent
+
+**Fix** (when needed):
 ```python
 def get_users_with_orders():
-    # Single query with JOIN
     query = """
         SELECT u.*, o.*
         FROM users u
         LEFT JOIN orders o ON o.user_id = u.id
     """
     rows = db.query(query)
-    # Group by user in Python
-    return group_orders_by_user(rows)
+    return group_by_user(rows)  # Group in Python
 ```
-This reduces 1001 queries to 1, significantly improving performance.
+This reduces to 1 query regardless of user count.
+
+**Question**: What's the expected usage pattern? If this is an admin endpoint with <100 users, I'd approve shipping as-is and optimize if it becomes a bottleneck. If it's user-facing with growth expected, fix before launch.
+
+**Judgment call**: Depends on context. Not automatically blocking.
 ```
 
-### 🟡 Inefficient Algorithm
+---
+
+## Priority 3: Judgment Calls (Startup Context)
+
+**This is where you show founding engineer thinking.**
+
+### Technical Debt Decisions
+
+#### Example: Quick Implementation vs. Scalable Design
+```python
+# Line 67-80
+def send_notification(user_id: str, message: str):
+    # TODO: For now, just email. Later add push, SMS, etc.
+    user = get_user(user_id)
+    send_email(user.email, message)
+```
+
+**Your in-line comment:**
+```
+💡 DESIGN DECISION: Simple notification approach
+
+Current implementation is email-only. The TODO mentions adding push/SMS later.
+
+**Trade-off analysis**:
+
+**Pros of current approach**:
+- Simple, easy to understand
+- Gets notifications working today
+- No over-engineering
+
+**Cons of current approach**:
+- Adding push/SMS later requires changing every call site
+- No abstraction for "notification channel"
+- Will be refactor-heavy if we add channels soon
+
+**Questions to consider**:
+- Is multi-channel notifications on the roadmap for next 1-2 sprints?
+- How many places call send_notification()?
+
+**Recommendation**:
+- **If multi-channel is 2+ months away**: Ship as-is, YAGNI principle applies
+- **If it's on the roadmap for next month**: Consider a simple abstraction now:
 
 ```python
-# ❌ ISSUE: O(n²) when O(n) possible
-def find_duplicates(items):
-    duplicates = []
-    for i, item in enumerate(items):
-        for j, other in enumerate(items):
-            if i != j and item == other and item not in duplicates:
-                duplicates.append(item)
-    return duplicates
+class NotificationService:
+    def send(self, user_id: str, message: str, channel: str = "email"):
+        if channel == "email":
+            self._send_email(user_id, message)
+        # Easy to add push/SMS later without changing call sites
+```
 
-# Your feedback:
-🟡 IMPORTANT (Lines 12-17): This nested loop is O(n²), which will be slow
-for large lists. For 10,000 items, this performs 100 million comparisons.
+This is 10 minutes of work now that saves hours of refactoring later.
 
-Use a set for O(n) solution:
+**My take**: Given the TODO, I'd lean toward the simple abstraction. But if we're validating product-market fit and multi-channel is speculative, shipping as-is is totally reasonable.
+
+**Not blocking** - either approach is defensible depending on priorities.
+```
+
+### When to Approve Despite Issues
+
+#### Example: MVP Code With Known Limitations
 ```python
-def find_duplicates(items):
-    seen = set()
-    duplicates = set()
+# Line 120-135
+def calculate_pricing(items: List[Item]) -> float:
+    # HACK: Hardcoded pricing for MVP
+    # TODO: Move to pricing table when we have dynamic pricing
+    total = 0
     for item in items:
-        if item in seen:
-            duplicates.add(item)
-        seen.add(item)
-    return list(duplicates)
+        if item.type == "basic":
+            total += 10
+        elif item.type == "premium":
+            total += 25
+    return total
 ```
-This reduces complexity from O(n²) to O(n).
+
+**Your in-line comment:**
+```
+✅ ACCEPTABLE MVP APPROACH: Hardcoded pricing
+
+This is explicitly marked as MVP code with clear TODO. The hack is:
+- **Intentional** (not accidental)
+- **Documented** (clear TODO)
+- **Isolated** (one function, easy to replace)
+- **Adequate** (works for current needs)
+
+**When this becomes a problem**:
+- When we need to change prices without deploying code
+- When we add 5+ item types (gets unwieldy)
+- When we need A/B testing on pricing
+
+**What makes this acceptable**:
+✅ Clear comment explaining it's temporary
+✅ Isolated to one function (easy to replace)
+✅ Solves the immediate problem
+✅ Doesn't create security/correctness issues
+
+**Suggestion**: Add a ticket number to the TODO so we track when to refactor:
+```python
+# TODO [PRICING-123]: Move to pricing table when we have dynamic pricing
+```
+
+**Verdict**: This is smart pragmatism. Shipping MVP code that solves today's problem while being easy to refactor later is exactly the right call.
+
+**APPROVE** - This is good engineering for an early-stage startup.
 ```
 
 ---
 
-## Priority 5: Code Quality (LOW PRIORITY)
+## Priority 4: Tests (Context-Dependent)
 
-**Only mention if egregious or you've covered everything else.**
-
-### 💡 Confusing Naming
+### When Missing Tests Are Blocking
 
 ```python
-# ❌ ISSUE: Unclear naming
-def process(d):
-    r = []
-    for x in d:
-        if x[1] > 100:
-            r.append(x[0])
-    return r
+# Line 89-102
+def charge_customer(customer_id: str, amount: float) -> bool:
+    """Charge customer's saved payment method."""
+    customer = get_customer(customer_id)
+    payment_method = customer.default_payment_method
 
-# Your feedback:
-💡 SUGGESTION (Lines 23-28): Variable names are cryptic, making the code
-hard to understand. Consider more descriptive names:
-```python
-def get_high_value_customer_ids(orders):
-    high_value_customer_ids = []
-    for customer_id, order_total in orders:
-        if order_total > 100:
-            high_value_customer_ids.append(customer_id)
-    return high_value_customer_ids
+    result = stripe.charge(
+        amount=amount,
+        payment_method=payment_method.id
+    )
+
+    return result.success
 ```
-Or more concisely:
-```python
-def get_high_value_customer_ids(orders):
-    return [customer_id for customer_id, total in orders if total > 100]
+
+**Your in-line comment:**
 ```
+🔴 BLOCKING: No tests for payment logic
+
+This is core business logic that handles money. Missing tests is not acceptable here, even for MVP.
+
+**Why this is blocking**:
+- Bugs in payment logic directly cost money
+- No way to verify edge cases (no payment method, charge fails, network error)
+- Can't refactor safely later without tests
+
+**Required test coverage**:
+```python
+def test_charge_customer_success():
+    # Happy path: charge succeeds
+
+def test_charge_customer_no_payment_method():
+    # Customer has no saved payment method
+
+def test_charge_customer_charge_fails():
+    # Stripe returns failure (declined card)
+
+def test_charge_customer_stripe_error():
+    # Stripe API throws exception (network error)
+```
+
+**Judgment**: Payment logic is never "move fast and break things" territory. Need tests before shipping.
+
+**Request**: Add tests before merging.
+```
+
+### When Missing Tests Are Acceptable
+
+```python
+# Line 45-52
+def format_user_display_name(user: User) -> str:
+    """Format user's name for display in UI."""
+    if user.preferred_name:
+        return user.preferred_name
+    elif user.first_name and user.last_name:
+        return f"{user.first_name} {user.last_name}"
+    else:
+        return user.email.split("@")[0]
+```
+
+**Your in-line comment:**
+```
+💡 OPTIONAL: Tests would be nice but not blocking
+
+This is pure presentation logic with no business impact. Bugs here just mean slightly wrong display names.
+
+**Risk assessment**:
+- Low impact: Wrong display name is annoying but not breaking
+- Simple logic: Easy to verify by inspection
+- UI layer: Will be caught in manual testing
+
+**Tests would help**:
+```python
+def test_format_user_display_name_preferred():
+    user = User(preferred_name="Bob", first_name="Robert")
+    assert format_user_display_name(user) == "Bob"
+```
+
+But not having them isn't a blocker for MVP.
+
+**Recommendation**:
+- **If you have time**: Add quick tests (5 min)
+- **If you're rushing to launch**: Ship without, add tests in next sprint
+
+**APPROVE without tests** - This is the kind of code where test ROI is lower for early stage.
 ```
 
 ---
 
-## How to Write Feedback
+## How to Write In-Line Comments (GitHub Style)
 
-### The Formula
+### The Format They Expect
 
 ```
-[SEVERITY] [LINE NUMBER]: [OBSERVATION] [IMPACT/WHY IT MATTERS] [SOLUTION]
+[EMOJI + SEVERITY] [SUMMARY HEADLINE]
+
+[Why this matters - impact/risk]
+
+[What to do about it - specific solution]
+
+[Optional: Questions or trade-off discussion]
 ```
 
-### Severity Guide
+### Comment Templates
 
-| Emoji | Severity | When to Use | Example |
-|-------|----------|-------------|---------|
-| 🔴 | CRITICAL | Security holes, data loss, crashes | SQL injection, missing auth |
-| 🟡 | IMPORTANT | Design issues, missing tests, performance | Wrong layer, N+1 queries |
-| 💡 | SUGGESTION | Code quality, minor improvements | Better naming, simplification |
-| ❓ | QUESTION | Need clarification or context | "Why was approach X chosen?" |
-| ✅ | PRAISE | Something done well | "Nice use of X pattern" |
+#### Critical Issue Template
+```
+🔴 BLOCKING: [What's wrong]
 
-### Examples of Good Feedback
+**Impact**: [What breaks in production]
 
-**❌ Bad**: "This is wrong"
-**✅ Good**: "🔴 CRITICAL (Line 45): This query is vulnerable to SQL injection..."
+**Fix**:
+[Specific code suggestion]
 
-**❌ Bad**: "Consider using a better approach"
-**✅ Good**: "🟡 IMPORTANT (Lines 23-28): This N+1 query will be slow at scale. Consider using a JOIN..."
+**Why this can't wait**: [Business/security risk]
+```
 
-**❌ Bad**: "Rename this variable"
-**✅ Good**: "💡 SUGGESTION (Line 12): `d` is unclear. Consider `discount_rate` to improve readability"
+#### Important Issue Template
+```
+🟡 SHOULD FIX: [What's wrong]
 
-**❌ Bad**: "Why did you do this?"
-**✅ Good**: "❓ QUESTION (Line 67): I see we're using approach X instead of the standard Y. Is there a specific reason for this choice? Happy to learn!"
+**Why this matters**: [Long-term problem this creates]
+
+**Suggested approach**:
+[Specific refactoring]
+
+**Trade-off**: [Time vs. benefit]
+
+**Recommendation**: [Your judgment call]
+```
+
+#### Suggestion Template
+```
+💡 SUGGESTION: [Improvement idea]
+
+**Current**: [What code does now]
+**Alternative**: [Better approach]
+**Benefit**: [Why it's better]
+
+**Not blocking** - [Why this is optional]
+```
+
+#### Question Template
+```
+❓ QUESTION: [What you're wondering]
+
+[Explain your thinking]
+
+[Why you're asking]
+
+**If [X], then [recommendation]**
+**If [Y], then [different recommendation]**
+```
+
+#### Praise Template
+```
+✅ NICE: [What's done well]
+
+[Why this is good - specific reason]
+
+[What it enables or prevents]
+```
 
 ---
 
-## Making Your Decision
+## Your Final Summary Template
 
-### ✅ APPROVE When:
-- No critical security or correctness issues
-- Any concerns are minor or optional
-- Code improves the codebase overall
-- Questions are curiosity, not blockers
-
-### ❌ REQUEST CHANGES When:
-- Critical issues exist (security, bugs, data loss)
-- Design violates architectural principles
-- Missing essential tests for new functionality
-- Would introduce significant technical debt
-
-### Your Decision Template
+After in-line comments, write an overall summary:
 
 ```markdown
-## Summary
-[2-3 sentences: What does this PR do? General impression?]
+## 📋 Review Summary
 
-## Critical Issues (Must Fix) 🔴
-1. [Line X]: [Specific issue with solution]
-2. [Line Y]: [Specific issue with solution]
+### What This PR Does
+[2-3 sentences on the purpose and approach]
 
-## Important Concerns (Should Address) 🟡
-1. [Design/performance/testing concern]
-2. [Concern with reasoning]
-
-## Suggestions (Optional) 💡
-- [Minor improvement]
-- [Code quality note]
-
-## Questions ❓
-- [Clarification on approach]
-
-## Positives ✅
-- [Something done well]
-- [Good pattern used]
+### Overall Assessment
+[Your high-level take: Is this good work? Does it solve the problem? Any major concerns?]
 
 ---
 
-## Decision: [APPROVE / REQUEST CHANGES]
+## 🔴 Critical Issues (Must Fix Before Merge)
 
-**Rationale**: [1-2 sentences explaining your decision]
+1. **[Line X]: SQL injection in user query**
+   - Fix: Use parameterized queries
+   - Risk: Complete database compromise
 
-[If REQUEST CHANGES]: The critical issues with [X, Y] must be addressed before merging to prevent [security risk / data loss / system instability].
+2. **[Line Y]: Missing auth on delete endpoint**
+   - Fix: Add authentication middleware
+   - Risk: Anyone can delete any user
 
-[If APPROVE]: While I've noted some suggestions for improvement, there are no blocking issues and this PR [improves the codebase / fixes the stated bug / adds value].
+[If none: "None found - no security or correctness blockers."]
+
+---
+
+## 🟡 Important Concerns (Should Address)
+
+1. **[Lines X-Y]: Business logic in API layer**
+   - Impact: Hard to test and reuse
+   - Suggestion: Extract to service layer
+   - Trade-off: Takes 30 min, saves hours later
+   - **Judgment**: [Blocking or not? Explain reasoning]
+
+2. **[Line Z]: N+1 query problem**
+   - Impact: Will be slow with many users
+   - Question: What's the expected usage?
+   - **Judgment**: [Blocking if user-facing, acceptable if admin dashboard]
+
+[If none: "None found - architecture looks solid for current stage."]
+
+---
+
+## 💡 Suggestions (Optional Improvements)
+
+- **[Line A]**: Could simplify with list comprehension (readability)
+- **[Line B]**: Consider extracting magic number to constant (maintainability)
+
+[These are nice-to-haves, not blockers]
+
+---
+
+## ✅ Things Done Well
+
+- **[Line X]**: Excellent error handling with specific exceptions
+- **[Line Y]**: Good use of type hints throughout
+- **Overall**: Clean, readable code that solves the problem
+
+[Always include positives - shows you're not just a critic]
+
+---
+
+## ❓ Questions
+
+1. **[Line X]**: Is the hardcoded pricing temporary for MVP or will this approach scale?
+   - If temporary → Approve as-is
+   - If long-term → Need pricing table
+
+2. **[Line Y]**: Are we planning to add more notification channels soon?
+   - If yes → Add abstraction now
+   - If no → YAGNI, ship as-is
+
+---
+
+## 🎯 Decision: [APPROVE / REQUEST CHANGES]
+
+### Rationale
+
+[REQUEST CHANGES example:]
+**REQUEST CHANGES**: The SQL injection (Line 23) and missing authentication (Line 45) are critical security holes that must be fixed before merging. These could lead to complete system compromise. Once these are addressed, happy to approve.
+
+The architectural concerns are worth discussing but not blocking - we can refactor as we grow.
+
+[APPROVE example:]
+**APPROVE**: While I've noted some suggestions for improvement, there are no blocking security or correctness issues. This PR solves the stated problem and the code quality is solid.
+
+The hardcoded pricing is explicitly marked as MVP-temporary and isolated to one function - smart pragmatism for early stage. The missing tests on formatting logic are low-risk given it's pure presentation.
+
+Good work overall. Let's ship it and iterate.
+
+---
+
+## 💭 Founding Engineer Perspective
+
+[Optional section showing you think about bigger picture]
+
+**What I like about this approach**:
+- Solves the immediate problem
+- Code is readable and maintainable
+- Clear TODOs for future improvements
+
+**What I'd watch as we grow**:
+- Refactor pricing logic when we hit 5+ item types
+- Add monitoring on the X endpoint (no tests currently)
+- Consider extraction pattern for Y when we add similar features
+
+**For future PRs**:
+- Payment logic should always have tests (involves money)
+- Security-sensitive endpoints need extra scrutiny
+- When in doubt on architecture, let's discuss trade-offs as a team
 ```
 
 ---
 
-## 10 High-Impact Things to Look For
+## 10 High-Impact Things to Find
 
-Focus your 45 minutes on these:
+Focus your review on these (in priority order):
 
+### Must Find (Blocking):
 1. **SQL injection** - String interpolation in queries
-2. **Missing authentication/authorization** - Endpoints without checks
-3. **Null/undefined crashes** - Dereferencing without checks
-4. **Separation of concerns** - Business logic in wrong layer
-5. **N+1 queries** - Database calls in loops
-6. **Missing error handling** - Try/catch that swallows exceptions
-7. **Missing tests** - New functionality without coverage
-8. **Hardcoded secrets** - API keys, passwords in code
-9. **Error paths not tested** - Only happy path covered
-10. **Wrong dependency direction** - Domain importing infrastructure
+2. **Exposed secrets** - Hardcoded API keys, passwords
+3. **Missing auth** - Endpoints that should require authentication
+4. **Null crashes** - Dereferencing without null checks in critical paths
+5. **Silent failures** - Try/except that swallows exceptions
 
-**If you find 3-5 of these kinds of issues and communicate them well, you'll do great.**
+### Should Find (Context-Dependent):
+6. **Business logic in wrong layer** - Logic that should be testable
+7. **N+1 queries** - Especially in user-facing endpoints
+8. **Missing tests on critical paths** - Payment, auth, data integrity
+9. **Architecture violations** - That will make future work harder
+10. **Performance problems** - That will impact user experience
 
----
-
-## Interview Strategy
-
-### Time Management (45 minutes)
-- **0-2 min**: Read PR description, understand context
-- **2-25 min**: Systematic review (focus on critical issues first)
-- **25-35 min**: Write feedback (in-line comments)
-- **35-40 min**: Write summary and decision
-- **40-45 min**: Review tone, add positives, final check
-
-### Communication Tips
-
-**DO**:
-- ✅ Be specific (line numbers, exact issue)
-- ✅ Explain impact ("this causes X problem")
-- ✅ Suggest solutions (don't just complain)
-- ✅ Ask questions when unsure
-- ✅ Praise good things
-- ✅ Use "we" language ("we could improve...")
-
-**DON'T**:
-- ❌ Be vague ("this seems off")
-- ❌ Be condescending ("obviously this is wrong")
-- ❌ Nitpick formatting (unless truly unreadable)
-- ❌ Assume malice ("you clearly didn't think")
-- ❌ Rewrite everything (respect the approach)
-
-### Show Your Thinking
-
-If you're unsure about something, **say so**:
-- "❓ I'm not familiar with library X - is this the standard way to use it?"
-- "❓ This seems like it could be a race condition, but I'd want to verify with the team's async patterns"
-- "💡 This could potentially be optimized with caching, but I'm not sure if the performance matters here"
-
-**Being honest about uncertainty is better than pretending to know everything.**
+### Nice to Find (Shows depth):
+11. **Good patterns to praise** - Shows you're not just critical
+12. **Trade-off discussions** - Shows you think about context
+13. **Thoughtful questions** - Shows curiosity and humility
 
 ---
 
-## Quick Reference Checklist
+## The Judgment Framework
 
-Print this or keep it visible during the interview:
+**When deciding if something is blocking, ask:**
+
+### 1. What's the Risk?
+- **High Risk** (Security, data loss, crashes) → Blocking
+- **Medium Risk** (Architecture debt, performance) → Context-dependent
+- **Low Risk** (Style, minor improvements) → Not blocking
+
+### 2. What's the Context?
+- **Is this MVP code testing product-market fit?** → Higher tolerance for debt
+- **Is this core infrastructure other features depend on?** → Lower tolerance
+- **Is this temporary or permanent?** → Temporary hacks are more acceptable
+- **How hard is this to change later?** → Easy to change = less urgent
+
+### 3. What's the Business Impact?
+- **Does this block users?** → Blocking
+- **Does this slow development?** → Important but maybe not blocking
+- **Does this cost money?** → Blocking (payment bugs, inefficient APIs)
+- **Does this affect user trust?** → Blocking (security, data integrity)
+
+### 4. What's the Trade-Off?
+- **Time to fix vs. risk of not fixing** → Is it worth the delay?
+- **Complexity added vs. flexibility gained** → Is abstraction worth it?
+- **Perfect now vs. good enough + iterate** → What's right for this stage?
+
+### Example Decisions
+
+**Scenario**: N+1 query in admin dashboard used by 2 people once a day
+- Risk: Low (not user-facing, small scale)
+- Context: MVP, not on critical path
+- Business impact: Minimal
+- Trade-off: Fixing takes time, benefit is small
+- **Decision: APPROVE** with suggestion to optimize later
+
+**Scenario**: N+1 query in user feed endpoint
+- Risk: High (user-facing, scales with users)
+- Context: Core feature, will get worse as we grow
+- Business impact: Slow UX, high DB load costs
+- Trade-off: Must fix, this will bite us
+- **Decision: REQUEST CHANGES**
+
+**Scenario**: Business logic in API for MVP feature
+- Risk: Medium (hard to test, hard to reuse)
+- Context: MVP code, testing product hypothesis
+- Business impact: Slows future iteration if we keep this feature
+- Trade-off: Extract now (30 min) vs. refactor later (2 hours)
+- **Decision: APPROVE with TODO** if clearly marked as temporary, **REQUEST CHANGES** if treating as permanent
+
+---
+
+## Common Founding Engineer Scenarios
+
+### Scenario 1: "Move Fast But This Is Hacky"
+
+```python
+# TODO: This is hacky but gets us to launch. Refactor after we validate PMF.
+def process_payment(amount):
+    # Simplified logic for MVP
+    return stripe.charge(amount)
+```
+
+**Bad Response**: "This is hacky and violates clean architecture. Request changes."
+
+**Good Response**:
+```
+💡 PRAGMATIC APPROACH: Simplified payment logic for MVP
+
+The TODO is clear about this being temporary for validation.
+
+**What makes this acceptable**:
+- Explicitly marked as MVP code
+- Solves the immediate need (can take payments)
+- Isolated (easy to replace without touching other code)
+
+**What would make this NOT acceptable**:
+- If we're handling complex payment flows (refunds, subscriptions)
+- If this processes high volume (needs error handling, retries)
+- If there's no plan to revisit (no TODO, treating as permanent)
+
+**Questions**:
+1. What's "after we validate PMF" - 3 months? 6 months? Just curious for planning.
+2. Are we tracking refunds/failures anywhere for manual handling?
+
+**Verdict**: This is smart MVPing. Ship it, validate, refactor when you have signal.
+
+✅ APPROVE
+```
+
+### Scenario 2: "Perfect Architecture vs. Ship Now"
+
+**PR Description**: "Quick implementation to unblock customer demo tomorrow. Can refactor after."
+
+**Bad Response**: Focus only on architectural purity, ignore business context.
+
+**Good Response**:
+```
+## Summary
+
+I understand this is needed for a customer demo tomorrow. I'll focus on must-fix issues vs. nice-to-haves.
+
+## 🔴 Must Fix Before Demo
+[Only critical security/correctness issues that would embarrass us in demo]
+
+## 🟡 Can Wait Until After Demo
+[Architecture improvements that matter but won't affect demo]
+
+## Decision: REQUEST CHANGES (only for critical), APPROVE (if no critical issues)
+
+**If APPROVE**: "No blockers for the demo. I've noted some refactoring ideas for after you close the deal. Good luck with the customer! 🚀"
+```
+
+### Scenario 3: Over-Engineering
+
+```python
+# PR adds complex abstraction layer for feature used in one place
+class NotificationStrategyFactory:
+    def create_strategy(self, channel: str) -> INotificationStrategy:
+        if channel == "email":
+            return EmailNotificationStrategy()
+        # ... 50 lines of strategy pattern setup
+```
+
+**Your comment**:
+```
+❓ QUESTION: Abstraction seems heavy for current needs
+
+Looking at the codebase, we only send email notifications from 2 places. This adds:
+- 5 new classes
+- Strategy pattern complexity
+- Harder to understand for new engineers
+
+**YAGNI principle**: "You Ain't Gonna Need It" - we shouldn't abstract until we have 2-3 concrete use cases.
+
+**Simpler approach** that's easier to maintain:
+```python
+def send_notification(user_id: str, message: str, channel: str = "email"):
+    if channel == "email":
+        send_email(user_id, message)
+    # When we add push/SMS, add elif here (2 lines vs. new classes)
+```
+
+**Trade-off**:
+- Current PR: More "architected" but harder to understand
+- Simpler approach: Easy to understand, easy to extend when needed
+
+**Question**: Are we planning to add 5+ notification channels soon? If yes, maybe this makes sense. If no, I'd vote for simplicity.
+
+**Recommendation**: Start simple, refactor when we actually need the flexibility. For now, YAGNI.
+
+💡 Not blocking, but worth discussing: Are we over-engineering this?
+```
+
+---
+
+## Red Flags vs. Green Flags
+
+### 🚩 Red Flags (When to REQUEST CHANGES)
+
+**Security/Correctness**:
+- SQL injection vulnerabilities
+- Hardcoded secrets in code
+- Missing authentication on sensitive endpoints
+- Null reference crashes on main paths
+- Silent exception swallowing
+
+**Architecture (Context-Dependent)**:
+- Will make future work significantly harder
+- Creates tight coupling across the codebase
+- Mixes concerns in a way that's hard to untangle
+
+**Shows Poor Judgment**:
+- Over-engineering simple problems
+- No tests on critical paths (payments, auth)
+- Ignoring obvious edge cases
+
+### 🟢 Green Flags (Shows Good Engineering)
+
+**Smart Pragmatism**:
+- Clear TODOs marking temporary code
+- MVPs that solve today's problem
+- Isolated hacks that are easy to replace
+
+**Good Communication**:
+- PR description explains the "why"
+- Comments explain non-obvious decisions
+- Asks for feedback on trade-offs
+
+**Quality Signals**:
+- Tests on critical paths
+- Error handling with logging
+- Type hints and clear naming
+
+---
+
+## The "Would I Want to Work With This Person?" Test
+
+Throughout your review, ask yourself: **"If I wrote this PR, would I want this person reviewing it?"**
+
+### ✅ Good Teammate Signals
+
+**Constructive**:
+- Points out problems AND suggests solutions
+- Explains why things matter, not just "this is wrong"
+- Balances criticism with praise
+
+**Judgment**:
+- Understands context and trade-offs
+- Knows when to push back vs. when to let go
+- Thinks about business impact, not just code purity
+
+**Communication**:
+- Clear, specific feedback with line numbers
+- Asks questions when unsure
+- Uses "we" language ("we could improve") not "you" language ("you did this wrong")
+
+### ❌ Bad Teammate Signals
+
+**Pedantic**:
+- Nitpicks every small thing
+- Ignores context and constraints
+- Perfect is the enemy of done
+
+**Harsh**:
+- Critical without constructive suggestions
+- Condescending tone
+- No recognition of good work
+
+**Dogmatic**:
+- "This violates principle X" without discussing trade-offs
+- Insists on perfection regardless of stage
+- Doesn't consider business context
+
+---
+
+## Final Checklist
+
+Print this and keep it visible during your interview:
 
 ```
-CRITICAL (Find at least 1-2):
-□ SQL injection vulnerabilities?
-□ Hardcoded secrets/credentials?
-□ Missing authentication checks?
-□ Null reference crashes?
-□ Swallowed exceptions?
-□ Off-by-one errors?
+□ Read PR description - understand the WHY
+□ Consider business context - demo tomorrow? MVP? Core infrastructure?
 
-IMPORTANT (Find 2-3):
-□ Business logic in API layer?
-□ N+1 query problems?
-□ Missing tests for new code?
-□ Weak/vague tests?
-□ Wrong dependency direction?
-□ Inefficient algorithms?
+CRITICAL (Must find if present):
+□ SQL injection or other security holes?
+□ Hardcoded secrets?
+□ Missing authentication?
+□ Null crashes on main paths?
+□ Silent exception swallowing?
 
-BONUS (If time):
-□ Confusing naming?
-□ Could be simplified?
-□ Good patterns to praise?
+IMPORTANT (Context-dependent):
+□ Architecture violations that block future work?
+□ N+1 queries on user-facing endpoints?
+□ Missing tests on critical paths (payments, auth)?
+□ Performance problems that affect UX?
+
+JUDGMENT:
+□ Did I consider trade-offs, not just point out issues?
+□ Did I distinguish blocking from nice-to-have?
+□ Did I think about business impact?
+□ Did I suggest solutions, not just problems?
+
+COMMUNICATION:
+□ Are my comments specific (line numbers)?
+□ Did I explain WHY things matter?
+□ Did I praise good work?
+□ Is my tone constructive?
+□ Would I want me reviewing my code?
+
+DECISION:
+□ Clear APPROVE or REQUEST CHANGES?
+□ Rationale explains reasoning?
+□ Considered business context?
 ```
 
 ---
 
-## Final Tips
+## Key Takeaways
 
-1. **Start with security and correctness** - These have highest impact
-2. **Be thorough but not pedantic** - Find real issues, skip formatting nitpicks
-3. **Always suggest solutions** - Don't just point out problems
-4. **Balance criticism with praise** - Note what's done well
-5. **Make a clear decision** - Don't waffle
-6. **Show your reasoning** - Explain WHY something matters
-7. **Ask when unsure** - Shows humility and curiosity
-8. **Think about production** - "What happens when this fails?"
-9. **Consider the team** - "Would I want to maintain this?"
-10. **Be constructive** - You're helping, not attacking
+### What They're Really Looking For
+
+1. **Technical Depth**: Can you spot real problems before they hit production?
+2. **Communication**: Can you make engineers better through feedback?
+3. **Judgment**: Can you make good trade-off decisions under constraints?
+
+### What Sets Founding Engineers Apart
+
+**Average engineer**: Finds bugs, points out violations
+**Founding engineer**: Finds bugs, assesses risk, considers context, suggests solutions, makes judgment calls
+
+### The One Thing to Remember
+
+> **You're not a code cop checking compliance. You're a founding engineer evaluating: "Is this the right trade-off for where we are as a company right now?"**
+
+That's the mindset that will make you stand out.
 
 ---
 
-## Remember
+Good luck! You've got this. 🚀
 
-**They're not looking for perfection. They're looking for**:
-- Can you spot real problems?
-- Can you communicate clearly?
-- Do you have good judgment about priorities?
-- Would you be a good teammate?
-
-**You don't need to find every issue. You need to find meaningful issues and communicate them well.**
-
-Good luck! 🚀
+Remember: They want to know if you can **set the right trajectory** for their company. Show them you can balance speed and quality, find real issues, and think like an owner.
