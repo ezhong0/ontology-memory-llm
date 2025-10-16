@@ -745,10 +745,7 @@
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: var(--space-5);
-            background: var(--color-bg-secondary);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
+            padding: var(--space-5) 0;
             margin-bottom: var(--space-4);
         }
 
@@ -782,15 +779,11 @@
 
         .chat-message-content {
             flex: 1;
-            background: var(--color-surface);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-lg);
-            padding: var(--space-4);
+            padding: var(--space-2) 0;
         }
 
         .chat-message.user .chat-message-content {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.05));
-            border-color: rgba(59, 130, 246, 0.2);
+            /* No special background - seamless flow */
         }
 
         .chat-message-role {
@@ -805,6 +798,7 @@
         .chat-message-text {
             color: var(--color-text-primary);
             line-height: 1.6;
+            white-space: pre-wrap;  /* Preserve line breaks and formatting */
         }
 
         .chat-message-debug {
@@ -1045,25 +1039,19 @@
 
         <!-- Tab: Chat -->
         <div id="tab-chat" class="tab-content">
-            <div class="card">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">Chat Interface</div>
-                        <div class="card-subtitle">Interactive conversation with memory context</div>
-                    </div>
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer;">
-                        <input type="checkbox" id="debugMode" checked style="cursor: pointer;">
-                        Debug Mode
-                    </label>
+            <div style="display: flex; justify-content: flex-end; margin-bottom: var(--space-4);">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer;">
+                    <input type="checkbox" id="debugMode" checked style="cursor: pointer;">
+                    Debug Mode
+                </label>
+            </div>
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="empty-state">Start a conversation to see memory system in action</div>
                 </div>
-                <div class="chat-container">
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="empty-state">Start a conversation to see memory system in action</div>
-                    </div>
-                    <div class="chat-input-container">
-                        <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
-                        <button class="btn btn-primary" onclick="sendMessage()">Send</button>
-                    </div>
+                <div class="chat-input-container">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
+                    <button class="btn btn-primary" onclick="sendMessage()">Send</button>
                 </div>
             </div>
         </div>
@@ -1815,6 +1803,7 @@
         // ============================================
 
         let chatHistory = [];
+        let currentSessionId = null;  // Track session for conversation continuity
 
         function tryQuery(query) {
             // Switch to chat tab
@@ -1843,18 +1832,30 @@
             input.value = '';
 
             try {
+                const requestBody = {
+                    message: message,
+                    user_id: 'demo-user',
+                    debug: debugMode
+                };
+
+                // Include session_id if we have one (for conversation continuity)
+                if (currentSessionId) {
+                    requestBody.session_id = currentSessionId;
+                }
+
                 const response = await fetch('/api/v1/demo/chat/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: message,
-                        user_id: 'demo-user',
-                        session_id: 'demo-session',
-                        debug: debugMode
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
+
+                // Store session_id from response for next message
+                if (data.session_id) {
+                    currentSessionId = data.session_id;
+                }
+
                 addChatMessage('assistant', data.reply, data.debug || data.traces);
 
             } catch (error) {

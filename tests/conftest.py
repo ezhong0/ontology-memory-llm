@@ -65,10 +65,10 @@ def event_loop():
 
 @pytest.fixture(scope="session")
 def test_database_url() -> str:
-    """Test database URL (uses production database with transaction rollback for isolation)"""
-    # Use the same database as production, but tests will use transaction rollback
-    # for isolation (see test_db_session fixture)
-    return "postgresql+asyncpg://memoryuser:memorypass@localhost:5432/memorydb"
+    """Test database URL (uses dedicated test database for complete isolation)"""
+    # Use dedicated test database (port 5433) to avoid interference with demo/dev database
+    # Tests run in transactions with rollback, but separate DB provides additional isolation
+    return "postgresql+asyncpg://testuser:testpass@localhost:5433/testdb"
 
 
 @pytest_asyncio.fixture(scope="function")

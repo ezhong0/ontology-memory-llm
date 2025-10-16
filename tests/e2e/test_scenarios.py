@@ -8,7 +8,7 @@ Status: Template ready for implementation (scenarios marked TODO)
 Coverage: All 18 functional requirements from take-home assessment
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from httpx import AsyncClient
 
 # Uncomment when API is implemented
@@ -225,7 +225,6 @@ async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, doma
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement disambiguation flow API")
 async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 3: Ambiguous entity → disambiguation flow
@@ -459,8 +458,7 @@ async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement after conflict detection ready")
-async def test_scenario_17_memory_vs_db_conflict_trust_db(api_client: AsyncClient):
+async def test_scenario_17_memory_vs_db_conflict_trust_db(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 17: Error handling when DB and memory disagree
 
@@ -474,23 +472,38 @@ async def test_scenario_17_memory_vs_db_conflict_trust_db(api_client: AsyncClien
              mark outdated memory for decay and corrective summary.
     """
     # ARRANGE: Seed DB with current state
-    await seed_domain_db({
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Test Customer",
+            "industry": "Technology",
+            "id": "test_cust_123"
+        }],
         "sales_orders": [{
-            "so_id": "so_1001",
+            "customer": "test_cust_123",
             "so_number": "SO-1001",
+            "title": "Test Order",
             "status": "in_fulfillment",  # Current DB state
-            "updated_at": datetime.utcnow()
+            "id": "so_1001"
         }]
     })
 
-    # ARRANGE: Create outdated memory
-    await create_semantic_memory(
+    # ARRANGE: Create canonical entity
+    await memory_factory.create_canonical_entity(
+        entity_id="sales_order:so_1001",
+        entity_type="sales_order",
+        canonical_name="SO-1001",
+        external_ref={"table": "domain.sales_orders", "id": ids["so_1001"]},
+        properties={"status": "in_fulfillment"}
+    )
+
+    # ARRANGE: Create outdated semantic memory (thinks order is fulfilled)
+    await memory_factory.create_semantic_memory(
         user_id="ops_manager",
         subject_entity_id="sales_order:so_1001",
         predicate="status",
         object_value={"type": "status", "value": "fulfilled"},  # Outdated
         confidence=0.7,
-        last_validated_at=datetime.utcnow() - timedelta(days=10)
+        last_validated_at=datetime.now(timezone.utc) - timedelta(days=10)
     )
 
     # ACT: User query
@@ -514,9 +527,9 @@ async def test_scenario_17_memory_vs_db_conflict_trust_db(api_client: AsyncClien
     assert conflict["conflict_type"] == "memory_vs_db"
     assert conflict["resolution_strategy"] == "trust_db"
 
-    # Conflict data should show both values
-    assert "fulfilled" in str(conflict["conflict_data"])  # Memory value (outdated)
-    assert "in_fulfillment" in str(conflict["conflict_data"])  # DB value (current)
+    # Conflict should show both values (existing memory vs new DB fact)
+    assert "fulfilled" in str(conflict["existing_value"])  # Memory value (outdated)
+    assert "in_fulfillment" in str(conflict["new_value"])  # DB value (current)
 
     # ASSERT: Response mentions discrepancy (epistemic humility - transparency)
     response_lower = data["response"].lower()

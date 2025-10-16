@@ -138,7 +138,12 @@ class ReplyContext:
             "- If uncertain or data is old, acknowledge it\n"
             "- If database and memory conflict, prefer database but mention the discrepancy\n"
             "- Use domain facts to answer current state, memories for preferences/context\n"
-            "- Do not make up information - only use the facts and memories provided"
+            "- Do not make up information - only use the facts and memories provided\n\n"
+            "EMAIL FORMATTING:\n"
+            "- When drafting emails, use proper structure with line breaks\n"
+            "- Include Subject line, greeting, body paragraphs, and signature\n"
+            "- Use \\n\\n for paragraph breaks to improve readability\n"
+            "- Keep professional tone but friendly"
         )
 
         return "\n".join(sections)

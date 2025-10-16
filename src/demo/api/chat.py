@@ -7,8 +7,9 @@ Week 2 implementation: Simple but functional chat that demonstrates:
 - LLM reply generation with full provenance
 """
 
+import hashlib
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.services import DebugTraceService
 from src.domain.value_objects.conversation_context_reply import (
+    RecentChatEvent,
     ReplyContext,
     RetrievedMemory,
 )
@@ -29,6 +31,7 @@ from src.infrastructure.database.domain_models import (
 )
 from src.infrastructure.database.models import (
     CanonicalEntity,
+    ChatEvent,
     SemanticMemory,
 )
 from src.infrastructure.database.session import get_db
@@ -49,12 +52,14 @@ class ChatMessageRequest(BaseModel):
 
     message: str
     user_id: str = "demo-user"
+    session_id: str | None = None  # Optional session ID for conversation continuity
 
 
 class ChatMessageResponse(BaseModel):
     """Response model for chat message with debug traces."""
 
     reply: str
+    session_id: str  # Return session ID for conversation continuity
     debug: dict
     traces: dict | None = None  # Debug traces for visualization
 
@@ -100,6 +105,21 @@ async def send_chat_message(
     )
 
     try:
+        # Step 0: Get or create session_id and store user message
+        session_id = UUID(request.session_id) if request.session_id else uuid4()
+
+        # Store user message in chat_events
+        user_event = ChatEvent(
+            session_id=session_id,
+            user_id=request.user_id,
+            role="user",
+            content=request.message,
+            content_hash=hashlib.sha256(request.message.encode()).hexdigest(),
+            created_at=datetime.now(UTC),
+        )
+        session.add(user_event)
+        await session.flush()  # Get event_id for potential use
+
         # Step 1: Fetch domain facts
         start_time = datetime.now(UTC)
         domain_facts = await _fetch_domain_facts(session, request.user_id)
@@ -148,14 +168,17 @@ async def send_chat_message(
             memories_count=len(memories),
         )
 
+        # Step 2.5: Fetch recent conversation history
+        chat_history = await _fetch_recent_chat_events(session, session_id, exclude_event_id=user_event.event_id)
+
         # Step 3: Build reply context
         context = ReplyContext(
             query=request.message,
             domain_facts=domain_facts,
             retrieved_memories=memories,
-            recent_chat_events=[],  # Week 2: No conversation history tracking yet
+            recent_chat_events=chat_history,
             user_id=request.user_id,
-            session_id=uuid4(),
+            session_id=session_id,
         )
 
         # Step 4: Generate reply using LLM (with automatic fallback if no API key)
@@ -168,6 +191,18 @@ async def send_chat_message(
             user_id=request.user_id,
             reply_length=len(reply),
         )
+
+        # Store assistant reply in chat_events
+        assistant_event = ChatEvent(
+            session_id=session_id,
+            user_id=request.user_id,
+            role="assistant",
+            content=reply,
+            content_hash=hashlib.sha256(reply.encode()).hexdigest(),
+            created_at=datetime.now(UTC),
+        )
+        session.add(assistant_event)
+        await session.commit()  # Commit all changes
 
         # Step 5: Build debug response
         debug_info = {
@@ -189,13 +224,17 @@ async def send_chat_message(
                 for mem in memories
             ],
             "context_summary": context.to_debug_summary(),
+            "conversation_history_count": len(chat_history),
         }
 
         # Get collected traces
         trace_data = trace_context.to_dict() if trace_context else None
 
         return ChatMessageResponse(
-            reply=reply, debug=debug_info, traces=trace_data
+            reply=reply,
+            session_id=str(session_id),
+            debug=debug_info,
+            traces=trace_data
         )
 
     except Exception as e:
@@ -290,6 +329,37 @@ async def _fetch_domain_facts(
         )
 
     return facts
+
+
+async def _fetch_recent_chat_events(
+    session: AsyncSession, session_id: UUID, exclude_event_id: int | None = None, limit: int = 10
+) -> list[RecentChatEvent]:
+    """Fetch recent chat history for conversation context.
+
+    Args:
+        session: Database session
+        session_id: Session identifier
+        exclude_event_id: Event ID to exclude (usually the current user message)
+        limit: Maximum number of events to fetch
+
+    Returns:
+        List of RecentChatEvent objects for conversation continuity
+    """
+    query = (
+        select(ChatEvent)
+        .where(ChatEvent.session_id == session_id)
+        .order_by(ChatEvent.created_at.desc())
+        .limit(limit)
+    )
+
+    if exclude_event_id:
+        query = query.where(ChatEvent.event_id != exclude_event_id)
+
+    result = await session.execute(query)
+    events = result.scalars().all()
+
+    # Reverse to get chronological order (oldest first)
+    return [RecentChatEvent(role=event.role, content=event.content) for event in reversed(events)]
 
 
 async def _fetch_relevant_memories(
