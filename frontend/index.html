@@ -793,6 +793,18 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: var(--space-2);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .chat-message-timestamp {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 0.6;
         }
 
         .chat-message-text {
@@ -845,6 +857,255 @@
             outline: none;
             border-color: var(--color-primary);
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: var(--space-2) 0;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-text-tertiary);
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30% { opacity: 1; transform: translateY(-4px); }
+        }
+
+        /* Chat suggestions */
+        .chat-suggestions {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+            padding: var(--space-10) var(--space-5);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .chat-suggestions-title {
+            text-align: center;
+            font-size: var(--text-sm);
+            color: var(--color-text-tertiary);
+            margin-bottom: var(--space-2);
+        }
+
+        .suggestion-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-3) var(--space-4);
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .suggestion-card:hover {
+            border-color: var(--color-primary);
+            background: var(--color-surface-elevated);
+            transform: translateX(4px);
+        }
+
+        .suggestion-card-icon {
+            font-size: 18px;
+            opacity: 0.7;
+        }
+
+        .suggestion-card-text {
+            flex: 1;
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+        }
+
+        /* ============================================
+           ARCHITECTURE DIAGRAM - INTERACTIVE
+           ============================================ */
+
+        .architecture-panel {
+            background: linear-gradient(180deg, var(--color-surface) 0%, var(--color-bg-secondary) 100%);
+            border-bottom: 1px solid var(--color-border);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .architecture-panel.collapsed {
+            max-height: 0;
+            border-bottom: none;
+        }
+
+        .architecture-panel.expanded {
+            max-height: 300px;
+        }
+
+        .architecture-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: var(--space-6) var(--space-8);
+        }
+
+        .architecture-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-5);
+        }
+
+        .architecture-title {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .architecture-toggle {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: var(--space-2);
+            transition: color var(--transition);
+        }
+
+        .architecture-toggle:hover {
+            color: var(--color-primary);
+        }
+
+        .architecture-layers {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: var(--space-4);
+            position: relative;
+        }
+
+        .layer-box {
+            background: var(--color-surface-elevated);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            cursor: pointer;
+            transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .layer-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--layer-accent);
+            opacity: 0.8;
+        }
+
+        .layer-box:hover {
+            border-color: var(--layer-accent);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .layer-box.active {
+            border-color: var(--layer-accent);
+            background: var(--color-surface-hover);
+            box-shadow: 0 0 20px rgba(var(--layer-accent-rgb), 0.3);
+        }
+
+        .layer-box.layer-0 { --layer-accent: var(--color-indigo); --layer-accent-rgb: 99, 102, 241; }
+        .layer-box.layer-1 { --layer-accent: var(--color-teal); --layer-accent-rgb: 20, 184, 166; }
+        .layer-box.layer-2 { --layer-accent: var(--color-primary); --layer-accent-rgb: 59, 130, 246; }
+        .layer-box.layer-3 { --layer-accent: var(--color-purple); --layer-accent-rgb: 139, 92, 246; }
+        .layer-box.layer-4 { --layer-accent: var(--color-success); --layer-accent-rgb: 16, 185, 129; }
+        .layer-box.layer-5 { --layer-accent: var(--color-warning); --layer-accent-rgb: 245, 158, 11; }
+
+        .layer-number {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-family: var(--font-mono);
+            margin-bottom: var(--space-1);
+        }
+
+        .layer-name {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-2);
+            line-height: 1.3;
+        }
+
+        .layer-count {
+            font-size: var(--text-2xl);
+            font-weight: 700;
+            color: var(--layer-accent);
+            font-family: var(--font-mono);
+            margin-bottom: var(--space-1);
+        }
+
+        .layer-description {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            line-height: 1.4;
+        }
+
+        .layer-arrow {
+            position: absolute;
+            top: 50%;
+            right: -16px;
+            transform: translateY(-50%);
+            font-size: 24px;
+            color: var(--color-text-tertiary);
+            opacity: 0.5;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        @keyframes flowPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .layer-box.processing {
+            animation: flowPulse 2s ease-in-out infinite;
+        }
+
+        .architecture-toggle-btn {
+            position: fixed;
+            top: 180px;
+            right: var(--space-8);
+            z-index: 99;
+            background: var(--color-surface-elevated);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-2) var(--space-3);
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--transition);
+            box-shadow: var(--shadow-md);
+        }
+
+        .architecture-toggle-btn:hover {
+            background: var(--color-surface-hover);
+            color: var(--color-primary);
+            border-color: var(--color-primary);
         }
 
         /* ============================================
@@ -991,6 +1252,71 @@
         </div>
     </nav>
 
+    <!-- Architecture Diagram Toggle Button -->
+    <button class="architecture-toggle-btn" onclick="toggleArchitecture()" id="archToggleBtn">
+        ▼ 6-Layer Architecture
+    </button>
+
+    <!-- Architecture Diagram Panel -->
+    <div class="architecture-panel expanded" id="architecturePanel">
+        <div class="architecture-content">
+            <div class="architecture-layers">
+                <!-- Layer 0: Domain Database -->
+                <div class="layer-box layer-0" onclick="showTab('database')">
+                    <div class="layer-number">LAYER 0</div>
+                    <div class="layer-name">Domain Database</div>
+                    <div class="layer-count" id="layer0-count">0</div>
+                    <div class="layer-description">Authoritative business data</div>
+                    <div class="layer-arrow">→</div>
+                </div>
+
+                <!-- Layer 1: Raw Events -->
+                <div class="layer-box layer-1" onclick="loadLayerFromDiagram(1)">
+                    <div class="layer-number">LAYER 1</div>
+                    <div class="layer-name">Raw Events</div>
+                    <div class="layer-count" id="layer1-count">0</div>
+                    <div class="layer-description">Immutable audit trail</div>
+                    <div class="layer-arrow">→</div>
+                </div>
+
+                <!-- Layer 2: Entity Resolution -->
+                <div class="layer-box layer-2" onclick="loadLayerFromDiagram(2)">
+                    <div class="layer-number">LAYER 2</div>
+                    <div class="layer-name">Entity Resolution</div>
+                    <div class="layer-count" id="layer2-count">0</div>
+                    <div class="layer-description">Identity grounding</div>
+                    <div class="layer-arrow">→</div>
+                </div>
+
+                <!-- Layer 3: Episodic -->
+                <div class="layer-box layer-3" onclick="loadLayerFromDiagram(3)">
+                    <div class="layer-number">LAYER 3</div>
+                    <div class="layer-name">Episodic</div>
+                    <div class="layer-count" id="layer3-count">0</div>
+                    <div class="layer-description">Events with context</div>
+                    <div class="layer-arrow">→</div>
+                </div>
+
+                <!-- Layer 4: Semantic -->
+                <div class="layer-box layer-4" onclick="loadLayerFromDiagram(4)">
+                    <div class="layer-number">LAYER 4</div>
+                    <div class="layer-name">Semantic</div>
+                    <div class="layer-count" id="layer4-count">0</div>
+                    <div class="layer-description">Fact triples</div>
+                    <div class="layer-arrow">→</div>
+                </div>
+
+                <!-- Layer 5: Procedural -->
+                <div class="layer-box layer-5" onclick="loadLayerFromDiagram(5)">
+                    <div class="layer-number">LAYER 5</div>
+                    <div class="layer-name">Procedural</div>
+                    <div class="layer-count" id="layer5-count">0</div>
+                    <div class="layer-description">Learned patterns</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Content -->
     <div class="container">
         <div id="globalAlert"></div>
@@ -1039,7 +1365,10 @@
 
         <!-- Tab: Chat -->
         <div id="tab-chat" class="tab-content">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: var(--space-4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+                <button class="btn btn-sm" onclick="clearConversation()" style="opacity: 0.7;">
+                    Clear Conversation
+                </button>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer;">
                     <input type="checkbox" id="debugMode" checked style="cursor: pointer;">
                     Debug Mode
@@ -1047,7 +1376,21 @@
             </div>
             <div class="chat-container">
                 <div class="chat-messages" id="chatMessages">
-                    <div class="empty-state">Start a conversation to see memory system in action</div>
+                    <div class="chat-suggestions">
+                        <div class="chat-suggestions-title">Try one of these example queries:</div>
+                        <div class="suggestion-card" onclick="useSuggestion('What invoices are outstanding?')">
+                            <div class="suggestion-card-icon">💰</div>
+                            <div class="suggestion-card-text">What invoices are outstanding?</div>
+                        </div>
+                        <div class="suggestion-card" onclick="useSuggestion('Tell me about Acme Corp')">
+                            <div class="suggestion-card-icon">🏢</div>
+                            <div class="suggestion-card-text">Tell me about Acme Corp</div>
+                        </div>
+                        <div class="suggestion-card" onclick="useSuggestion('What work orders are in progress?')">
+                            <div class="suggestion-card-icon">🔧</div>
+                            <div class="suggestion-card-text">What work orders are in progress?</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="chat-input-container">
                     <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
@@ -1820,6 +2163,34 @@
             input.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
+        function clearConversation() {
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = `
+                <div class="chat-suggestions">
+                    <div class="chat-suggestions-title">Try one of these example queries:</div>
+                    <div class="suggestion-card" onclick="useSuggestion('What invoices are outstanding?')">
+                        <div class="suggestion-card-icon">💰</div>
+                        <div class="suggestion-card-text">What invoices are outstanding?</div>
+                    </div>
+                    <div class="suggestion-card" onclick="useSuggestion('Tell me about Acme Corp')">
+                        <div class="suggestion-card-icon">🏢</div>
+                        <div class="suggestion-card-text">Tell me about Acme Corp</div>
+                    </div>
+                    <div class="suggestion-card" onclick="useSuggestion('What work orders are in progress?')">
+                        <div class="suggestion-card-icon">🔧</div>
+                        <div class="suggestion-card-text">What work orders are in progress?</div>
+                    </div>
+                </div>
+            `;
+            currentSessionId = null;  // Reset session for fresh conversation
+        }
+
+        function useSuggestion(query) {
+            const input = document.getElementById('chatInput');
+            input.value = query;
+            input.focus();
+        }
+
         async function sendMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
@@ -1830,6 +2201,9 @@
 
             addChatMessage('user', message);
             input.value = '';
+
+            // Show typing indicator
+            const typingId = addTypingIndicator();
 
             try {
                 const requestBody = {
@@ -1851,6 +2225,9 @@
 
                 const data = await response.json();
 
+                // Remove typing indicator
+                removeTypingIndicator(typingId);
+
                 // Store session_id from response for next message
                 if (data.session_id) {
                     currentSessionId = data.session_id;
@@ -1859,14 +2236,43 @@
                 addChatMessage('assistant', data.reply, data.debug || data.traces);
 
             } catch (error) {
+                removeTypingIndicator(typingId);
                 addChatMessage('assistant', `Error: ${error.message}`);
+            }
+        }
+
+        function addTypingIndicator() {
+            const container = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'chat-message assistant';
+            typingDiv.id = 'typing-indicator-msg';
+            typingDiv.innerHTML = `
+                <div class="chat-message-avatar">A</div>
+                <div class="chat-message-content">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(typingDiv);
+            container.scrollTop = container.scrollHeight;
+            return 'typing-indicator-msg';
+        }
+
+        function removeTypingIndicator(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.remove();
             }
         }
 
         function addChatMessage(role, content, debug = null) {
             const container = document.getElementById('chatMessages');
 
-            if (container.querySelector('.empty-state')) {
+            // Remove suggestions or empty state when first message is added
+            if (container.querySelector('.chat-suggestions') || container.querySelector('.empty-state')) {
                 container.innerHTML = '';
             }
 
@@ -1896,12 +2302,17 @@
             }
 
             const avatar = role === 'user' ? 'U' : 'A';
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-message ${role}`;
             messageDiv.innerHTML = `
                 <div class="chat-message-avatar">${avatar}</div>
                 <div class="chat-message-content">
-                    <div class="chat-message-role">${role}</div>
+                    <div class="chat-message-role">
+                        ${role}
+                        <span class="chat-message-timestamp">${timestamp}</span>
+                    </div>
                     <div class="chat-message-text">${content}</div>
                     ${debugHtml}
                 </div>

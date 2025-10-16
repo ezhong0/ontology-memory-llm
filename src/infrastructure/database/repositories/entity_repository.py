@@ -176,14 +176,8 @@ class EntityRepository(IEntityRepository):
 
             matches: list[tuple[CanonicalEntity, float]] = []
             for row in result:
-                # Convert row to domain entity
-                entity_ref = EntityReference(
-                    table=row.external_ref.get("table", ""),
-                    primary_key=row.external_ref.get("primary_key", ""),
-                    primary_value=row.external_ref.get("primary_value"),
-                    display_name=row.external_ref.get("display_name", ""),
-                    properties=row.external_ref.get("properties"),
-                )
+                # Convert row to domain entity using from_dict to handle JSONB properly
+                entity_ref = EntityReference.from_dict(row.external_ref)
 
                 entity = CanonicalEntity(
                     entity_id=row.entity_id,
@@ -386,13 +380,7 @@ class EntityRepository(IEntityRepository):
         Returns:
             Domain entity
         """
-        entity_ref = EntityReference(
-            table=model.external_ref.get("table", ""),
-            primary_key=model.external_ref.get("primary_key", ""),
-            primary_value=model.external_ref.get("primary_value"),
-            display_name=model.external_ref.get("display_name", ""),
-            properties=model.external_ref.get("properties"),
-        )
+        entity_ref = EntityReference.from_dict(model.external_ref)
 
         return CanonicalEntity(
             entity_id=model.entity_id,

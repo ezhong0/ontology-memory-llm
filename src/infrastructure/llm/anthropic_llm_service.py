@@ -23,9 +23,9 @@ logger = structlog.get_logger(__name__)
 
 
 class AnthropicLLMService(ILLMService):
-    """Anthropic implementation of ILLMService using Claude Haiku 4.5.
+    """Anthropic implementation of ILLMService using Claude 3.5 Haiku.
 
-    Uses Claude Haiku 4.5 for coreference resolution and semantic extraction.
+    Uses Claude 3.5 Haiku for coreference resolution and semantic extraction.
     Optimized for cost-effectiveness while maintaining high accuracy.
 
     Pricing: $1.00 per 1M input tokens, $5.00 per 1M output tokens
@@ -33,7 +33,7 @@ class AnthropicLLMService(ILLMService):
     """
 
     # Model configuration
-    MODEL = "claude-haiku-4-5-20251015"
+    MODEL = "claude-3-5-haiku-20241022"
     MAX_TOKENS = 1000  # Claude's max_tokens parameter
     TEMPERATURE = 0.0  # Deterministic output for coreference
     TEMPERATURE_EXTRACTION = 0.1  # Slightly higher for extraction

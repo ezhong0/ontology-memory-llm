@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Anthropic Configuration
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     anthropic_model: str = Field(
-        default="claude-haiku-4-5-20251015",
+        default="claude-3-5-haiku-20241022",
         description="Anthropic Claude model"
     )
 

@@ -246,6 +246,40 @@ async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClie
         ]
     })
 
+    # ARRANGE: Create canonical entities for both Apple entities
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['apple_tech']}",
+        entity_type="customer",
+        canonical_name="Apple Inc",
+        external_ref={"table": "domain.customers", "id": ids["apple_tech"]},
+        properties={"industry": "Technology"}
+    )
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['apple_farm']}",
+        entity_type="customer",
+        canonical_name="Apple Farm Supply",
+        external_ref={"table": "domain.customers", "id": ids["apple_farm"]},
+        properties={"industry": "Agriculture"}
+    )
+
+    # ARRANGE: Create aliases so "Apple" matches both entities (creates ambiguity)
+    # Note: pg_trgm similarity for "Apple" vs "Apple Inc" is only 0.6, below the 0.70 threshold
+    # So we need aliases to make "Apple" match both entities for the disambiguation flow
+    await memory_factory.create_entity_alias(
+        canonical_entity_id=f"customer_{ids['apple_tech']}",
+        alias_text="Apple",
+        alias_source="user_stated",
+        user_id=None,  # Global alias
+        confidence=0.9
+    )
+    await memory_factory.create_entity_alias(
+        canonical_entity_id=f"customer_{ids['apple_farm']}",
+        alias_text="Apple",
+        alias_source="user_stated",
+        user_id=None,  # Global alias
+        confidence=0.9
+    )
+
     # ACT: Ambiguous query
     response = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
@@ -274,12 +308,17 @@ async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClie
         assert "industry" in candidate["properties"]
 
     # ACT: User selects candidate
+    # Get the actual entity_id from the candidates
+    selected_entity_id = next(
+        c["entity_id"] for c in data["candidates"] if c["canonical_name"] == "Apple Inc"
+    )
+
     response2 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
         "message": "I meant Apple Inc",
         "disambiguation_selection": {
             "original_mention": "Apple",
-            "selected_entity_id": "customer:apple_tech"
+            "selected_entity_id": selected_entity_id
         }
     })
 
