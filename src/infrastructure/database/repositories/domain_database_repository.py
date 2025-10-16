@@ -356,6 +356,87 @@ class DomainDatabaseRepository(DomainDatabasePort):
             )
             return []
 
+    async def get_tasks_for_customer(
+        self, customer_id: str, status_filter: str | None = None
+    ) -> list[DomainFact]:
+        """Get all tasks for a customer."""
+        query_sql = """
+            SELECT
+                t.task_id,
+                t.title,
+                t.body,
+                t.status,
+                t.created_at,
+                EXTRACT(EPOCH FROM (NOW() - t.created_at)) / 86400 as age_days,
+                c.name as customer_name
+            FROM domain.tasks t
+            JOIN domain.customers c ON t.customer_id = c.customer_id
+            WHERE t.customer_id = :customer_id
+        """
+
+        if status_filter:
+            query_sql += " AND t.status = :status"
+
+        query_sql += " ORDER BY t.created_at DESC"
+
+        query = text(query_sql)
+
+        try:
+            params: dict[str, Any] = {"customer_id": UUID(customer_id)}
+            if status_filter:
+                params["status"] = status_filter
+
+            result = await self.session.execute(query, params)
+            rows = result.fetchall()
+
+            facts = []
+            for row in rows:
+                # Build human-readable content
+                content_parts = [f"Task: {row.title}"]
+                content_parts.append(f"Status: {row.status}")
+                if row.body:
+                    # Truncate body if too long
+                    body_preview = row.body[:100] + "..." if len(row.body) > 100 else row.body
+                    content_parts.append(f"Details: {body_preview}")
+                content_parts.append(f"Age: {int(row.age_days)} days")
+
+                facts.append(
+                    DomainFact(
+                        fact_type="task_status",
+                        entity_id=f"customer:{customer_id}",
+                        content=" | ".join(content_parts),
+                        metadata={
+                            "task_id": str(row.task_id),
+                            "title": row.title,
+                            "body": row.body,
+                            "status": row.status,
+                            "age_days": row.age_days,
+                            "created_at": row.created_at.isoformat(),
+                            "customer_name": row.customer_name,
+                        },
+                        source_table="domain.tasks",
+                        source_rows=[str(row.task_id)],
+                        retrieved_at=datetime.now(UTC),
+                    )
+                )
+
+            logger.debug(
+                "tasks_query_executed",
+                customer_id=customer_id,
+                status_filter=status_filter,
+                facts_retrieved=len(facts),
+            )
+
+            return facts
+
+        except Exception as e:
+            logger.error(
+                "tasks_query_failed",
+                customer_id=customer_id,
+                error=str(e),
+            )
+            return []
+
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:
