@@ -68,6 +68,28 @@ async def process_chat_simplified(
             session_id=session_id,
         )
 
+        # Task 1.2.1: Handle disambiguation selection from prior ambiguity
+        disambiguation_selection = request.get("disambiguation_selection")
+        if disambiguation_selection:
+            # User selected from ambiguous candidates
+            from src.infrastructure.di.container import Container
+            container = Container()
+            entity_resolution_service = container.entity_resolution_service()
+
+            await entity_resolution_service.learn_alias(
+                entity_id=disambiguation_selection["selected_entity_id"],
+                alias_text=disambiguation_selection["original_mention"],
+                user_id=user_id,
+                source="user_stated",
+            )
+
+            logger.info(
+                "disambiguation_alias_created",
+                entity_id=disambiguation_selection["selected_entity_id"],
+                mention=disambiguation_selection["original_mention"],
+                user_id=user_id,
+            )
+
         # Create input DTO
         input_dto = ProcessChatMessageInput(
             user_id=user_id,
@@ -138,8 +160,57 @@ async def process_chat_simplified(
                 "source_types": [mem.memory_type for mem in output.retrieved_memories],
             }
 
+        # Add conflicts if any detected (Vision Principle: Epistemic Humility)
+        if output.conflicts_detected:
+            response_dict["conflicts"] = [
+                {
+                    "subject": conflict.subject_entity_id,
+                    "predicate": conflict.predicate,
+                    "existing_value": conflict.existing_value,
+                    "new_value": conflict.new_value,
+                    "existing_confidence": conflict.existing_confidence,
+                    "new_confidence": conflict.new_confidence,
+                    "resolution": conflict.resolution_strategy,
+                }
+                for conflict in output.conflicts_detected
+            ]
+
         return response_dict
 
+    except AmbiguousEntityError as e:
+        # Task 1.2.1: Return disambiguation as structured response (not error)
+        logger.warning(
+            "ambiguous_entity_requires_disambiguation",
+            mention=e.mention_text,
+            candidates_count=len(e.candidates),
+        )
+
+        # Fetch entity details for each candidate
+        from src.infrastructure.di.container import Container
+        container = Container()
+        entity_repo = container.entity_repository()
+
+        candidates_with_details = []
+        for entity_id, similarity_score in e.candidates:
+            entity = await entity_repo.find_by_entity_id(entity_id)
+            if entity:
+                candidates_with_details.append({
+                    "entity_id": entity.entity_id,
+                    "canonical_name": entity.canonical_name,
+                    "properties": {
+                        "entity_type": entity.entity_type,
+                        **entity.properties,
+                    },
+                    "similarity_score": similarity_score,
+                })
+
+        # Return 200 with disambiguation_required flag
+        return {
+            "disambiguation_required": True,
+            "original_mention": e.mention_text,
+            "candidates": candidates_with_details,
+            "message": f"Multiple entities match '{e.mention_text}'. Please select one.",
+        }
 
     except Exception as e:
         logger.error(
