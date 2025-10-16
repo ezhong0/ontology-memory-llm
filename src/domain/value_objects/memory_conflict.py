@@ -13,6 +13,7 @@ class ConflictType(str, Enum):
     VALUE_MISMATCH = "value_mismatch"  # Same predicate, different values
     TEMPORAL_INCONSISTENCY = "temporal_inconsistency"  # Time-based contradiction
     LOGICAL_CONTRADICTION = "logical_contradiction"  # Logically impossible
+    MEMORY_VS_DB = "memory_vs_db"  # Memory contradicts authoritative database
 
 
 class ConflictResolution(str, Enum):
@@ -23,6 +24,7 @@ class ConflictResolution(str, Enum):
     KEEP_MOST_REINFORCED = "keep_most_reinforced"  # Keep most observations
     REQUIRE_CLARIFICATION = "require_clarification"  # User must clarify
     MARK_BOTH_INVALID = "mark_both_invalid"  # Both are wrong
+    TRUST_DB = "trust_db"  # Trust authoritative database over memory (Correspondence Truth)
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,7 @@ class MemoryConflict:
             ConflictResolution.KEEP_NEWEST,
             ConflictResolution.KEEP_HIGHEST_CONFIDENCE,
             ConflictResolution.KEEP_MOST_REINFORCED,
+            ConflictResolution.TRUST_DB,
         ]
 
     def to_dict(self) -> dict[str, Any]:

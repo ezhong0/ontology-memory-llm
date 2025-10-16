@@ -29,7 +29,22 @@ from src.infrastructure.database.repositories import (
 )
 from src.infrastructure.database.session import async_session_factory
 from src.infrastructure.embedding import OpenAIEmbeddingService
-from src.infrastructure.llm import OpenAILLMService, OpenAIProvider
+from src.infrastructure.llm import AnthropicLLMService, OpenAILLMService, OpenAIProvider
+
+
+def create_llm_service(settings: Settings) -> OpenAILLMService | AnthropicLLMService:
+    """Factory function to create LLM service based on configuration.
+
+    Args:
+        settings: Application settings
+
+    Returns:
+        Configured LLM service (OpenAI or Anthropic)
+    """
+    if settings.llm_provider == "anthropic":
+        return AnthropicLLMService(api_key=settings.anthropic_api_key)
+    else:
+        return OpenAILLMService(api_key=settings.openai_api_key)
 
 
 class Container(containers.DeclarativeContainer):
@@ -49,9 +64,10 @@ class Container(containers.DeclarativeContainer):
     settings = providers.Singleton(Settings)
 
     # Infrastructure - LLM and Embedding Services
+    # Conditionally use OpenAI or Anthropic based on configuration
     llm_service = providers.Singleton(
-        OpenAILLMService,
-        api_key=settings.provided.openai_api_key,
+        create_llm_service,
+        settings=settings,
     )
 
     # OpenAI Provider for LLMReplyGenerator (hexagonal architecture port/adapter)

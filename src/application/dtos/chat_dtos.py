@@ -99,6 +99,29 @@ class RetrievedMemoryDTO:
 
 
 @dataclass
+class MemoryConflictDTO:
+    """DTO for memory conflict information (Phase 1C Epistemic Humility).
+
+    Attributes:
+        subject_entity_id: Entity the conflict is about
+        predicate: Property that conflicts
+        existing_value: Value in existing memory
+        new_value: New value from observation
+        existing_confidence: Confidence of existing memory
+        new_confidence: Confidence of new observation
+        resolution_strategy: How conflict was resolved
+    """
+
+    subject_entity_id: str
+    predicate: str
+    existing_value: dict[str, Any]
+    new_value: dict[str, Any]
+    existing_confidence: float
+    new_confidence: float
+    resolution_strategy: str
+
+
+@dataclass
 class ProcessChatMessageInput:
     """Input DTO for processing a chat message.
 
@@ -129,6 +152,7 @@ class ProcessChatMessageOutput:
         resolution_success_rate: Percentage of mentions successfully resolved
         semantic_memories: List of semantic memories extracted (Phase 1B)
         conflict_count: Number of conflicts detected (Phase 1B)
+        conflicts_detected: Detailed conflict information for transparency (Phase 1C)
         domain_facts: List of domain facts retrieved (Phase 1C)
         retrieved_memories: List of memories retrieved from past conversations (Phase 1D)
         reply: Generated natural language reply (Phase 1C)
@@ -141,6 +165,7 @@ class ProcessChatMessageOutput:
     resolution_success_rate: float
     semantic_memories: list[SemanticMemoryDTO]
     conflict_count: int
+    conflicts_detected: list[MemoryConflictDTO]
     domain_facts: list[DomainFactDTO]
     retrieved_memories: list[RetrievedMemoryDTO]
     reply: str

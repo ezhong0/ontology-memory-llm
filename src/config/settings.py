@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     db_pool_size: int = Field(default=10, description="Connection pool size")
     db_max_overflow: int = Field(default=20, description="Max overflow connections")
 
+    # LLM Provider Configuration
+    llm_provider: Literal["openai", "anthropic"] = Field(
+        default="anthropic",
+        description="LLM provider (openai or anthropic)"
+    )
+
     # OpenAI Configuration
     openai_api_key: str = Field(default="", description="OpenAI API key")
     openai_embedding_model: str = Field(
@@ -48,6 +54,13 @@ class Settings(BaseSettings):
     openai_llm_model: str = Field(
         default="gpt-4-turbo-preview",
         description="LLM model for extraction"
+    )
+
+    # Anthropic Configuration
+    anthropic_api_key: str = Field(default="", description="Anthropic API key")
+    anthropic_model: str = Field(
+        default="claude-haiku-4-5-20251015",
+        description="Anthropic Claude model"
     )
 
     # Redis Configuration (Phase 2)

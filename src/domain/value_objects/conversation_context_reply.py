@@ -86,7 +86,14 @@ class ReplyContext:
             "You are a knowledgeable business assistant with access to:\n"
             "1. Authoritative database facts (current state of orders, invoices, customers)\n"
             "2. Learned memories (preferences, patterns, past interactions)\n\n"
-            "Always prefer database facts for current state, and use memories for context and preferences."
+            "Always prefer database facts for current state, and use memories for context and preferences.\n\n"
+            "CRITICAL - Epistemic Humility:\n"
+            "- If NO data is provided (no database facts AND no memories), you MUST acknowledge "
+            "the information gap explicitly\n"
+            "- DO NOT fabricate plausible-sounding information\n"
+            "- DO NOT use generic industry defaults (like 'typical NET30 terms')\n"
+            "- Instead, say: 'I don't have information about [entity]' or 'No records found'\n"
+            "- Suggest checking source systems or asking the user for clarification"
         )
         sections.append("")
 
@@ -95,6 +102,10 @@ class ReplyContext:
             sections.append("=== DATABASE FACTS (Authoritative) ===")
             for fact in self.domain_facts:
                 sections.append(fact.to_prompt_fragment())
+            sections.append("")
+        else:
+            sections.append("=== DATABASE FACTS (Authoritative) ===")
+            sections.append("NO DATABASE FACTS FOUND - No records in domain database for this query")
             sections.append("")
 
         # Section 3: Retrieved memories (contextual)
@@ -106,6 +117,10 @@ class ReplyContext:
                     f"confidence: {mem.confidence:.2f})\n"
                     f"- {mem.content}"
                 )
+            sections.append("")
+        else:
+            sections.append("=== RETRIEVED MEMORIES (Contextual) ===")
+            sections.append("NO MEMORIES FOUND - No relevant memories from past conversations")
             sections.append("")
 
         # Section 4: Conversation continuity

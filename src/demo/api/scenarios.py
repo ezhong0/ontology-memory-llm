@@ -63,6 +63,27 @@ class ResetResponse(BaseModel):
     message: str
 
 
+class ScenarioDataResponse(BaseModel):
+    """Full data that will be loaded by a scenario."""
+
+    scenario_id: int
+    title: str
+    description: str
+    category: str
+    # Domain data that will be loaded
+    customers: list[dict]
+    sales_orders: list[dict]
+    invoices: list[dict]
+    work_orders: list[dict]
+    payments: list[dict]
+    tasks: list[dict]
+    # Memory data that will be loaded
+    semantic_memories: list[dict]
+
+    class Config:
+        from_attributes = True
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -129,6 +150,112 @@ async def get_scenario(scenario_id: int) -> ScenarioSummaryResponse:
         payments_count=len(scenario.domain_setup.payments),
         tasks_count=len(scenario.domain_setup.tasks),
         memories_count=len(scenario.semantic_memories),
+    )
+
+
+@router.get("/{scenario_id}/data", response_model=ScenarioDataResponse)
+async def get_scenario_data(scenario_id: int) -> ScenarioDataResponse:
+    """Get full data that will be loaded by a scenario.
+
+    This returns the actual customer names, invoice numbers, memory details, etc.
+    that will be created when the scenario is loaded.
+
+    Args:
+        scenario_id: ID of the scenario (1-18)
+
+    Returns:
+        Full scenario data including all domain records and memories
+
+    Raises:
+        404: If scenario not found
+    """
+    scenario = ScenarioRegistry.get(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+
+    # Convert setup objects to dicts
+    customers = [
+        {
+            "name": c.name,
+            "industry": c.industry,
+        }
+        for c in scenario.domain_setup.customers
+    ]
+
+    sales_orders = [
+        {
+            "so_number": so.so_number,
+            "customer_name": so.customer_name,
+            "title": so.title,
+            "status": so.status,
+        }
+        for so in scenario.domain_setup.sales_orders
+    ]
+
+    invoices = [
+        {
+            "invoice_number": inv.invoice_number,
+            "sales_order_number": inv.sales_order_number,
+            "amount": str(inv.amount),
+            "due_date": inv.due_date.isoformat() if inv.due_date else None,
+            "status": inv.status,
+        }
+        for inv in scenario.domain_setup.invoices
+    ]
+
+    work_orders = [
+        {
+            "sales_order_number": wo.sales_order_number,
+            "description": wo.description,
+            "status": wo.status,
+            "technician": wo.technician,
+            "scheduled_for": wo.scheduled_for.isoformat() if wo.scheduled_for else None,
+        }
+        for wo in scenario.domain_setup.work_orders
+    ]
+
+    payments = [
+        {
+            "invoice_number": pay.invoice_number,
+            "amount": str(pay.amount),
+            "method": pay.method,
+        }
+        for pay in scenario.domain_setup.payments
+    ]
+
+    tasks = [
+        {
+            "customer_name": task.customer_name,
+            "title": task.title,
+            "body": task.body,
+            "status": task.status,
+        }
+        for task in scenario.domain_setup.tasks
+    ]
+
+    semantic_memories = [
+        {
+            "subject": mem.subject,
+            "predicate": mem.predicate,
+            "predicate_type": mem.predicate_type,
+            "object_value": mem.object_value,
+            "confidence": mem.confidence,
+        }
+        for mem in scenario.semantic_memories
+    ]
+
+    return ScenarioDataResponse(
+        scenario_id=scenario.scenario_id,
+        title=scenario.title,
+        description=scenario.description,
+        category=scenario.category,
+        customers=customers,
+        sales_orders=sales_orders,
+        invoices=invoices,
+        work_orders=work_orders,
+        payments=payments,
+        tasks=tasks,
+        semantic_memories=semantic_memories,
     )
 
 

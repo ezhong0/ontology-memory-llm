@@ -14,6 +14,7 @@ from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.value_objects import (
     ConflictResolution,
     ConflictType,
+    DomainFact,
     MemoryConflict,
     SemanticTriple,
 )
@@ -257,3 +258,83 @@ class ConflictDetectionService:
 
         # Default: Require user clarification
         return ConflictResolution.REQUIRE_CLARIFICATION
+
+    def detect_memory_vs_db_conflict(
+        self,
+        memory: SemanticMemory,
+        domain_fact: DomainFact,
+    ) -> MemoryConflict | None:
+        """Detect conflict between semantic memory and authoritative database fact.
+
+        Philosophy: Database is Correspondence Truth (authoritative facts),
+        Memory is Contextual Truth (interpretive understanding).
+        When they conflict, DB wins.
+
+        Args:
+            memory: Semantic memory to check
+            domain_fact: Domain fact from authoritative database
+
+        Returns:
+            MemoryConflict if conflict detected, None otherwise
+        """
+        # Check if they're about the same entity
+        if memory.subject_entity_id != domain_fact.entity_id:
+            return None
+
+        # Map fact_type to predicate
+        # For now, simple mapping for common cases
+        predicate_map = {
+            "order_status": "status",
+            "invoice_status": "status",
+            "work_order_status": "status",
+        }
+
+        inferred_predicate = predicate_map.get(domain_fact.fact_type)
+        if not inferred_predicate or inferred_predicate != memory.predicate:
+            return None
+
+        # Extract value from domain fact metadata
+        # For status facts, value is in metadata["status"]
+        db_value = None
+        if domain_fact.fact_type.endswith("_status"):
+            db_value = domain_fact.metadata.get("status")
+
+        if db_value is None:
+            return None
+
+        # Compare values
+        memory_value = memory.object_value.get("value")
+        if memory_value == db_value:
+            # No conflict
+            return None
+
+        # Conflict detected: Memory disagrees with DB
+        logger.warning(
+            "memory_vs_db_conflict_detected",
+            entity_id=memory.subject_entity_id,
+            predicate=memory.predicate,
+            memory_value=memory_value,
+            db_value=db_value,
+        )
+
+        # Build conflict
+        conflict = MemoryConflict(
+            conflict_type=ConflictType.MEMORY_VS_DB,
+            new_memory_id=None,  # DB fact, not a memory
+            existing_memory_id=memory.memory_id or 0,
+            subject_entity_id=memory.subject_entity_id,
+            predicate=memory.predicate,
+            new_value={"type": "status", "value": db_value},
+            existing_value=memory.object_value,
+            recommended_resolution=ConflictResolution.TRUST_DB,
+            confidence_diff=1.0,  # DB has 100% confidence (authoritative)
+            temporal_diff_days=None,
+            metadata={
+                "db_fact_type": domain_fact.fact_type,
+                "db_source_table": domain_fact.source_table,
+                "memory_confidence": memory.confidence,
+                "rationale": "Database is authoritative source of truth (Correspondence Truth)",
+            },
+        )
+
+        return conflict

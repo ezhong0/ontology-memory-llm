@@ -29,6 +29,7 @@ class ExtractSemanticsResult:
         semantic_memory_dtos: List of semantic memory DTOs for API response
         semantic_memory_entities: List of full semantic memory entities for scoring
         conflict_count: Number of conflicts detected
+        conflicts_detected: List of actual conflict objects for transparency
     """
 
     def __init__(
@@ -36,10 +37,12 @@ class ExtractSemanticsResult:
         semantic_memory_dtos: list[SemanticMemoryDTO],
         semantic_memory_entities: list[SemanticMemory],
         conflict_count: int,
+        conflicts_detected: list[MemoryConflict] | None = None,
     ):
         self.semantic_memory_dtos = semantic_memory_dtos
         self.semantic_memory_entities = semantic_memory_entities
         self.conflict_count = conflict_count
+        self.conflicts_detected = conflicts_detected or []
 
 
 class ExtractSemanticsUseCase:
@@ -97,6 +100,7 @@ class ExtractSemanticsUseCase:
         semantic_memory_dtos: list[SemanticMemoryDTO] = []
         semantic_memory_entities: list[SemanticMemory] = []
         conflict_count = 0
+        conflicts_detected: list[MemoryConflict] = []
 
         if not resolved_entities:
             logger.debug("no_resolved_entities_for_semantic_extraction")
@@ -104,6 +108,7 @@ class ExtractSemanticsUseCase:
                 semantic_memory_dtos=[],
                 semantic_memory_entities=[],
                 conflict_count=0,
+                conflicts_detected=[],
             )
 
         logger.info(
@@ -154,6 +159,7 @@ class ExtractSemanticsUseCase:
 
                     if conflict:
                         conflict_count += 1
+                        conflicts_detected.append(conflict)  # Track for transparency
                         logger.warning(
                             "memory_conflict_detected",
                             conflict_type=conflict.conflict_type.value,
@@ -235,6 +241,7 @@ class ExtractSemanticsUseCase:
             semantic_memory_dtos=semantic_memory_dtos,
             semantic_memory_entities=semantic_memory_entities,
             conflict_count=conflict_count,
+            conflicts_detected=conflicts_detected,
         )
 
     async def _handle_auto_resolvable_conflict(

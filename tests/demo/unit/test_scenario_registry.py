@@ -14,7 +14,7 @@ class TestScenarioRegistry:
         assert scenario is not None
         assert scenario.scenario_id == 1
         assert scenario.title == "Overdue invoice follow-up with preference recall"
-        assert scenario.category == "memory_retrieval"
+        assert scenario.category == "financial"
 
     def test_get_nonexistent_scenario(self):
         """Test retrieving non-existent scenario returns None."""
@@ -32,10 +32,10 @@ class TestScenarioRegistry:
 
     def test_get_by_category(self):
         """Test getting scenarios by category."""
-        scenarios = ScenarioRegistry.get_by_category("memory_retrieval")
+        scenarios = ScenarioRegistry.get_by_category("financial")
 
         assert len(scenarios) > 0
-        assert all(s.category == "memory_retrieval" for s in scenarios)
+        assert all(s.category == "financial" for s in scenarios)
 
     def test_scenario_1_structure(self):
         """Test Scenario 1 has correct structure."""
