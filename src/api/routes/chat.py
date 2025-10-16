@@ -3,6 +3,7 @@
 Endpoints for processing chat messages.
 """
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,9 +40,9 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
     """,
 )
 async def process_chat_simplified(
-    request: dict,
+    request: dict[str, Any],
     use_case: ProcessChatMessageUseCase = Depends(get_process_chat_message_use_case),
-) -> dict:
+) -> dict[str, Any]:
     """Process a chat message with simplified request/response format.
 
     This endpoint is designed for E2E tests and provides a simple interface.
@@ -80,7 +81,7 @@ async def process_chat_simplified(
         output = await use_case.execute(input_dto)
 
         # Build simplified response matching E2E test expectations
-        return {
+        response_dict = {
             "response": output.reply,
             "augmentation": {
                 "domain_facts": [
@@ -126,6 +127,18 @@ async def process_chat_simplified(
                 }
             ],
         }
+
+        # Add provenance/explainability data if memories were retrieved
+        # (Vision Principle: Explainability - transparency as trust)
+        if output.retrieved_memories:
+            response_dict["provenance"] = {
+                "memory_ids": [mem.memory_id for mem in output.retrieved_memories],
+                "similarity_scores": [mem.relevance_score for mem in output.retrieved_memories],
+                "memory_count": len(output.retrieved_memories),
+                "source_types": [mem.memory_type for mem in output.retrieved_memories],
+            }
+
+        return response_dict
 
 
     except Exception as e:
