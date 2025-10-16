@@ -84,7 +84,7 @@ class ScoreMemoriesUseCase:
         query_embedding = np.array(query_embedding_list, dtype=np.float64)
 
         # Retrieve existing memories from database using vector similarity
-        existing_memories_with_scores = await self.semantic_memory_repo.find_similar(
+        existing_memories_with_scores: list[tuple[SemanticMemory, float]] = await self.semantic_memory_repo.find_similar(
             query_embedding=query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else query_embedding,
             user_id=user_id,
             limit=50,  # Retrieve top 50 candidates
@@ -92,12 +92,69 @@ class ScoreMemoriesUseCase:
         )
 
         # Extract just the memory entities (discard similarity scores from find_similar)
-        existing_memories = [mem for mem, _ in existing_memories_with_scores]
+        existing_memories: list[SemanticMemory] = [mem for mem, _ in existing_memories_with_scores]
+
+        # Phase 2.2: Also retrieve aging memories from recent session context
+        # (Confirmation messages may not match semantically, so we need to include aging memories)
+        # This ensures validation prompts can be confirmed even with simple "Yes" responses
+        from sqlalchemy import select, and_
+        from src.infrastructure.database.models import SemanticMemory as SemanticMemoryModel
+        from datetime import datetime, timedelta, timezone
+
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(days=7)  # Last week
+        stmt = select(SemanticMemoryModel).where(
+            and_(
+                SemanticMemoryModel.user_id == user_id,
+                SemanticMemoryModel.status == "aging",
+                SemanticMemoryModel.updated_at >= recent_cutoff,
+            )
+        )
+        result = await self.semantic_memory_repo.session.execute(stmt)
+        aging_models = result.scalars().all()
+
+        # Convert to domain entities and add to existing_memories if not already present
+        for model in aging_models:
+            aging_memory = self.semantic_memory_repo._to_domain_entity(model)
+            # Check if not already in list
+            if aging_memory.memory_id and not any(m.memory_id == aging_memory.memory_id for m in existing_memories):
+                existing_memories.append(aging_memory)
+
+        logger.info(
+            "included_aging_memories_for_validation",
+            aging_count=len(aging_models),
+        )
 
         logger.info(
             "retrieved_existing_memories",
             count=len(existing_memories),
         )
+
+        # Phase 2.2: Check for aged memories and mark as "aging"
+        # (Epistemic Humility - admit uncertainty for aged data)
+        from datetime import datetime, timedelta, timezone
+        from src.config import heuristics
+
+        aged_threshold = datetime.now(timezone.utc) - timedelta(
+            days=heuristics.VALIDATION_THRESHOLD_DAYS
+        )
+
+        for mem in existing_memories:
+            # Check if memory is older than threshold and not already marked as aging
+            if (
+                mem.last_validated_at
+                and mem.last_validated_at < aged_threshold
+                and mem.status == "active"
+            ):
+                # Mark as aging (requires validation)
+                mem.status = "aging"
+                await self.semantic_memory_repo.update(mem)
+
+                logger.info(
+                    "memory_marked_as_aging",
+                    memory_id=mem.memory_id,
+                    subject=mem.subject_entity_id,
+                    days_since_validation=(datetime.now(timezone.utc) - mem.last_validated_at).days,
+                )
 
         # Combine current-turn memories with existing memories
         # Deduplicate by memory_id to avoid scoring the same memory twice
@@ -147,11 +204,11 @@ class ScoreMemoriesUseCase:
                 is_ndarray=isinstance(mem.embedding, np.ndarray),
             )
 
-            embedding_array = (
-                mem.embedding
-                if isinstance(mem.embedding, np.ndarray)
-                else np.array(mem.embedding, dtype=np.float64)
-            )
+            # Convert embedding to numpy array if needed
+            if isinstance(mem.embedding, np.ndarray):
+                embedding_array = mem.embedding
+            else:
+                embedding_array = np.array(mem.embedding, dtype=np.float64)
 
             logger.debug(
                 "embedding_converted",
@@ -191,7 +248,7 @@ class ScoreMemoriesUseCase:
             query_embedding=query_embedding,
             entity_ids=entity_ids,
             user_id=user_id,
-            session_id=session_id,
+            session_id=str(session_id),
             strategy="exploratory",  # Default strategy for conversational queries
         )
 
@@ -202,16 +259,22 @@ class ScoreMemoriesUseCase:
         )
 
         # Convert ScoredMemory to RetrievedMemory
-        retrieved_memories = [
-            RetrievedMemory(
-                memory_id=scored.candidate.memory_id,
-                memory_type=scored.candidate.memory_type,
-                content=scored.candidate.content,
-                relevance_score=scored.relevance_score,
-                confidence=scored.candidate.confidence or 1.0,
+        retrieved_memories = []
+        for scored in scored_memories:
+            # Get the full memory entity to access last_validated_at and status
+            memory_entity = all_memories_dict.get(scored.candidate.memory_id)
+
+            retrieved_memories.append(
+                RetrievedMemory(
+                    memory_id=scored.candidate.memory_id,
+                    memory_type=scored.candidate.memory_type,
+                    content=scored.candidate.content,
+                    relevance_score=scored.relevance_score,
+                    confidence=scored.candidate.confidence or 1.0,
+                    last_validated_at=memory_entity.last_validated_at if memory_entity else None,
+                    status=memory_entity.status if memory_entity else "active",
+                )
             )
-            for scored in scored_memories
-        ]
 
         logger.info(
             "memories_scored",

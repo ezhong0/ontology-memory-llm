@@ -129,6 +129,8 @@ async def process_chat_simplified(
                         "canonical_name": entity.canonical_name,
                         "entity_type": entity.entity_type,
                         "confidence": entity.confidence,
+                        "mention_text": entity.mention_text,
+                        "method": entity.method,
                     }
                     for entity in output.resolved_entities
                 ]

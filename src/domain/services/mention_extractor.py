@@ -90,6 +90,43 @@ class SimpleMentionExtractor:
         "Must",
     }
 
+    # Common action verbs that shouldn't be part of entity names
+    # Used to filter out verb-entity combinations like "Reschedule Kai Media"
+    ACTION_VERBS = {
+        "Reschedule",
+        "Schedule",
+        "Cancel",
+        "Update",
+        "Create",
+        "Delete",
+        "Add",
+        "Remove",
+        "Send",
+        "Draft",
+        "Mark",
+        "Complete",
+        "Finish",
+        "Start",
+        "Begin",
+        "Check",
+        "Verify",
+        "Review",
+        "Approve",
+        "Reject",
+        "Contact",
+        "Call",
+        "Email",
+        "Notify",
+        "Remind",
+        "Follow",
+        "Track",
+        "Monitor",
+        "Generate",
+        "Process",
+        "Submit",
+        "Confirm",
+    }
+
     def extract_mentions(self, text: str) -> list[EntityMention]:
         """Extract entity mentions from text.
 
@@ -170,10 +207,27 @@ class SimpleMentionExtractor:
             if candidate in self.STOPWORDS or len(candidate) == 1:
                 continue
 
+            # Get position before any modifications
+            position = match.start()
+
+            # Skip entities that start with action verbs
+            # e.g., "Reschedule Kai Media" → extract "Kai Media" instead
+            first_word = candidate.split()[0] if " " in candidate else candidate
+            if first_word in self.ACTION_VERBS:
+                # Try to extract the entity part (everything after the verb)
+                entity_part = candidate[len(first_word):].strip()
+                if entity_part and len(entity_part) > 1:
+                    # Replace candidate with the entity part
+                    # Adjust position to point to start of entity (skip verb + space)
+                    position = position + len(first_word) + 1
+                    candidate = entity_part
+                else:
+                    # No valid entity part, skip
+                    continue
+
             # Skip single-word entities at sentence start (could be any word)
             # But allow multi-word entities (e.g., "Acme Corporation")
-            position = match.start()
-            is_sentence_start = position == 0 or text[position - 1:position + 1] == ". "
+            is_sentence_start = match.start() == 0 or text[match.start() - 1:match.start() + 1] == ". "
             is_single_word = " " not in candidate
 
             if is_sentence_start and is_single_word:

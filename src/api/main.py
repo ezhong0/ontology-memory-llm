@@ -129,10 +129,12 @@ async def internal_error_handler(request, exc):
 
 
 # Include API routers
-from src.api.routes import chat, consolidation, procedural
+from src.api.routes import chat, conflicts, consolidation, memories, procedural
 
 app.include_router(chat.router, tags=["Chat"])
+app.include_router(conflicts.router, tags=["Conflicts"])
 app.include_router(consolidation.router, tags=["Consolidation"])
+app.include_router(memories.router, tags=["Memories"])
 app.include_router(procedural.router, tags=["Procedural"])
 
 # Include demo router if demo mode is enabled

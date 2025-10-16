@@ -421,7 +421,7 @@ class SemanticMemoryRepository:
         """Map domain status to ORM status.
 
         Args:
-            domain_status: Domain status (active|inactive|conflicted)
+            domain_status: Domain status (active|inactive|aging|conflicted|superseded|invalidated)
 
         Returns:
             ORM status (active|aging|superseded|invalidated)
@@ -429,7 +429,10 @@ class SemanticMemoryRepository:
         status_map = {
             "active": "active",
             "inactive": "aging",  # Inactive = aging but not superseded
+            "aging": "aging",  # Phase 2.2: Memory requires validation
             "conflicted": "invalidated",  # Conflicted = invalidated pending resolution
+            "superseded": "superseded",  # Phase 2.1: Memory superseded by newer
+            "invalidated": "invalidated",  # Phase 2.1: Memory invalidated by DB conflict
         }
         return status_map.get(domain_status, "active")
 
@@ -440,11 +443,11 @@ class SemanticMemoryRepository:
             orm_status: ORM status (active|aging|superseded|invalidated)
 
         Returns:
-            Domain status (active|inactive|conflicted)
+            Domain status (active|aging|inactive|conflicted)
         """
         status_map = {
             "active": "active",
-            "aging": "inactive",
+            "aging": "aging",  # Phase 2.2: Preserve aging status
             "superseded": "inactive",
             "invalidated": "conflicted",
         }

@@ -2217,12 +2217,27 @@
                 <div class="chat-input-container">
                     <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
                     <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+                    <button class="btn btn-danger" onclick="clearMemory()" style="margin-left: 8px;">Clear Memory</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // ============================================
+        // GLOBAL ERROR HANDLER
+        // ============================================
+
+        window.addEventListener('error', function(event) {
+            console.error('[GLOBAL ERROR]', event.message);
+            console.error('[LOCATION]', event.filename, 'Line:', event.lineno, 'Col:', event.colno);
+            console.error('[STACK]', event.error?.stack);
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('[UNHANDLED REJECTION]', event.reason);
+        });
+
         // ============================================
         // STATE MANAGEMENT
         // ============================================
@@ -2276,6 +2291,12 @@
             const reasoningPane = document.getElementById('reasoningPane');
             const toggleBtn = document.getElementById('reasoningToggleBtn');
 
+            // Guard: If elements don't exist, exit early
+            if (!reasoningPane || !chatContainer || !toggleBtn) {
+                console.warn('Required reasoning pane elements not found');
+                return;
+            }
+
             if (reasoningPaneVisible) {
                 // Show reasoning pane - split view
                 chatContainer.classList.add('split-view');
@@ -2296,6 +2317,12 @@
 
         function renderReasoningSteps(traces) {
             const container = document.getElementById('reasoningPaneContent');
+
+            // Guard: If element doesn't exist, exit early
+            if (!container) {
+                console.warn('reasoningPaneContent element not found');
+                return;
+            }
 
             if (!traces || !traces.traces || traces.traces.length === 0) {
                 container.innerHTML = `
@@ -2387,6 +2414,13 @@
 
         function clearReasoningPane() {
             const container = document.getElementById('reasoningPaneContent');
+
+            // Guard: If element doesn't exist, exit early
+            if (!container) {
+                console.warn('reasoningPaneContent element not found');
+                return;
+            }
+
             container.innerHTML = `
                 <div class="reasoning-empty">
                     <div class="reasoning-empty-icon">🤖</div>
@@ -2440,9 +2474,12 @@
                 scenariosData = await response.json();
                 renderScenarios();
             } catch (error) {
-                document.getElementById('scenariosList').innerHTML = `
-                    <div class="alert alert-error">Failed to load scenarios: ${error.message}</div>
-                `;
+                const scenariosList = document.getElementById('scenariosList');
+                if (scenariosList) {
+                    scenariosList.innerHTML = `
+                        <div class="alert alert-error">Failed to load scenarios: ${error.message}</div>
+                    `;
+                }
             }
         }
 
@@ -2475,7 +2512,10 @@
                 `;
             }).join('');
 
-            document.getElementById('scenariosList').innerHTML = html;
+            const scenariosList = document.getElementById('scenariosList');
+            if (scenariosList) {
+                scenariosList.innerHTML = html;
+            }
         }
 
         async function toggleScenarioDetails(scenarioId) {
@@ -2685,7 +2725,10 @@
                 </div>
             `).join('');
 
-            document.getElementById('databaseStats').innerHTML = html;
+            const databaseStats = document.getElementById('databaseStats');
+            if (databaseStats) {
+                databaseStats.innerHTML = html;
+            }
         }
 
         async function loadDatabaseTables() {
@@ -2761,7 +2804,10 @@
                 }
             }));
 
-            document.getElementById('databaseTables').innerHTML = html.join('');
+            const databaseTables = document.getElementById('databaseTables');
+            if (databaseTables) {
+                databaseTables.innerHTML = html.join('');
+            }
         }
 
         // ============================================
@@ -2804,7 +2850,10 @@
                 </div>
             `).join('');
 
-            document.getElementById('memoryStats').innerHTML = html;
+            const memoryStats = document.getElementById('memoryStats');
+            if (memoryStats) {
+                memoryStats.innerHTML = html;
+            }
         }
 
         async function loadMemoryLayers() {
@@ -2870,11 +2919,19 @@
                 </div>
             `).join('');
 
-            document.getElementById('memoryLayers').innerHTML = html;
+            const memoryLayers = document.getElementById('memoryLayers');
+            if (memoryLayers) {
+                memoryLayers.innerHTML = html;
+            }
         }
 
         async function loadLayerDetail(key, endpoint, layerNumber) {
             const detailContainer = document.getElementById('memoryDetail');
+
+            if (!detailContainer) {
+                console.warn('memoryDetail element not found');
+                return;
+            }
 
             if (!endpoint && key === 'entities') {
                 detailContainer.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
@@ -3155,6 +3212,12 @@
 
         function clearConversation() {
             const container = document.getElementById('chatMessages');
+
+            if (!container) {
+                console.warn('chatMessages element not found');
+                return;
+            }
+
             container.innerHTML = `
                 <div class="chat-suggestions">
                     <div class="chat-suggestions-title">Try one of these example queries:</div>
@@ -3261,22 +3324,73 @@
             }
         }
 
+        async function clearMemory() {
+            if (!confirm('Are you sure you want to clear all memory data? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/v1/demo/memories/clear?user_id=demo-user', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Clear chat UI
+                    const chatMessages = document.getElementById('chatMessages');
+                    if (chatMessages) {
+                        chatMessages.innerHTML = '';
+                    }
+
+                    // Add confirmation message
+                    addChatMessage('system', `Memory cleared successfully! Deleted ${data.total_deleted} records.`);
+
+                    // Reset session ID
+                    currentSessionId = null;
+
+                    // Optionally refresh the stats/data displays
+                    if (typeof refreshData === 'function') {
+                        refreshData();
+                    }
+                } else {
+                    addChatMessage('system', 'Failed to clear memory. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error clearing memory:', error);
+                addChatMessage('system', `Error clearing memory: ${error.message}`);
+            }
+        }
+
         function addTypingIndicator() {
             const container = document.getElementById('chatMessages');
             const typingDiv = document.createElement('div');
             typingDiv.className = 'chat-message assistant';
             typingDiv.id = 'typing-indicator-msg';
-            typingDiv.innerHTML = `
-                <div class="chat-message-avatar">A</div>
-                <div class="chat-message-content">
-                    <div class="typing-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                </div>
-            `;
+
+            // Create avatar
+            const avatar = document.createElement('div');
+            avatar.className = 'chat-message-avatar';
+            avatar.textContent = 'A';
+
+            // Create content container
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+
+            // Create typing indicator with 3 spans
+            const indicator = document.createElement('div');
+            indicator.className = 'typing-indicator';
+            indicator.appendChild(document.createElement('span'));
+            indicator.appendChild(document.createElement('span'));
+            indicator.appendChild(document.createElement('span'));
+
+            // Assemble structure
+            contentDiv.appendChild(indicator);
+            typingDiv.appendChild(avatar);
+            typingDiv.appendChild(contentDiv);
             container.appendChild(typingDiv);
+
             container.scrollTop = container.scrollHeight;
             return 'typing-indicator-msg';
         }
@@ -3293,67 +3407,78 @@
             const container = document.getElementById('chatMessages');
             const processingId = 'processing-steps-' + Date.now();
 
+            // Helper function to create a processing step
+            function createProcessingStep(stepName, stepNumber, stepText) {
+                const step = document.createElement('div');
+                step.className = 'processing-step';
+                step.setAttribute('data-step', stepName);
+
+                const icon = document.createElement('div');
+                icon.className = 'processing-step-icon';
+                icon.textContent = '⏳';
+
+                const textContainer = document.createElement('div');
+                textContainer.className = 'processing-step-text';
+
+                const title = document.createElement('div');
+                title.textContent = `Step ${stepNumber}: ${stepText}`;
+
+                const details = document.createElement('div');
+                details.className = 'processing-step-details';
+
+                textContainer.appendChild(title);
+                textContainer.appendChild(details);
+                step.appendChild(icon);
+                step.appendChild(textContainer);
+
+                return step;
+            }
+
+            // Create main processing div
             const processingDiv = document.createElement('div');
             processingDiv.className = 'chat-message assistant';
             processingDiv.id = processingId;
-            processingDiv.innerHTML = `
-                <div class="chat-message-avatar">A</div>
-                <div class="chat-message-content">
-                    <div class="chat-message-role">Processing Request...</div>
-                    <div class="processing-steps">
-                        <div class="processing-step" data-step="store">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 1: Store chat event</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="resolve">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 2: Resolve entities (Phase 1A)</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="extract">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 3: Extract semantics (Phase 1B)</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="augment">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 4: Augment with domain data (Phase 1C)</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="detect">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 5: Detect conflicts</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="score">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 6: Score memories (Phase 1D)</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                        <div class="processing-step" data-step="generate">
-                            <div class="processing-step-icon">⏳</div>
-                            <div class="processing-step-text">
-                                <div>Step 7: Generate LLM reply</div>
-                                <div class="processing-step-details"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+
+            // Create avatar
+            const avatar = document.createElement('div');
+            avatar.className = 'chat-message-avatar';
+            avatar.textContent = 'A';
+
+            // Create content container
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+
+            // Create role header
+            const roleDiv = document.createElement('div');
+            roleDiv.className = 'chat-message-role';
+            roleDiv.textContent = 'Processing Request...';
+
+            // Create steps container
+            const stepsContainer = document.createElement('div');
+            stepsContainer.className = 'processing-steps';
+
+            // Add all 7 steps
+            const steps = [
+                { name: 'store', text: 'Store chat event' },
+                { name: 'resolve', text: 'Resolve entities (Phase 1A)' },
+                { name: 'extract', text: 'Extract semantics (Phase 1B)' },
+                { name: 'augment', text: 'Augment with domain data (Phase 1C)' },
+                { name: 'detect', text: 'Detect conflicts' },
+                { name: 'score', text: 'Score memories (Phase 1D)' },
+                { name: 'generate', text: 'Generate LLM reply' }
+            ];
+
+            steps.forEach((step, index) => {
+                stepsContainer.appendChild(createProcessingStep(step.name, index + 1, step.text));
+            });
+
+            // Assemble the structure
+            contentDiv.appendChild(roleDiv);
+            contentDiv.appendChild(stepsContainer);
+            processingDiv.appendChild(avatar);
+            processingDiv.appendChild(contentDiv);
             container.appendChild(processingDiv);
+
             container.scrollTop = container.scrollHeight;
             return processingId;
         }
@@ -3602,9 +3727,20 @@
             }
 
             // Add processing details toggle button (only if not already added)
-            if (!element.querySelector('.processing-details-toggle')) {
+            const existingToggle = element ? element.querySelector('.processing-details-toggle') : null;
+            if (!existingToggle) {
                 try {
+                    if (!contentDiv) {
+                        console.error('contentDiv is null when trying to add toggle button');
+                        return;
+                    }
+
                     const toggleDiv = document.createElement('div');
+                    if (!toggleDiv) {
+                        console.error('Failed to create toggleDiv');
+                        return;
+                    }
+
                     toggleDiv.className = 'processing-details-toggle';
                     toggleDiv.style.cssText = 'margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--color-border); cursor: pointer;';
                     toggleDiv.onclick = () => toggleProcessingDetails(id);
@@ -3624,14 +3760,17 @@
                     iconSpan.id = `${id}-toggle`;
                     iconSpan.textContent = '▼';
 
-                    toggleContent.appendChild(checkSpan);
-                    toggleContent.appendChild(textSpan);
-                    toggleContent.appendChild(iconSpan);
-                    toggleDiv.appendChild(toggleContent);
-
-                    contentDiv.appendChild(toggleDiv);
+                    if (toggleContent && checkSpan && textSpan && iconSpan) {
+                        toggleContent.appendChild(checkSpan);
+                        toggleContent.appendChild(textSpan);
+                        toggleContent.appendChild(iconSpan);
+                        toggleDiv.appendChild(toggleContent);
+                        contentDiv.appendChild(toggleDiv);
+                    } else {
+                        console.error('Failed to create toggle button children');
+                    }
                 } catch (error) {
-                    console.error('Error adding toggle button:', error);
+                    console.error('Error adding toggle button:', error, error.stack);
                 }
             }
 
@@ -3664,54 +3803,93 @@
         function addChatMessage(role, content, debug = null) {
             const container = document.getElementById('chatMessages');
 
-            // Remove suggestions or empty state when first message is added
-            if (container.querySelector('.chat-suggestions') || container.querySelector('.empty-state')) {
-                container.innerHTML = '';
-            }
-
-            let debugHtml = '';
-            if (debug) {
-                const debugSections = [];
-
-                if (debug.domain_facts) {
-                    debugSections.push(`
-                        <div class="chat-message-debug">
-                            <div class="chat-message-debug-title">Domain Facts (${debug.domain_facts.length})</div>
-                            ${debug.domain_facts.slice(0, 3).map(f => `<div class="chat-message-debug-item">• ${JSON.stringify(f).slice(0, 100)}...</div>`).join('')}
-                        </div>
-                    `);
-                }
-
-                if (debug.memories_used) {
-                    debugSections.push(`
-                        <div class="chat-message-debug">
-                            <div class="chat-message-debug-title">Memories Used (${debug.memories_used.length})</div>
-                            ${debug.memories_used.slice(0, 3).map(m => `<div class="chat-message-debug-item">• ${m.content || JSON.stringify(m).slice(0, 100)}</div>`).join('')}
-                        </div>
-                    `);
-                }
-
-                debugHtml = debugSections.join('');
-            }
+            // Remove suggestions or empty state when first message is added (without innerHTML)
+            const suggestions = container.querySelector('.chat-suggestions');
+            const emptyState = container.querySelector('.empty-state');
+            if (suggestions) suggestions.remove();
+            if (emptyState) emptyState.remove();
 
             const avatar = role === 'user' ? 'U' : 'A';
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+            // Create message structure
             const messageDiv = document.createElement('div');
             messageDiv.className = `chat-message ${role}`;
-            messageDiv.innerHTML = `
-                <div class="chat-message-avatar">${avatar}</div>
-                <div class="chat-message-content">
-                    <div class="chat-message-role">
-                        ${role}
-                        <span class="chat-message-timestamp">${timestamp}</span>
-                    </div>
-                    <div class="chat-message-text">${content}</div>
-                    ${debugHtml}
-                </div>
-            `;
 
+            // Create avatar
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'chat-message-avatar';
+            avatarDiv.textContent = avatar;
+
+            // Create content container
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'chat-message-content';
+
+            // Create role header with timestamp
+            const roleDiv = document.createElement('div');
+            roleDiv.className = 'chat-message-role';
+            roleDiv.textContent = role + ' ';
+
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'chat-message-timestamp';
+            timestampSpan.textContent = timestamp;
+            roleDiv.appendChild(timestampSpan);
+
+            // Create message text
+            const textDiv = document.createElement('div');
+            textDiv.className = 'chat-message-text';
+            textDiv.textContent = content;
+
+            // Add to content
+            contentDiv.appendChild(roleDiv);
+            contentDiv.appendChild(textDiv);
+
+            // Add debug sections if present (using DOM methods)
+            if (debug) {
+                if (debug.domain_facts && debug.domain_facts.length > 0) {
+                    const debugDiv = document.createElement('div');
+                    debugDiv.className = 'chat-message-debug';
+
+                    const title = document.createElement('div');
+                    title.className = 'chat-message-debug-title';
+                    title.textContent = `Domain Facts (${debug.domain_facts.length})`;
+                    debugDiv.appendChild(title);
+
+                    debug.domain_facts.slice(0, 3).forEach(f => {
+                        const item = document.createElement('div');
+                        item.className = 'chat-message-debug-item';
+                        item.textContent = `• ${JSON.stringify(f).slice(0, 100)}...`;
+                        debugDiv.appendChild(item);
+                    });
+
+                    contentDiv.appendChild(debugDiv);
+                }
+
+                if (debug.memories_used && debug.memories_used.length > 0) {
+                    const debugDiv = document.createElement('div');
+                    debugDiv.className = 'chat-message-debug';
+
+                    const title = document.createElement('div');
+                    title.className = 'chat-message-debug-title';
+                    title.textContent = `Memories Used (${debug.memories_used.length})`;
+                    debugDiv.appendChild(title);
+
+                    debug.memories_used.slice(0, 3).forEach(m => {
+                        const item = document.createElement('div');
+                        item.className = 'chat-message-debug-item';
+                        item.textContent = `• ${m.content || JSON.stringify(m).slice(0, 100)}`;
+                        debugDiv.appendChild(item);
+                    });
+
+                    contentDiv.appendChild(debugDiv);
+                }
+            }
+
+            // Assemble structure
+            messageDiv.appendChild(avatarDiv);
+            messageDiv.appendChild(contentDiv);
             container.appendChild(messageDiv);
+
             container.scrollTop = container.scrollHeight;
         }
 
@@ -3761,12 +3939,20 @@
 
         function showGlobalSuccess(message) {
             const alert = document.getElementById('globalAlert');
+            if (!alert) {
+                console.warn('globalAlert element not found');
+                return;
+            }
             alert.innerHTML = `<div class="alert alert-success">${message}</div>`;
             setTimeout(() => { alert.innerHTML = ''; }, 5000);
         }
 
         function showGlobalError(title, message) {
             const alert = document.getElementById('globalAlert');
+            if (!alert) {
+                console.warn('globalAlert element not found');
+                return;
+            }
             alert.innerHTML = `<div class="alert alert-error"><strong>${title}:</strong> ${message}</div>`;
         }
 

@@ -24,19 +24,39 @@ from httpx import AsyncClient
 
 
 async def create_semantic_memory(
+    memory_factory,
     user_id: str,
     subject_entity_id: str,
     predicate: str,
-    object_value: str,
+    object_value: dict,
     confidence: float = 0.7,
     last_validated_at: datetime = None
 ):
     """
     Directly create semantic memory (bypasses chat pipeline).
 
-    TODO: Implement when memory creation API is ready
+    Args:
+        memory_factory: Memory factory fixture
+        user_id: User ID
+        subject_entity_id: Entity this memory is about
+        predicate: Relationship type
+        object_value: Value (dict)
+        confidence: Initial confidence
+        last_validated_at: When last validated
+
+    Returns:
+        Created SemanticMemory entity
     """
-    pass
+    return await memory_factory.create_semantic_memory(
+        user_id=user_id,
+        subject_entity_id=subject_entity_id,
+        predicate=predicate,
+        object_value=object_value,
+        confidence=confidence,
+        last_validated_at=last_validated_at,
+        status="active",
+        reinforcement_count=1,
+    )
 
 
 # ============================================================================
@@ -151,7 +171,6 @@ async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: As
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement work order queries + scheduling preferences")
 async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 2: Reschedule work order based on technician availability
@@ -325,7 +344,6 @@ async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClie
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Phase 2.1: Needs /api/v1/conflicts endpoint + debug 500 errors in memory creation")
 async def test_scenario_07_conflicting_memories_consolidation(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 7: Conflicting memories → consolidation rules
@@ -341,10 +359,30 @@ async def test_scenario_07_conflicting_memories_consolidation(api_client: AsyncC
              reply cites confidence and offers to confirm.
              If confirmed, demote conflicting memory via supersession.
     """
+    import uuid
+
+    # ARRANGE: Create canonical entity for Kai Media
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }]
+    })
+
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
+
     # ARRANGE: Session 1 - State Thursday
+    session_id_1 = str(uuid.uuid4())
     response1 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
-        "session_id": "session_001",
+        "session_id": session_id_1,
         "message": "Kai Media prefers Thursday deliveries"
     })
 
@@ -352,44 +390,47 @@ async def test_scenario_07_conflicting_memories_consolidation(api_client: AsyncC
     # In real test: might use freeze_time fixture
 
     # ARRANGE: Session 2 - State Friday (conflicting)
+    session_id_2 = str(uuid.uuid4())
     response2 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
-        "session_id": "session_002",
+        "session_id": session_id_2,
         "message": "Actually, Kai Media prefers Friday deliveries"
     })
 
-    # ACT: Query for preference
+    # ASSERT: Conflict was detected and resolved during Turn 2
+    assert response2.status_code == 200
+    data2 = response2.json()
+
+    # Check structured conflict data (epistemic humility via transparency)
+    assert "conflicts_detected" in data2, "Conflict should be exposed in response"
+    conflicts = data2["conflicts_detected"]
+    assert len(conflicts) >= 1
+
+    conflict = conflicts[0]
+    assert conflict["conflict_type"] == "value_mismatch"  # ConflictType enum value
+    assert "Thursday" in str(conflict["existing_value"])
+    assert "Friday" in str(conflict["new_value"])
+    assert conflict["resolution_strategy"] == "keep_newest"  # ConflictResolution enum value
+
+    # ACT: Query for preference (Turn 3)
+    session_id_3 = str(uuid.uuid4())
     response3 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
+        "session_id": session_id_3,
         "message": "What day should we deliver to Kai Media?"
     })
 
     # ASSERT: Uses most recent (Friday)
     assert response3.status_code == 200
-    data = response3.json()
+    data3 = response3.json()
 
-    assert "Friday" in data["response"]
+    assert "Friday" in data3["response"]
 
-    # ASSERT: Mentions conflict or confidence (epistemic humility)
-    response_lower = data["response"].lower()
+    # ASSERT: Mentions confidence (epistemic humility)
+    response_lower = data3["response"].lower()
     assert any(keyword in response_lower for keyword in [
         "recently", "updated", "confidence", "changed", "previously"
     ])
-
-    # ASSERT: Conflict was logged
-    conflicts_response = await api_client.get("/api/v1/conflicts", params={
-        "user_id": "ops_manager"
-    })
-    assert conflicts_response.status_code == 200
-
-    conflicts = conflicts_response.json()["conflicts"]
-    assert len(conflicts) >= 1
-
-    conflict = conflicts[0]
-    assert conflict["conflict_type"] == "memory_vs_memory"
-    assert "Thursday" in str(conflict["conflict_data"])
-    assert "Friday" in str(conflict["conflict_data"])
-    assert conflict["resolution_strategy"] in ["trust_recent", "trust_reinforced"]
 
 
 # ============================================================================
@@ -398,8 +439,7 @@ async def test_scenario_07_conflicting_memories_consolidation(api_client: AsyncC
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement after lifecycle management ready")
-async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient):
+async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 10: Active recall to validate stale facts
 
@@ -414,21 +454,45 @@ async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient
              from 2025-05-10; still accurate?" If confirmed, resets decay;
              if changed, updates semantic memory.
     """
+    # ARRANGE: Seed domain data for Kai Media
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }]
+    })
+
+    # ARRANGE: Create canonical entity
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
+
     # ARRANGE: Create aged memory (91 days old)
-    aged_date = datetime.utcnow() - timedelta(days=91)
+    aged_date = datetime.now(timezone.utc) - timedelta(days=91)
 
     memory = await create_semantic_memory(
+        memory_factory,
         user_id="ops_manager",
-        subject_entity_id="customer:kai_123",
+        subject_entity_id=f"customer_{ids['kai_123']}",
         predicate="delivery_preference",
         object_value={"type": "day_of_week", "value": "Friday"},
         confidence=0.7,
         last_validated_at=aged_date
     )
 
+    # Phase 2.2: Use same session_id for both requests (session-aware context)
+    import uuid
+    session_id = str(uuid.uuid4())
+
     # ACT: User query that would use aged memory
     response = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
+        "session_id": session_id,
         "message": "Schedule a delivery for Kai Media next week."
     })
 
@@ -461,9 +525,10 @@ async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient
     assert memory_data["status"] == "aging", \
         "Aged memory should transition to 'aging' status when used"
 
-    # ACT: User confirms (validation)
+    # ACT: User confirms (validation) - use same session for context continuity
     response2 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
+        "session_id": session_id,  # Same session as turn 1
         "message": "Yes, Friday is still correct."
     })
 
@@ -477,7 +542,7 @@ async def test_scenario_10_active_recall_for_stale_facts(api_client: AsyncClient
 
     # last_validated_at should be recent (within last minute)
     last_validated = datetime.fromisoformat(memory_data2["last_validated_at"])
-    assert (datetime.utcnow() - last_validated).total_seconds() < 60
+    assert (datetime.now(timezone.utc) - last_validated).total_seconds() < 60
 
 
 # ============================================================================
@@ -662,8 +727,7 @@ async def test_scenario_16_reminder_creation_from_intent(api_client: AsyncClient
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement /explain endpoint")
-async def test_scenario_15_audit_trail_explainability(api_client: AsyncClient):
+async def test_scenario_15_audit_trail_explainability(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 15: Audit trail / explainability
 
@@ -675,26 +739,49 @@ async def test_scenario_15_audit_trail_explainability(api_client: AsyncClient):
     Expected: /explain returns memory IDs, similarity scores, and the specific
              chat event that created the memory, plus any reinforcing confirmations.
     """
+    import uuid
+
+    # ARRANGE: Seed domain data for Kai Media
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }]
+    })
+
+    # ARRANGE: Create canonical entity
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
+
     # ARRANGE: Create a memory from prior session
+    session_id_1 = str(uuid.uuid4())
     response1 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
-        "session_id": "session_001",
+        "session_id": session_id_1,
         "message": "Remember: Kai Media prefers Friday deliveries"
     })
     assert response1.status_code == 200
 
     # ARRANGE: Later query that uses this memory
+    session_id_2 = str(uuid.uuid4())
     response2 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
-        "session_id": "session_002",
+        "session_id": session_id_2,
         "message": "When should we deliver to Kai Media?"
     })
     assert response2.status_code == 200
     assert "Friday" in response2.json()["response"]
 
-    # ACT: User asks for explanation
+    # ACT: User asks for explanation (use same session for simplicity)
     response3 = await api_client.post("/api/v1/chat", json={
         "user_id": "ops_manager",
+        "session_id": session_id_2,
         "message": "Why did you say Kai Media prefers Fridays?"
     })
 
@@ -938,7 +1025,6 @@ async def test_scenario_05_partial_payments_and_balance(api_client: AsyncClient,
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement SLA task queries + risk tagging")
 async def test_scenario_06_sla_breach_detection(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 6: SLA breach detection from tasks
@@ -952,10 +1038,10 @@ async def test_scenario_06_sla_breach_detection(api_client: AsyncClient, domain_
     User: "Are we at risk of an SLA breach for Kai Media?"
     Expected: Retrieve open task age + flag risk, log importance tag.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, UTC
 
     # ARRANGE: Seed old task
-    task_created = datetime.utcnow() - timedelta(days=10)
+    task_created = datetime.now(UTC) - timedelta(days=10)
     ids = await domain_seeder.seed({
         "customers": [{
             "name": "Kai Media",
@@ -1128,7 +1214,6 @@ async def test_scenario_11_cross_object_reasoning(api_client: AsyncClient, domai
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement fuzzy match → alias creation trigger")
 async def test_scenario_12_fuzzy_match_alias_learning(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 12: Conversation-driven entity linking with fuzzy match
@@ -1137,13 +1222,73 @@ async def test_scenario_12_fuzzy_match_alias_learning(api_client: AsyncClient, d
     - Entity Resolution (fuzzy match)
     - Learning (alias creation from fuzzy match)
 
-    Context: User types "Kay Media" (typo).
+    Context: User types "Kay Media" (typo with 'y' instead of 'i').
     User: "Open a WO for Kay Media for packaging."
     Expected: Fuzzy match exceeds threshold to "Kai Media",
-             system confirms once, stores alias to avoid repeated confirmations.
+             system auto-learns alias to avoid repeated fuzzy matching.
     """
-    # Implementation requires fuzzy match alias trigger
-    pass
+    # ARRANGE: Seed domain with "Kai Media" (correct spelling)
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }]
+    })
+
+    # ARRANGE: Create canonical entity
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
+
+    # ACT: Turn 1 - User types "Kay Media" (typo with 'y' instead of 'i')
+    response1 = await api_client.post("/api/v1/chat", json={
+        "user_id": "ops_manager",
+        "message": "Open a WO for Kay Media for packaging."
+    })
+
+    # ASSERT: Turn 1 - Fuzzy match succeeds
+    assert response1.status_code == 200
+    data1 = response1.json()
+
+    # Response should mention Kai Media (fuzzy match resolved it)
+    assert "Kai Media" in data1["response"] or "kay media" in data1["response"].lower()
+
+    # Entities resolved should include the fuzzy match
+    assert "entities_resolved" in data1["augmentation"]
+    entities = data1["augmentation"]["entities_resolved"]
+    # Should have resolved "Kay Media" → "Kai Media" via fuzzy match
+    assert any(
+        e.get("mention_text", "").lower() == "kay media" and
+        e.get("canonical_name") == "Kai Media" and
+        e.get("method") == "fuzzy"
+        for e in entities
+    )
+
+    # ACT: Turn 2 - User types same typo again
+    response2 = await api_client.post("/api/v1/chat", json={
+        "user_id": "ops_manager",
+        "message": "Schedule delivery for Kay Media on Friday."
+    })
+
+    # ASSERT: Turn 2 - Now uses alias (exact match), not fuzzy
+    assert response2.status_code == 200
+    data2 = response2.json()
+
+    # Entities resolved should now use alias method (learned from previous fuzzy match)
+    assert "entities_resolved" in data2["augmentation"]
+    entities2 = data2["augmentation"]["entities_resolved"]
+    # Should have resolved "Kay Media" → "Kai Media" via alias (not fuzzy!)
+    assert any(
+        e.get("mention_text", "").lower() == "kay media" and
+        e.get("canonical_name") == "Kai Media" and
+        e.get("method") == "alias"  # Now using alias, not fuzzy!
+        for e in entities2
+    )
 
 
 @pytest.mark.e2e

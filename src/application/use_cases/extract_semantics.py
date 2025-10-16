@@ -18,7 +18,7 @@ from src.domain.services import (
     MemoryValidationService,
     SemanticExtractionService,
 )
-from src.domain.value_objects import ConflictResolution, MemoryConflict, SemanticTriple
+from src.domain.value_objects import ConflictResolution, MemoryConflict, PredicateType, SemanticTriple
 
 logger = structlog.get_logger(__name__)
 
@@ -94,13 +94,18 @@ class ExtractSemanticsUseCase:
         """Extract semantic memories from message.
 
         Args:
-            message: The stored chat message
+            message: The stored chat message (must have event_id)
             resolved_entities: List of entities resolved from the message
             user_id: User identifier for memory ownership
 
         Returns:
             ExtractSemanticsResult with created/updated memories and conflict count
         """
+        # Guard: message must have event_id (should be persisted before calling this)
+        if message.event_id is None:
+            msg = "Message must be persisted (have event_id) before semantic extraction"
+            raise ValueError(msg)
+
         semantic_memory_dtos: list[SemanticMemoryDTO] = []
         semantic_memory_entities: list[SemanticMemory] = []
         conflict_count = 0
@@ -133,6 +138,12 @@ class ExtractSemanticsUseCase:
             event_id=message.event_id,
             entity_count=len(resolved_entities),
         )
+
+        # Build entity_id -> canonical_name mapping for natural language embeddings
+        entity_name_map = {
+            e.entity_id: e.canonical_name
+            for e in resolved_entities
+        }
 
         # Step 1: Extract semantic triples
         triples = await self.semantic_extraction_service.extract_triples(
@@ -195,8 +206,18 @@ class ExtractSemanticsUseCase:
                                 action=resolution_result.action,
                                 rationale=resolution_result.rationale,
                             )
-                            # Don't create new memory after resolution (winner already updated)
-                            continue
+
+                            # After resolution, create new memory if the new observation should persist
+                            # (i.e., if it won or if we need both perspectives tracked)
+                            # For supersede actions, we should create the new memory
+                            # For invalidate actions (DB conflicts), we don't create new memory
+                            if resolution_result.action == "supersede":
+                                # Old memory was superseded, create new memory with the new value
+                                # Fall through to memory creation logic below
+                                pass
+                            else:
+                                # Invalidate or ask_user - don't create new memory
+                                continue
                         else:
                             # Mark both as conflicted (requires user clarification)
                             existing_memory.mark_as_conflicted()
@@ -204,9 +225,25 @@ class ExtractSemanticsUseCase:
                             # Don't create new memory if unresolvable conflict
                             continue
 
-                # No conflict or conflict was handled - create/reinforce memory
-                if existing_memories and not conflict:
-                    # Reinforce existing memory
+                # No conflict or conflict was resolved - create/reinforce memory
+                # Reinforce if: existing memories AND no conflict detected
+                # Create new if: no existing memories OR conflict was resolved (old memory superseded)
+                should_reinforce = existing_memories and not conflict
+                should_create_new = not existing_memories or (conflict and conflict.is_resolvable_automatically)
+
+                logger.debug(
+                    "memory_creation_decision",
+                    subject=triple.subject_entity_id,
+                    predicate=triple.predicate,
+                    has_existing_memories=bool(existing_memories),
+                    has_conflict=bool(conflict),
+                    conflict_resolvable=conflict.is_resolvable_automatically if conflict else None,
+                    should_reinforce=should_reinforce,
+                    should_create_new=should_create_new,
+                )
+
+                if should_reinforce:
+                    # Reinforce existing memory (values match, increase confidence)
                     existing_memory = existing_memories[0]
                     self.memory_validation_service.reinforce_memory(
                         memory=existing_memory,
@@ -220,12 +257,20 @@ class ExtractSemanticsUseCase:
                         self._memory_to_dto(existing_memory)
                     )
                     semantic_memory_entities.append(existing_memory)
-                else:
-                    # Create new memory
-                    # Generate embedding
-                    embedding_text = f"{triple.subject_entity_id} {triple.predicate} {triple.object_value}"
+                elif should_create_new:
+                    # Create new memory (first observation OR conflict resolved with new value)
+                    # Generate embedding from natural language representation
+                    embedding_text = self._triple_to_natural_language(
+                        triple, entity_name_map
+                    )
                     embedding = await self.embedding_service.generate_embedding(
                         embedding_text
+                    )
+
+                    logger.debug(
+                        "generating_memory_embedding",
+                        memory_predicate=triple.predicate,
+                        embedding_text=embedding_text,
                     )
 
                     # Create semantic memory entity
@@ -319,6 +364,61 @@ class ExtractSemanticsUseCase:
             return True
 
         return False
+
+    def _triple_to_natural_language(
+        self,
+        triple: SemanticTriple,
+        entity_name_map: dict[str, str],
+    ) -> str:
+        """Convert structured triple to natural language for embedding.
+
+        Creates semantically meaningful text that will match user queries better
+        than structured representations.
+
+        Args:
+            triple: Semantic triple to convert
+            entity_name_map: Mapping of entity_id to canonical_name
+
+        Returns:
+            Natural language representation for embedding
+
+        Examples:
+            - "Kai Media prefers Friday deliveries"
+            - "Kai Media's payment terms: NET15"
+            - "TC Boiler prefers ACH payment method"
+        """
+        # Get canonical name (fallback to entity_id if not found)
+        entity_name = entity_name_map.get(
+            triple.subject_entity_id,
+            triple.subject_entity_id
+        )
+
+        # Extract value from structured object_value
+        if isinstance(triple.object_value, dict):
+            value = triple.object_value.get("value", str(triple.object_value))
+        else:
+            value = str(triple.object_value)
+
+        # Convert predicate to natural language
+        # Remove underscores and convert to more natural phrasing
+        predicate_natural = triple.predicate.replace("_", " ")
+
+        # Build natural language based on predicate type
+        if triple.predicate_type == PredicateType.PREFERENCE:
+            # "Kai Media prefers Friday deliveries"
+            return f"{entity_name} prefers {value} {predicate_natural}"
+        elif triple.predicate_type == PredicateType.ATTRIBUTE:
+            # "Kai Media payment terms: NET15"
+            return f"{entity_name} {predicate_natural}: {value}"
+        elif triple.predicate_type == PredicateType.RELATIONSHIP:
+            # "Kai Media works with Supplier Co"
+            return f"{entity_name} {predicate_natural}: {value}"
+        elif triple.predicate_type == PredicateType.ACTION:
+            # "Kai Media requested delivery on Friday"
+            return f"{entity_name} {predicate_natural}: {value}"
+        else:
+            # Fallback for unknown types
+            return f"{entity_name} {predicate_natural}: {value}"
 
     def _memory_to_dto(self, memory: SemanticMemory) -> SemanticMemoryDTO:
         """Convert SemanticMemory entity to DTO.

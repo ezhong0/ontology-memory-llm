@@ -101,26 +101,32 @@ class ResolveEntitiesUseCase:
             content_length=len(message_content),
         )
 
-        # Step 1: Extract entity mentions
+        # Step 1: Extract entity mentions from current message
         mentions = self.mention_extractor.extract_mentions(message_content)
-
-        if not mentions:
-            logger.debug("no_entity_mentions_found")
-            return ResolveEntitiesResult(
-                resolved_entities=[],
-                mention_count=0,
-                successful_resolutions=0,
-                resolution_success_rate=0.0,
-                ambiguous_entities=[],
-            )
 
         logger.info(
             "entity_mentions_extracted",
             count=len(mentions),
         )
 
-        # Step 2: Build conversation context
+        # Step 2: Build conversation context (ALWAYS - per VISION.md "meaning is always contextual")
         context = await self._build_context(user_id, session_id, message_content)
+
+        # Phase 2.2: ALWAYS extract implicit entities from recent session context
+        # This enables: confirmations ("Yes, still correct"), pronouns ("they prefer Friday"),
+        # and follow-ups without re-stating entities.
+        # Per user directive: "recent messages should always be fed into context"
+        implicit_entities = await self._extract_implicit_entities_from_context(
+            context, user_id, session_id
+        )
+
+        if implicit_entities:
+            logger.info(
+                "implicit_entities_from_session_context",
+                count=len(implicit_entities),
+            )
+        else:
+            logger.debug("no_implicit_entities_from_context")
 
         # Step 3: Resolve each mention
         resolved_entities: list[ResolvedEntityDTO] = []
@@ -173,7 +179,21 @@ class ResolveEntitiesUseCase:
                 ambiguous_entities.append(e)
                 # Continue processing other mentions
 
-        # Step 4: Calculate success rate
+        # Step 4: Combine explicit and implicit entities (deduplicate by entity_id)
+        # Implicit entities from session context are always included (Phase 2.2)
+        combined_entities_dict: dict[str, ResolvedEntityDTO] = {}
+
+        # Add implicit entities first (lower priority)
+        for entity in implicit_entities:
+            combined_entities_dict[entity.entity_id] = entity
+
+        # Add explicit entities (higher priority - will overwrite implicit if same entity)
+        for entity in resolved_entities:
+            combined_entities_dict[entity.entity_id] = entity
+
+        combined_entities = list(combined_entities_dict.values())
+
+        # Step 5: Calculate success rate (based on explicit mentions only)
         resolution_success_rate = (
             (successful_resolutions / len(mentions) * 100) if mentions else 0.0
         )
@@ -181,13 +201,15 @@ class ResolveEntitiesUseCase:
         logger.info(
             "entity_resolution_complete",
             mentions=len(mentions),
-            resolved=successful_resolutions,
+            resolved_explicit=successful_resolutions,
+            resolved_implicit=len(implicit_entities),
+            combined_total=len(combined_entities),
             success_rate=f"{resolution_success_rate:.1f}%",
             ambiguous_count=len(ambiguous_entities),
         )
 
         return ResolveEntitiesResult(
-            resolved_entities=resolved_entities,
+            resolved_entities=combined_entities,
             mention_count=len(mentions),
             successful_resolutions=successful_resolutions,
             resolution_success_rate=resolution_success_rate,
@@ -229,3 +251,69 @@ class ResolveEntitiesUseCase:
             recent_entities=recent_entities,
             current_message=current_message,
         )
+
+    async def _extract_implicit_entities_from_context(
+        self,
+        context: ConversationContext,
+        user_id: str,
+        session_id: UUID,
+    ) -> list[ResolvedEntityDTO]:
+        """Extract entities from recent session context (implicit resolution).
+
+        Phase 2.2: Session-aware entity resolution
+        When current message has no explicit entity mentions, extract entities from
+        recent conversation context to enable confirmations and follow-ups.
+
+        Args:
+            context: Conversation context with recent messages
+            user_id: User identifier
+            session_id: Session identifier
+
+        Returns:
+            List of implicitly resolved entities from context (marked as implicit)
+        """
+        implicit_entities: list[ResolvedEntityDTO] = []
+        seen_entity_ids: set[str] = set()
+
+        # Look at recent messages (most recent first, up to 3 for focus)
+        for recent_message in context.recent_messages[:3]:
+            # Extract mentions from this recent message
+            mentions = self.mention_extractor.extract_mentions(recent_message)
+
+            if not mentions:
+                continue
+
+            # Resolve each mention
+            for mention in mentions:
+                try:
+                    result = await self.resolution_service.resolve_entity(
+                        mention, context
+                    )
+
+                    if result.is_successful and result.entity_id not in seen_entity_ids:
+                        # Convert to DTO and mark as implicit
+                        entity_dto = ResolvedEntityDTO(
+                            entity_id=result.entity_id,
+                            canonical_name=result.canonical_name,
+                            entity_type=result.metadata.get("entity_type", "unknown"),
+                            mention_text=result.mention_text,
+                            confidence=result.confidence * 0.9,  # Slightly lower confidence for implicit
+                            method="implicit_from_context",  # Special method for transparency
+                            is_implicit=True,  # Mark as implicit
+                        )
+                        implicit_entities.append(entity_dto)
+                        seen_entity_ids.add(result.entity_id)
+
+                        logger.debug(
+                            "implicit_entity_extracted_from_context",
+                            entity_id=result.entity_id,
+                            canonical_name=result.canonical_name,
+                            from_message=recent_message[:50],
+                        )
+
+                except AmbiguousEntityError:
+                    # Skip ambiguous entities in implicit resolution
+                    # (Don't want to prompt disambiguation for context entities)
+                    continue
+
+        return implicit_entities

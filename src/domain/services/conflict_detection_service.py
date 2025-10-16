@@ -114,6 +114,8 @@ class ConflictDetectionService:
             "existing_reinforcement_count": existing_memory.reinforcement_count,
             "new_source": new_triple.metadata.get("source_event_id"),
             "existing_sources": existing_memory.source_event_ids,
+            "new_timestamp": new_triple.metadata.get("extraction_timestamp"),
+            "existing_timestamp": existing_memory.created_at.isoformat() if existing_memory.created_at else None,
         }
 
         conflict = MemoryConflict(
@@ -232,7 +234,8 @@ class ConflictDetectionService:
         1. Temporal: Most recent wins (>30 days difference)
         2. Confidence: Highest confidence wins (>0.2 difference)
         3. Reinforcement: Most reinforced wins (>3 observations difference)
-        4. Default: Require clarification
+        4. Temporal tiebreaker: ANY time difference prefers newer
+        5. Default: Require clarification (only when truly ambiguous)
 
         Args:
             new_triple: New observation
@@ -243,6 +246,14 @@ class ConflictDetectionService:
         Returns:
             Recommended resolution strategy
         """
+        logger.debug(
+            "evaluating_conflict_resolution",
+            temporal_diff_days=temporal_diff_days,
+            confidence_diff=confidence_diff,
+            reinforcement_existing=existing_memory.reinforcement_count,
+            reinforcement_new=1,
+        )
+
         # Strategy 1: Temporal resolution
         if temporal_diff_days is not None and abs(temporal_diff_days) >= self._temporal_threshold:
             return ConflictResolution.KEEP_NEWEST
@@ -256,7 +267,37 @@ class ConflictDetectionService:
         if abs(reinforcement_diff) >= self._reinforcement_threshold:
             return ConflictResolution.KEEP_MOST_REINFORCED
 
-        # Default: Require user clarification
+        # Strategy 4: Temporal tiebreaker (if ANY time difference exists, prefer newer)
+        # This aligns with "Temporal Validity: recent > old" principle
+        # Even if the difference is small (< threshold), newness is a signal
+        if temporal_diff_days is not None:
+            if temporal_diff_days > 0:
+                logger.debug(
+                    "conflict_resolution_temporal_tiebreaker",
+                    temporal_diff_days=temporal_diff_days,
+                    threshold=self._temporal_threshold,
+                    rationale="Temporal difference exists but below threshold, using as tiebreaker"
+                )
+                return ConflictResolution.KEEP_NEWEST
+            elif temporal_diff_days == 0:
+                # Same day but might be different timestamps - check actual time
+                new_timestamp_str = new_triple.metadata.get("extraction_timestamp")
+                if new_timestamp_str:
+                    try:
+                        new_timestamp = datetime.fromisoformat(new_timestamp_str)
+                        existing_timestamp = existing_memory.created_at
+                        if new_timestamp > existing_timestamp:
+                            logger.debug(
+                                "conflict_resolution_same_day_tiebreaker",
+                                new_time=new_timestamp.isoformat(),
+                                existing_time=existing_timestamp.isoformat(),
+                                rationale="Same day but different timestamps, prefer newer"
+                            )
+                            return ConflictResolution.KEEP_NEWEST
+                    except (ValueError, TypeError):
+                        pass  # Fall through to default
+
+        # Default: Require user clarification (only when truly ambiguous - same time, same confidence, same reinforcement)
         return ConflictResolution.REQUIRE_CLARIFICATION
 
     def detect_memory_vs_db_conflict(
@@ -285,6 +326,7 @@ class ConflictDetectionService:
         # For now, simple mapping for common cases
         predicate_map = {
             "order_status": "status",
+            "order_chain": "status",  # order_chain facts contain status info
             "invoice_status": "status",
             "work_order_status": "status",
         }
@@ -294,9 +336,11 @@ class ConflictDetectionService:
             return None
 
         # Extract value from domain fact metadata
-        # For status facts, value is in metadata["status"]
+        # For status facts, value is in metadata["status"] or metadata["so_status"] for order_chain
         db_value = None
-        if domain_fact.fact_type.endswith("_status"):
+        if domain_fact.fact_type == "order_chain":
+            db_value = domain_fact.metadata.get("so_status")
+        elif domain_fact.fact_type.endswith("_status"):
             db_value = domain_fact.metadata.get("status")
 
         if db_value is None:

@@ -20,6 +20,11 @@ from src.api.models.consolidation import (
     SummaryMetadataResponse,
     TriggerStatusResponse,
 )
+from src.api.models.memories import (
+    SemanticMemoryResponse,
+    ValidationRequest,
+    ValidationResponse,
+)
 from src.api.models.retrieval import RetrievalRequest, RetrievalResponse
 
 __all__ = [
@@ -42,4 +47,8 @@ __all__ = [
     "KeyFactResponse",
     "SummaryMetadataResponse",
     "TriggerStatusResponse",
+    # Memories
+    "SemanticMemoryResponse",
+    "ValidationRequest",
+    "ValidationResponse",
 ]

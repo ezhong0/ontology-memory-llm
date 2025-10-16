@@ -143,11 +143,11 @@ class SemanticMemory:
         self.status = "inactive"
         self.updated_at = datetime.now(UTC)
 
-    def mark_as_superseded(self, superseded_by_memory_id: int) -> None:
+    def mark_as_superseded(self, superseded_by_memory_id: int | None) -> None:
         """Mark memory as superseded by another memory.
 
         Args:
-            superseded_by_memory_id: ID of memory that supersedes this one
+            superseded_by_memory_id: ID of memory that supersedes this one (None if not yet created)
         """
         self.status = "superseded"
         self.superseded_by_memory_id = superseded_by_memory_id

@@ -23,6 +23,8 @@ class RetrievedMemory:
     content: str
     relevance_score: float
     confidence: float
+    last_validated_at: Any | None = None  # datetime or None
+    status: str = "active"  # active, aging, superseded, invalidated
 
 
 @dataclass(frozen=True)
@@ -111,12 +113,39 @@ class ReplyContext:
         # Section 3: Retrieved memories (contextual)
         if self.retrieved_memories:
             sections.append("=== RETRIEVED MEMORIES (Contextual) ===")
+
+            # Check for aged memories requiring validation
+            aged_memories = []
             for mem in self.retrieved_memories:
-                sections.append(
+                memory_line = (
                     f"[{mem.memory_type}] (relevance: {mem.relevance_score:.2f}, "
-                    f"confidence: {mem.confidence:.2f})\n"
-                    f"- {mem.content}"
+                    f"confidence: {mem.confidence:.2f}"
                 )
+
+                # Add status and validation info if memory is aging
+                if mem.status == "aging" and mem.last_validated_at:
+                    from datetime import datetime, timezone
+                    days_since_validation = (
+                        datetime.now(timezone.utc) - mem.last_validated_at
+                    ).days
+                    memory_line += f", status: AGING - last validated {days_since_validation} days ago on {mem.last_validated_at.strftime('%Y-%m-%d')}"
+                    aged_memories.append(mem)
+
+                memory_line += f")\n- {mem.content}"
+                sections.append(memory_line)
+
+            # Add validation reminder if aged memories found
+            if aged_memories:
+                sections.append("")
+                sections.append("⚠️  VALIDATION REQUIRED:")
+                sections.append(
+                    "Some memories are old and marked as AGING. You MUST ask the user to confirm "
+                    "whether these memories are still accurate before using them in your response. "
+                    "Include phrases like 'Is this still accurate?', 'Can you confirm this is still correct?', "
+                    "'Is Friday still your preferred day?', etc. Mention the date of last validation "
+                    "to show transparency (epistemic humility)."
+                )
+
             sections.append("")
         else:
             sections.append("=== RETRIEVED MEMORIES (Contextual) ===")
@@ -132,10 +161,19 @@ class ReplyContext:
 
         # Section 5: Response guidelines
         sections.append(
-            "=== RESPONSE GUIDELINES ===\n"
+            "=== RESPONSE GUIDELINES ===\n\n"
+            "REASONING PROCESS (apply before responding):\n"
+            "1. Analyze the information: What facts and memories are available?\n"
+            "2. Notice patterns: Are there conflicts? Superseded memories? Recent changes? Uncertainty?\n"
+            "3. Make decisions: Which source is authoritative? What confidence level?\n"
+            "4. Explain your reasoning: Share relevant observations transparently\n\n"
+            "RESPONSE STYLE:\n"
             "- Be concise and direct (2-3 sentences preferred)\n"
-            "- Cite sources when relevant (e.g., 'According to Invoice INV-1009...')\n"
-            "- If uncertain or data is old, acknowledge it\n"
+            "- Cite sources when relevant (e.g., 'According to Invoice INV-1009...', 'Based on our records from...')\n"
+            "- Show your reasoning when making decisions (e.g., 'Previously it was X, but recently updated to Y', "
+            "'I see conflicting information - trusting the database which shows...', 'This memory is 90 days old, "
+            "so I should confirm...')\n"
+            "- If uncertain or data is old, acknowledge it explicitly\n"
             "- If database and memory conflict, prefer database but mention the discrepancy\n"
             "- Use domain facts to answer current state, memories for preferences/context\n"
             "- Do not make up information - only use the facts and memories provided\n\n"

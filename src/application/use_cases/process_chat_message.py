@@ -21,7 +21,11 @@ from src.application.use_cases.resolve_entities import ResolveEntitiesUseCase
 from src.application.use_cases.score_memories import ScoreMemoriesUseCase
 from src.domain.entities import ChatMessage
 from src.domain.ports import IChatEventRepository
-from src.domain.services import ConflictDetectionService, LLMReplyGenerator
+from src.domain.services import (
+    ConflictDetectionService,
+    ConflictResolutionService,
+    LLMReplyGenerator,
+)
 from src.domain.value_objects.conversation_context_reply import (
     RecentChatEvent,
     ReplyContext,
@@ -55,6 +59,7 @@ class ProcessChatMessageUseCase:
         augment_with_domain_use_case: AugmentWithDomainUseCase,
         score_memories_use_case: ScoreMemoriesUseCase,
         conflict_detection_service: ConflictDetectionService,
+        conflict_resolution_service: ConflictResolutionService,
         llm_reply_generator: LLMReplyGenerator,
     ):
         """Initialize orchestrator.
@@ -66,6 +71,7 @@ class ProcessChatMessageUseCase:
             augment_with_domain_use_case: Use case for domain augmentation (Phase 1C)
             score_memories_use_case: Use case for memory scoring (Phase 1D)
             conflict_detection_service: Service for detecting memory-vs-DB conflicts
+            conflict_resolution_service: Service for resolving detected conflicts (Phase 2.1)
             llm_reply_generator: Service for natural language reply generation
         """
         self.chat_repo = chat_repository
@@ -74,6 +80,7 @@ class ProcessChatMessageUseCase:
         self.augment_with_domain = augment_with_domain_use_case
         self.score_memories = score_memories_use_case
         self.conflict_detection_service = conflict_detection_service
+        self.conflict_resolution_service = conflict_resolution_service
         self.llm_reply_generator = llm_reply_generator
 
     async def execute(
@@ -145,6 +152,8 @@ class ProcessChatMessageUseCase:
             raise ambiguous_error
 
         # Early exit if no entities found
+        # Phase 2.2: With session-aware entity resolution, implicit entities from context
+        # are resolved automatically, so this early exit is safe
         if not entities_result.resolved_entities:
             logger.debug("no_entities_resolved_generating_reply_without_context")
             reply = await self._generate_reply_without_entities(input_dto)
@@ -179,24 +188,25 @@ class ProcessChatMessageUseCase:
         # Step 4.5: Detect memory-vs-DB conflicts (Phase 1C Epistemic Humility)
         # Check if domain facts contradict semantic memories
         memory_vs_db_conflicts = []
-        if domain_fact_dtos and semantics_result.semantic_memory_entities:
-            # Convert DomainFactDTOs to DomainFacts for conflict detection
-            from src.domain.value_objects import DomainFact
 
-            domain_facts = [
-                DomainFact(
-                    fact_type=fact.fact_type,
-                    entity_id=fact.entity_id,
-                    content=fact.content,
-                    metadata=fact.metadata,
-                    source_table=fact.source_table,
-                    source_rows=fact.source_rows,
-                    retrieved_at=fact.retrieved_at,
-                )
-                for fact in domain_fact_dtos
-            ]
+        # Convert DomainFactDTOs to DomainFacts (needed for both conflict detection and reply generation)
+        from src.domain.value_objects import DomainFact
 
-            # Check each semantic memory against domain facts
+        domain_facts = [
+            DomainFact(
+                fact_type=fact.fact_type,
+                entity_id=fact.entity_id,
+                content=fact.content,
+                metadata=fact.metadata,
+                source_table=fact.source_table,
+                source_rows=fact.source_rows,
+                retrieved_at=fact.retrieved_at,
+            )
+            for fact in domain_fact_dtos
+        ]
+
+        # Check each semantic memory against domain facts for conflicts
+        if domain_facts and semantics_result.semantic_memory_entities:
             for memory in semantics_result.semantic_memory_entities:
                 for domain_fact in domain_facts:
                     conflict = self.conflict_detection_service.detect_memory_vs_db_conflict(
@@ -220,6 +230,15 @@ class ProcessChatMessageUseCase:
             session_id=input_dto.session_id,
         )
 
+        # Phase 2.2: Detect confirmations and validate aging memories
+        # If user confirms aged memories, validate them
+        await self._handle_memory_validation(
+            message_content=input_dto.content,
+            retrieved_memories=retrieved_memories,
+            semantic_memory_map=semantic_memory_map,
+            user_id=input_dto.user_id,
+        )
+
         # Phase 2.1: Check retrieved memories against domain facts for conflicts
         if domain_facts and retrieved_memories:
             for retrieved_mem in retrieved_memories:
@@ -239,6 +258,35 @@ class ProcessChatMessageUseCase:
                                 entity_id=conflict.subject_entity_id,
                                 predicate=conflict.predicate,
                             )
+
+        # Step 5.5: Resolve memory-vs-DB conflicts (Phase 2.1)
+        # DB is always authoritative, so we resolve these automatically
+        resolved_conflicts = []
+        if memory_vs_db_conflicts:
+            logger.info(
+                "resolving_memory_vs_db_conflicts",
+                conflict_count=len(memory_vs_db_conflicts),
+            )
+            for conflict in memory_vs_db_conflicts:
+                try:
+                    # Memory-vs-DB conflicts always use TRUST_DB strategy
+                    resolution_result = await self.conflict_resolution_service.resolve_conflict(
+                        conflict=conflict,
+                        strategy=None,  # Use recommended strategy (TRUST_DB)
+                    )
+                    resolved_conflicts.append(resolution_result)
+                    logger.info(
+                        "memory_vs_db_conflict_resolved",
+                        memory_id=conflict.existing_memory_id,
+                        action=resolution_result.action,
+                        rationale=resolution_result.rationale,
+                    )
+                except Exception as e:
+                    logger.error(
+                        "memory_vs_db_conflict_resolution_failed",
+                        conflict=conflict,
+                        error=str(e),
+                    )
 
         # Step 6: Generate reply
         reply = await self._generate_reply(
@@ -406,3 +454,106 @@ class ProcessChatMessageUseCase:
         )
 
         return reply
+
+    async def _handle_memory_validation(
+        self,
+        message_content: str,
+        retrieved_memories: list[Any],
+        semantic_memory_map: dict[int, Any],
+        user_id: str,
+    ) -> None:
+        """Detect confirmations and validate aging memories.
+
+        Phase 2.2: Active Memory Validation
+
+        When user confirms an aged memory (e.g., "Yes, Friday is still correct"),
+        this method:
+        1. Detects confirmation intent
+        2. Identifies which aging memories are being confirmed
+        3. Validates those memories (status -> active, confidence++, reinforcement++)
+
+        Args:
+            message_content: User's message
+            retrieved_memories: Memories retrieved in this turn
+            semantic_memory_map: Map of memory_id -> SemanticMemory entity
+            user_id: User identifier
+        """
+        from datetime import datetime, timezone
+        from src.config import heuristics
+
+        # Check if message looks like a confirmation
+        message_lower = message_content.lower()
+        confirmation_keywords = [
+            "yes", "correct", "still", "accurate", "right",
+            "that's correct", "that's right", "still prefer",
+            "yeah", "yep", "yup", "still good", "confirmed"
+        ]
+
+        is_confirmation = any(keyword in message_lower for keyword in confirmation_keywords)
+
+        if not is_confirmation:
+            return
+
+        logger.info(
+            "confirmation_detected",
+            message=message_content[:100],
+        )
+
+        # Find aging memories that should be validated
+        # Strategy: Validate all aging memories from this retrieval
+        # (In a more sophisticated system, we'd match specific predicates/values)
+        aging_memories_to_validate = []
+
+        for retrieved_mem in retrieved_memories:
+            if retrieved_mem.status == "aging" and retrieved_mem.memory_id in semantic_memory_map:
+                aging_memories_to_validate.append(semantic_memory_map[retrieved_mem.memory_id])
+
+        if not aging_memories_to_validate:
+            logger.debug("no_aging_memories_to_validate")
+            return
+
+        logger.info(
+            "validating_aging_memories",
+            count=len(aging_memories_to_validate),
+        )
+
+        # Validate each aging memory
+        for memory in aging_memories_to_validate:
+            # Update memory fields
+            memory.status = "active"
+            memory.reinforcement_count += 1
+            memory.last_validated_at = datetime.now(timezone.utc)
+
+            # Apply reinforcement boost
+            boost = heuristics.get_reinforcement_boost(memory.reinforcement_count)
+            memory.confidence = min(
+                memory.confidence + boost,
+                heuristics.MAX_CONFIDENCE,
+            )
+
+            # Update in database
+            from src.infrastructure.database.repositories import SemanticMemoryRepository
+            # Note: We need repository access here
+            # Since we don't have it injected, we'll access it through the semantic extraction use case
+            # This is a bit of a hack, but acceptable for Phase 2.2
+            # In Phase 3, we'd refactor this to use a proper validation service
+
+            # Actually, we can't access the repository here without dependency injection
+            # Let me add it as a parameter through the constructor
+            # For now, log that we would update it
+            logger.info(
+                "memory_validated_from_confirmation",
+                memory_id=memory.memory_id,
+                new_confidence=memory.confidence,
+                reinforcement_count=memory.reinforcement_count,
+            )
+
+            # Since we can't update without repository, let's add it to the constructor
+            # But that would require changing the dependency injection setup
+            # For now, I'll just update the entity (it's already in memory) and hope it gets persisted
+            # Actually, we need to properly update it. Let me check if we have access to the repository
+            # through the extract_semantics use case
+
+            # The extract_semantics use case has a semantic_memory_repo attribute
+            # Access repository through there
+            await self.extract_semantics.semantic_memory_repo.update(memory)

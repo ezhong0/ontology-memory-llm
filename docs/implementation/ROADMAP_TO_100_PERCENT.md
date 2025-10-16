@@ -4,7 +4,47 @@
 
 > "Progress should be: 100% → 100% → 100%, not 60% → 60% → 60%"
 
-**Current Status**: 4/18 scenarios passing (22.2%)
+---
+
+## Current Status (Updated 2025-01-16)
+
+**E2E Tests Passing**: **10/18 (55.6%)** ✅
+
+**Passing Scenarios**:
+- ✅ Scenario 1: Overdue invoice with preference recall
+- ✅ Scenario 2: Work order rescheduling
+- ✅ Scenario 3: Ambiguous entity disambiguation
+- ✅ Scenario 4: NET terms learning
+- ✅ Scenario 5: Partial payments and balance
+- ✅ Scenario 6: SLA breach detection
+- ✅ Scenario 7: Conflicting memories consolidation **(JUST FIXED)**
+- ✅ Scenario 9: Cold start grounding to DB
+- ✅ Scenario 15: Audit trail explainability
+- ✅ Scenario 17: Memory-vs-DB conflict trust DB
+
+**Remaining Scenarios** (8):
+- ⏳ Scenario 8: Multilingual alias handling
+- ⏳ Scenario 10: Active recall for stale facts
+- ⏳ Scenario 11: Cross-object reasoning
+- ⏳ Scenario 12: Fuzzy match alias learning
+- ⏳ Scenario 13: PII guardrail memory
+- ⏳ Scenario 14: Session window consolidation
+- ⏳ Scenario 16: Reminder creation from intent
+- ⏳ Scenario 18: Task completion via conversation
+
+**Recent Completion**: Phase 2.1 (Conflict Resolution) ✅
+- 6 fundamental bugs fixed
+- Same-day timestamp precision
+- Memory status lifecycle (active → superseded → invalidated)
+- Conflicts exposed in API with structured data
+
+**Infrastructure Status**:
+- ✅ Core services: Entity resolution, semantic extraction, conflict detection/resolution
+- ✅ Domain queries: work_orders, tasks, invoices, SLA detection
+- ✅ API endpoints: /chat, /conflicts
+- ⏳ **Missing**: /disambiguate, /consolidate, /validate, /tasks/{id}/complete
+- ✅ **Quality**: All 198 unit/integration tests passing, typecheck clean
+
 **Target**: 18/18 scenarios passing (100%)
 **Approach**: Quality over speed. Comprehensive solutions over quick fixes.
 
@@ -26,16 +66,19 @@ Each milestone is **production-ready** before moving forward:
 - ✅ All tests passing (unit + integration + E2E)
 - ✅ Edge cases handled
 - ✅ Error paths tested
-- ✅ Documentation updated
 - ✅ Quality checks pass (lint, typecheck, coverage)
 
-### 3. Root Cause Solutions
+### 3. Test-Driven Progress
+**Before starting any task, know which tests must pass.**
+**Before moving to next task, verify all tests pass.**
+
+### 4. Root Cause Solutions
 Fix root causes, not symptoms:
 - Understand WHY the gap exists
 - Solve the problem completely
 - Don't create band-aids
 
-### 4. Vision-Driven
+### 5. Vision-Driven
 Every feature serves explicit vision principles:
 - Perfect recall of relevant context
 - Deep business understanding
@@ -46,560 +89,44 @@ Every feature serves explicit vision principles:
 
 ---
 
-## Phase 0: Foundation Check (2-3 hours)
+## Phase 0: Foundation ✅ COMPLETE
 
-> **Before building new features, ensure current foundation is solid.**
+### Status
+- ✅ All 198 unit/integration tests passing
+- ✅ `make test` succeeds
+- ✅ `make typecheck` succeeds
+- ✅ 10/18 E2E scenarios passing
 
-### Task 0.1: Fix Failing Unit Tests (1-2 hours)
-
-**Vision Principle**: Quality Over Speed - Never build on broken foundation
-
-**Current Issue**: 9/130 tests failing
-- 8 in `test_memory_validation_service.py` (decay formula mismatch)
-- 1 in `test_semantic_extraction_service.py`
-
-**Investigation Steps**:
-1. Read failing test output carefully
-2. Read `docs/design/LIFECYCLE_DESIGN.md` for decay formula spec
-3. Compare implementation in `memory_validation_service.py` with spec
-4. Determine if test or implementation is wrong
-
-**Implementation**:
-- If implementation wrong: Update to match LIFECYCLE_DESIGN.md
-- If test wrong: Update test expectations
-- Add regression tests for edge cases (days=0, days=90, never validated)
-
-**Completion Criteria**:
-- [ ] All 130 tests passing
-- [ ] `make test` succeeds
-- [ ] `make typecheck` succeeds
-- [ ] Decay formula documented in code comments
-
-**Time Estimate**: 1-2 hours
+**Foundation is solid. Ready to proceed.**
 
 ---
 
-### Task 0.2: Verify 4 Passing E2E Scenarios (30 min)
+## Phase 1: Quick Wins → 12/18 Scenarios (67%)
 
-**Purpose**: Ensure current passing tests are stable
+> **Goal**: Unblock scenarios with minimal implementation gaps. Wire up existing services to API.
 
-**Actions**:
-```bash
-poetry run pytest tests/e2e/test_scenarios.py::test_scenario_01_overdue_invoice_with_preference_recall \
-  tests/e2e/test_scenarios.py::test_scenario_04_net_terms_learning_from_conversation \
-  tests/e2e/test_scenarios.py::test_scenario_05_partial_payments_and_balance \
-  tests/e2e/test_scenarios.py::test_scenario_09_cold_start_grounding_to_db -v
-```
-
-**Success Criteria**:
-- [ ] All 4 tests pass consistently
-- [ ] No flaky behavior
-- [ ] Logs show expected pipeline flow
-
-**If any fail**: Fix before proceeding. Don't build on unstable foundation.
+**Time Estimate**: 3-4 hours
+**Scenarios to Unlock**: #12 (fuzzy auto-alias), #14 (consolidation)
 
 ---
 
-## Phase 1: Quick Wins (12-16 hours) → 11/18 Scenarios (61%)
+### Milestone 1.1: Auto-Alias from Fuzzy Match
 
-> **Goal**: Unblock scenarios with minimal implementation gaps. Focus on features where infrastructure exists.
+**Vision Principle**: Learning - System improves resolution speed over time
 
-### Milestone 1.1: Domain Table Queries (3-4 hours) → +2 scenarios
+**Scenario**: #12 (fuzzy match alias learning)
 
-**Scenarios Unblocked**: #2 (work orders), #6 (tasks)
-
-**Vision Principles**:
-- Deep Business Understanding (ontology-awareness)
-- Dual Truth (DB as correspondence truth)
-
----
-
-#### Task 1.1.1: Add Work Order Queries (1.5-2 hours)
-
-**Investigation** (30 min):
-1. Read domain schema: What fields exist in `domain.work_orders`?
-   ```sql
-   \d domain.work_orders
-   ```
-2. Study existing pattern: How does `DomainAugmentationService` handle invoices?
-   - File: `src/domain/services/domain_augmentation_service.py`
-   - Look for `_get_entity_info()` method
-3. Check relationships: How do work_orders join to sales_orders?
-   - Foreign key: `wo.so_id → so.so_id`
-4. Read test: What does Scenario 2 expect?
-   - File: `tests/e2e/test_scenarios.py` lines ~150-200
-
-**Implementation** (45 min):
-```python
-# In src/domain/services/domain_augmentation_service.py
-
-# Add to _get_entity_info()
-elif entity_type == "work_order":
-    return EntityInfo(
-        table="domain.work_orders",
-        id_field="wo_id",
-        name_field="wo_number",
-        join_from="sales_orders",  # work_orders.so_id → sales_orders.so_id
-        related_tables=["tasks"],
-        typical_queries=[
-            "work_order_status",
-            "technician_assignment",
-            "completion_date"
-        ]
-    )
-```
-
-**Testing** (45 min):
-1. Unit test: `test_domain_augmentation_work_order_query.py`
-   - Given: work_order entity resolved
-   - When: domain augmentation runs
-   - Then: work_order facts returned with status, technician, dates
-
-2. Integration test: Real DB query
-   - Seed: Create work_order in domain.work_orders
-   - Query: Via DomainAugmentationService
-   - Assert: Correct joins, fields populated
-
-3. E2E test: Unskip Scenario 2
-   ```bash
-   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_02_work_order_rescheduling -v
-   ```
-
-**Completion Criteria**:
-- [ ] EntityInfo mapping added for "work_order"
-- [ ] Unit tests pass (mocked repository)
-- [ ] Integration tests pass (real DB)
-- [ ] E2E Scenario 2 passes
-- [ ] No regressions in existing tests
-- [ ] Code follows established patterns
-- [ ] Structured logging added
-
-**Commit**: `feat(domain-augmentation): add work order query support for Scenario 2`
-
----
-
-#### Task 1.1.2: Add Task Queries (1.5-2 hours)
-
-**Investigation** (30 min):
-1. Read domain schema: `domain.tasks` fields
-2. Check relationships: `tasks.customer_id → customers.customer_id`
-3. Understand SLA breach logic: What defines a breach?
-   - Read Scenario 6 test expectations
-   - SLA = 7 days? 14 days? (Check test or add heuristic)
-
-**Implementation** (45 min):
-```python
-# In src/domain/services/domain_augmentation_service.py
-
-elif entity_type == "task":
-    return EntityInfo(
-        table="domain.tasks",
-        id_field="task_id",
-        name_field="title",
-        join_from="customers",
-        related_tables=[],
-        typical_queries=[
-            "task_status",
-            "assigned_to",
-            "created_date",
-            "sla_info"
-        ]
-    )
-
-# Add SLA breach detection in _augment_entity_facts()
-def _calculate_task_risk(task: dict) -> dict:
-    """Calculate SLA breach risk for task."""
-    created_at = task["created_at"]
-    age_days = (datetime.now(UTC) - created_at).days
-    sla_threshold = get_config("tasks.sla_days")  # e.g., 7 days
-
-    risk_metadata = {"age_days": age_days}
-    if age_days > sla_threshold:
-        risk_metadata["risk_level"] = "high"
-        risk_metadata["days_overdue"] = age_days - sla_threshold
-        risk_metadata["sla_breach"] = True
-    elif age_days > sla_threshold * 0.8:
-        risk_metadata["risk_level"] = "medium"
-        risk_metadata["sla_breach"] = False
-    else:
-        risk_metadata["risk_level"] = "low"
-        risk_metadata["sla_breach"] = False
-
-    return risk_metadata
-```
-
-**Configuration** (add to `src/config/heuristics.py`):
-```python
-HEURISTICS = {
-    # ... existing ...
-    "tasks": {
-        "sla_days": 7,  # Default SLA for tasks
-        "medium_risk_threshold": 0.8,  # 80% of SLA
-    }
-}
-```
-
-**Testing** (45 min):
-1. Unit test: SLA risk calculation
-   - Test: 0 days old → low risk
-   - Test: 6 days old → medium risk
-   - Test: 8 days old → high risk, 1 day overdue
-
-2. Integration test: Task query with risk tagging
-
-3. E2E test: Unskip Scenario 6
-
-**Completion Criteria**:
-- [ ] EntityInfo mapping for "task"
-- [ ] Risk calculation logic with heuristic config
-- [ ] Unit tests for risk calculation
-- [ ] Integration tests for task queries
-- [ ] E2E Scenario 6 passes
-- [ ] Heuristic documented in HEURISTICS_CALIBRATION.md
-
-**Commit**: `feat(domain-augmentation): add task queries with SLA breach detection for Scenario 6`
-
----
-
-### Milestone 1.2: API Endpoint Exposure (4-6 hours) → +3 scenarios
-
-**Scenarios Unblocked**: #3 (disambiguation), #14 (consolidation), #15 (explainability)
-
-**Vision Principles**:
-- Epistemic Humility (disambiguation shows uncertainty)
-- Graceful Forgetting (consolidation)
-- Explainable Reasoning (provenance)
-
----
-
-#### Task 1.2.1: Disambiguation Flow API (1.5-2 hours)
-
-**Investigation** (30 min):
-1. Current behavior: What happens when `AmbiguousEntityError` is raised?
-   - File: `src/api/routes/chat.py` lines 227-240
-   - Returns 422 with candidate list
-2. What's missing: Endpoint to accept user selection
-3. Study alias learning: How does `EntityRepository.create_alias()` work?
-
-**Implementation** (45 min):
-```python
-# In src/api/routes/chat.py (or new disambiguate.py)
-
-from src.api.models import DisambiguationRequest, DisambiguationResponse
-
-@router.post(
-    "/api/v1/disambiguate",
-    response_model=DisambiguationResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Resolve ambiguous entity reference",
-    description="""
-    After receiving a 422 AmbiguousEntity error, user selects the correct entity.
-    This endpoint creates a user-specific alias to avoid future ambiguity.
-
-    Vision Principle: Epistemic Humility - System admits uncertainty and learns from clarification.
-    """
-)
-async def resolve_disambiguation(
-    request: DisambiguationRequest,
-    user_id: str = Depends(get_current_user_id),
-    entity_repo: IEntityRepository = Depends(get_entity_repository)
-) -> DisambiguationResponse:
-    """Resolve ambiguous entity and learn alias.
-
-    Args:
-        request: Contains mention_text and selected_entity_id
-        user_id: Current user
-        entity_repo: Entity repository
-
-    Returns:
-        Resolved entity with confirmation
-    """
-    logger.info(
-        "disambiguation_request",
-        user_id=user_id,
-        mention=request.mention_text,
-        selected=request.selected_entity_id
-    )
-
-    # Create user-specific alias for future resolution
-    await entity_repo.create_alias(
-        canonical_entity_id=request.selected_entity_id,
-        alias_text=request.mention_text,
-        alias_source="user_disambiguation",
-        user_id=user_id,  # User-specific
-        confidence=1.0,  # High confidence (explicit user choice)
-        metadata={"disambiguation_session": request.session_id}
-    )
-
-    # Fetch the selected entity
-    entity = await entity_repo.get_by_id(request.selected_entity_id)
-    if not entity:
-        raise HTTPException(404, f"Entity {request.selected_entity_id} not found")
-
-    logger.info(
-        "disambiguation_resolved",
-        entity_id=entity.entity_id,
-        canonical_name=entity.canonical_name
-    )
-
-    return DisambiguationResponse(
-        entity_id=entity.entity_id,
-        canonical_name=entity.canonical_name,
-        entity_type=entity.entity_type,
-        alias_learned=request.mention_text,
-        message=f"Future mentions of '{request.mention_text}' will resolve to {entity.canonical_name}"
-    )
-```
-
-**API Models** (in `src/api/models/`):
-```python
-class DisambiguationRequest(BaseModel):
-    session_id: UUID
-    mention_text: str
-    selected_entity_id: str
-
-class DisambiguationResponse(BaseModel):
-    entity_id: str
-    canonical_name: str
-    entity_type: str
-    alias_learned: str
-    message: str
-```
-
-**Testing** (45 min):
-1. Unit test: API handler (mocked repo)
-2. Integration test: Real alias creation
-3. E2E test: Full disambiguation flow
-   - Trigger AmbiguousEntityError
-   - Call /disambiguate
-   - Verify alias created
-   - Future query uses alias (no ambiguity)
-
-**Completion Criteria**:
-- [ ] /api/v1/disambiguate endpoint implemented
-- [ ] API models defined
-- [ ] Alias creation works
-- [ ] E2E Scenario 3 passes
-- [ ] OpenAPI docs updated
-
-**Commit**: `feat(api): add disambiguation endpoint for Scenario 3`
-
----
-
-#### Task 1.2.2: Consolidation Endpoint (1.5-2 hours)
-
-**Investigation** (30 min):
-1. Existing services: `ConsolidationService`, `ConsolidationTriggerService`
-2. What do they return? Study method signatures
-3. What should endpoint accept? scope_type, scope_identifier, user_id
-
-**Implementation** (45 min):
-```python
-# In src/api/routes/consolidation.py (file exists, add endpoint)
-
-@router.post(
-    "/api/v1/consolidate",
-    response_model=ConsolidationResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Trigger memory consolidation",
-    description="""
-    Consolidate episodic and semantic memories into a summary.
-
-    Supports:
-    - Entity consolidation: All memories about a specific entity
-    - Topic consolidation: All memories about a topic
-    - Session window: All memories in a time range
-
-    Vision Principle: Graceful Forgetting - Abstract details into summaries,
-    deprioritize source memories, maintain provenance.
-    """
-)
-async def trigger_consolidation(
-    request: ConsolidationRequest,
-    user_id: str = Depends(get_current_user_id),
-    consolidation_trigger: ConsolidationTriggerService = Depends(get_consolidation_trigger),
-    consolidation_service: ConsolidationService = Depends(get_consolidation_service)
-) -> ConsolidationResponse:
-    """Trigger consolidation for a scope."""
-
-    logger.info(
-        "consolidation_request",
-        user_id=user_id,
-        scope_type=request.scope_type,
-        scope_identifier=request.scope_identifier
-    )
-
-    # Check if consolidation threshold met
-    should_consolidate = await consolidation_trigger.should_consolidate(
-        scope_type=request.scope_type,
-        scope_identifier=request.scope_identifier,
-        user_id=user_id
-    )
-
-    if not should_consolidate:
-        return ConsolidationResponse(
-            consolidation_triggered=False,
-            message="Consolidation threshold not met. Need ≥10 episodes or ≥3 sessions."
-        )
-
-    # Run consolidation
-    summary = await consolidation_service.consolidate(
-        scope_type=request.scope_type,
-        scope_identifier=request.scope_identifier,
-        user_id=user_id
-    )
-
-    logger.info(
-        "consolidation_complete",
-        summary_id=summary.summary_id,
-        source_memory_count=len(summary.source_data.get("episodic_ids", []))
-    )
-
-    return ConsolidationResponse(
-        consolidation_triggered=True,
-        summary_id=summary.summary_id,
-        summary_text=summary.summary_text,
-        key_facts=summary.key_facts,
-        source_memory_count=len(summary.source_data.get("episodic_ids", [])),
-        message=f"Consolidated {len(summary.source_data.get('episodic_ids', []))} memories into summary"
-    )
-```
-
-**Testing** (45 min):
-1. Unit test: Threshold check, consolidation service call
-2. Integration test: Real consolidation with seeded memories
-3. E2E test: Unskip Scenario 14
-
-**Completion Criteria**:
-- [ ] /api/v1/consolidate endpoint
-- [ ] Threshold checking works
-- [ ] Summary creation works
-- [ ] E2E Scenario 14 passes
-
-**Commit**: `feat(api): add consolidation endpoint for Scenario 14`
-
----
-
-#### Task 1.2.3: Explainability Endpoint (1.5-2 hours)
-
-**Investigation** (30 min):
-1. What provenance data exists?
-   - `SemanticMemory.extracted_from_event_id` → ChatEvent
-   - `SemanticMemory.source_memory_id` → EpisodicMemory
-   - `SemanticMemory.reinforcement_count` → How many confirmations
-2. What should /explain return? Memory provenance chain
-
-**Implementation** (45 min):
-```python
-# In src/api/routes/retrieval.py (or new explainability.py)
-
-@router.get(
-    "/api/v1/explain/{memory_id}",
-    response_model=ExplainResponse,
-    summary="Explain memory provenance",
-    description="""
-    Return provenance trail for a specific memory.
-
-    Shows:
-    - Source chat event (when/how memory was created)
-    - Reinforcement events (confirmations)
-    - Consolidation source (if from summary)
-    - Confidence factors
-
-    Vision Principle: Explainable Reasoning - Transparency as trust.
-    """
-)
-async def explain_memory(
-    memory_id: int,
-    user_id: str = Depends(get_current_user_id),
-    semantic_repo: ISemanticMemoryRepository = Depends(get_semantic_repo),
-    episodic_repo: IEpisodicMemoryRepository = Depends(get_episodic_repo),
-    chat_repo: IChatEventRepository = Depends(get_chat_repo)
-) -> ExplainResponse:
-    """Return provenance chain for memory."""
-
-    # Fetch semantic memory
-    memory = await semantic_repo.get_by_id(memory_id)
-    if not memory or memory.user_id != user_id:
-        raise HTTPException(404, "Memory not found")
-
-    # Fetch source event
-    source_event = None
-    if memory.extracted_from_event_id:
-        source_event = await chat_repo.get_by_id(memory.extracted_from_event_id)
-
-    # Fetch episodic source
-    episodic_source = None
-    if memory.source_memory_id:
-        episodic_source = await episodic_repo.get_by_id(memory.source_memory_id)
-
-    # Find reinforcement events (other semantic memories with same subject+predicate)
-    reinforcements = await semantic_repo.find_reinforcements(
-        subject_entity_id=memory.subject_entity_id,
-        predicate=memory.predicate,
-        exclude_memory_id=memory_id
-    )
-
-    return ExplainResponse(
-        memory_id=memory_id,
-        predicate=memory.predicate,
-        object_value=memory.object_value,
-        confidence=memory.confidence,
-        confidence_factors=memory.confidence_factors,
-        source_event={
-            "event_id": source_event.event_id,
-            "content": source_event.content,
-            "created_at": source_event.created_at.isoformat()
-        } if source_event else None,
-        episodic_source={
-            "memory_id": episodic_source.memory_id,
-            "summary": episodic_source.summary
-        } if episodic_source else None,
-        reinforcements=[
-            {
-                "memory_id": r.memory_id,
-                "created_at": r.created_at.isoformat(),
-                "confidence": r.confidence
-            }
-            for r in reinforcements
-        ],
-        reinforcement_count=memory.reinforcement_count
-    )
-```
-
-**Testing** (45 min):
-1. Unit test: Provenance chain fetching
-2. Integration test: Real memory with source event
-3. E2E test: Unskip Scenario 15
-
-**Completion Criteria**:
-- [ ] /api/v1/explain/{memory_id} endpoint
-- [ ] Provenance chain complete
-- [ ] E2E Scenario 15 passes
-
-**Commit**: `feat(api): add explainability endpoint for Scenario 15`
-
----
-
-### Milestone 1.3: Minor Enhancements (2-3 hours) → +2 scenarios
-
-**Scenarios Unblocked**: #12 (auto-alias), #17 (conflict exposure)
-
----
-
-#### Task 1.3.1: Auto-Alias from Fuzzy Match (1-1.5 hours)
-
-**Investigation** (20 min):
-1. Where does fuzzy matching happen?
-   - `EntityResolutionService.resolve()` Stage 3
-2. What's returned? `ResolutionResult` with confidence
-3. What's missing? Automatic alias creation after successful fuzzy match
+**Investigation** (15 min):
+1. Read `src/domain/services/entity_resolution_service.py` lines 200-250
+2. Find Stage 3 fuzzy match logic
+3. Check if `EntityRepository.create_alias()` method exists
+4. Understand: After fuzzy match succeeds, should auto-create alias for next time
 
 **Implementation** (30 min):
 ```python
 # In src/domain/services/entity_resolution_service.py
+# After Stage 3 fuzzy match succeeds (around line 240):
 
-# In resolve() method, after Stage 3 (fuzzy match):
 if fuzzy_result:
     logger.info(
         "fuzzy_match_success",
@@ -614,7 +141,7 @@ if fuzzy_result:
             canonical_entity_id=fuzzy_result.entity_id,
             alias_text=mention_text,
             alias_source="fuzzy_learned",
-            user_id=user_id,  # User-specific
+            user_id=user_id,
             confidence=fuzzy_result.confidence,
             metadata={"learned_from": "fuzzy_match_stage_3"}
         )
@@ -634,516 +161,322 @@ if fuzzy_result:
     return fuzzy_result
 ```
 
-**Testing** (30 min):
-1. Unit test: Fuzzy match → alias created
-2. Integration test: Next query uses exact match (faster)
-3. E2E test: Unskip Scenario 12
+**Tests That MUST Pass**:
 
-**Completion Criteria**:
-- [ ] Auto-alias after fuzzy match
-- [ ] Graceful failure (doesn't break resolution if alias creation fails)
+1. **Unit Test**: `tests/unit/domain/services/test_entity_resolution_service.py`
+   ```python
+   async def test_fuzzy_match_creates_alias():
+       """After fuzzy match, alias should be auto-created."""
+       # Given: "Gy Media" fuzzy matches "Gai Media"
+       # When: resolve() called
+       # Then: Alias created for "Gy Media" → "Gai Media"
+       # Then: Next resolve("Gy Media") uses exact match (faster)
+   ```
+
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_12_fuzzy_match_alias_learning`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_12_fuzzy_match_alias_learning -xvs
+   ```
+   - Turn 1: "Gy Media" (typo) → fuzzy match resolves to Gai Media
+   - Turn 2: "Gy Media" (same typo) → exact match (alias learned)
+   - Logs show: `alias_learned_from_fuzzy_match`
+
+**Success Criteria**:
+- [ ] Alias created after fuzzy match success
+- [ ] Graceful failure if alias creation fails (doesn't break resolution)
+- [ ] Unit test passes
 - [ ] E2E Scenario 12 passes
+- [ ] No regressions (run full test suite)
 
-**Commit**: `feat(entity-resolution): auto-create alias from fuzzy matches for Scenario 12`
+**Verification Before Proceeding**:
+```bash
+# Run this BEFORE moving to next task:
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_12_fuzzy_match_alias_learning -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v  # Ensure no regressions
+```
+
+**Commit**: `feat(entity-resolution): auto-create alias from fuzzy matches (Scenario 12)`
+
+**Status After**: 11/18 passing (61%)
 
 ---
 
-#### Task 1.3.2: Expose Conflicts in API Response (1-1.5 hours)
+### Milestone 1.2: Consolidation Endpoint
+
+**Vision Principle**: Graceful Forgetting - Abstract details into summaries
+
+**Scenario**: #14 (session window consolidation)
 
 **Investigation** (20 min):
-1. Where are conflicts detected? `ConflictDetectionService`
-2. What's returned? List of `MemoryConflict` entities
-3. What's missing? Conflicts not in API response DTOs
+1. Check `src/domain/services/consolidation_service.py` - does it exist?
+2. Check `src/domain/services/consolidation_trigger_service.py` - what thresholds?
+3. Read `tests/e2e/test_scenarios.py` lines for Scenario 14 - what's expected?
+4. Check if `/api/v1/consolidate` endpoint exists
 
-**Implementation** (30 min):
+**Implementation** (45 min):
+
+File: `src/api/models/consolidation.py` (NEW)
 ```python
-# In src/application/dtos/chat_dtos.py
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
 
-@dataclass
-class ConflictDTO:
-    """Conflict information for API response."""
-    conflict_id: int
-    conflict_type: str  # "memory_vs_memory" | "memory_vs_db"
-    memory_value: Any
-    db_value: Optional[Any]
-    resolution_strategy: str  # "trust_db" | "trust_recent" | "ask_user"
-    confidence_diff: Optional[float]
+class ConsolidationRequest(BaseModel):
+    scope_type: str  # "entity" | "session" | "topic"
+    scope_identifier: str  # entity_id | session_id | topic_name
 
-@dataclass
-class ProcessChatMessageOutput:
-    # ... existing fields ...
-    conflicts_detected: List[ConflictDTO] = field(default_factory=list)  # ADD THIS
+class ConsolidationResponse(BaseModel):
+    consolidation_triggered: bool
+    summary_id: Optional[int] = None
+    summary_text: Optional[str] = None
+    source_memory_count: Optional[int] = None
+    message: str
 ```
 
+File: `src/api/routes/consolidation.py` (EDIT - add endpoint)
 ```python
-# In src/application/use_cases/extract_semantics.py
-
-# Ensure ConflictDetectionService returns conflicts
-@dataclass
-class ExtractSemanticsOutput:
-    # ... existing fields ...
-    conflicts: List[MemoryConflict] = field(default_factory=list)  # ADD THIS
-```
-
-```python
-# In src/application/use_cases/process_chat_message.py
-
-# After semantic extraction:
-conflicts = semantics_result.conflicts
-
-# In final ProcessChatMessageOutput:
-return ProcessChatMessageOutput(
-    # ... existing fields ...
-    conflicts_detected=[
-        ConflictDTO(
-            conflict_id=c.conflict_id,
-            conflict_type=c.conflict_type,
-            memory_value=c.conflict_data.get("memory_value"),
-            db_value=c.conflict_data.get("db_value"),
-            resolution_strategy=c.resolution_strategy,
-            confidence_diff=c.conflict_data.get("confidence_diff")
-        )
-        for c in conflicts
-    ]
+@router.post(
+    "/api/v1/consolidate",
+    response_model=ConsolidationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Trigger memory consolidation"
 )
+async def trigger_consolidation(
+    request: ConsolidationRequest,
+    user_id: str = Depends(get_current_user_id),
+    consolidation_service: ConsolidationService = Depends(get_consolidation_service)
+) -> ConsolidationResponse:
+    """Consolidate memories into summary.
+
+    Requires ≥10 episodes or ≥3 sessions to trigger.
+    """
+    logger.info(
+        "consolidation_request",
+        user_id=user_id,
+        scope_type=request.scope_type,
+        scope_identifier=request.scope_identifier
+    )
+
+    # Run consolidation (service checks thresholds internally)
+    summary = await consolidation_service.consolidate(
+        scope_type=request.scope_type,
+        scope_identifier=request.scope_identifier,
+        user_id=user_id
+    )
+
+    if not summary:
+        return ConsolidationResponse(
+            consolidation_triggered=False,
+            message="Consolidation threshold not met. Need ≥10 episodes or ≥3 sessions."
+        )
+
+    logger.info(
+        "consolidation_complete",
+        summary_id=summary.summary_id,
+        source_count=len(summary.source_memory_ids)
+    )
+
+    return ConsolidationResponse(
+        consolidation_triggered=True,
+        summary_id=summary.summary_id,
+        summary_text=summary.summary_text,
+        source_memory_count=len(summary.source_memory_ids),
+        message=f"Consolidated {len(summary.source_memory_ids)} memories"
+    )
 ```
 
-```python
-# In src/api/routes/chat.py (simplified endpoint)
+**Tests That MUST Pass**:
 
-# Add to response dict:
-return {
-    "response": output.reply,
-    "augmentation": { ... },
-    "memories_created": [...],
-    "conflicts_detected": [  # ADD THIS
-        {
-            "conflict_type": c.conflict_type,
-            "memory_value": c.memory_value,
-            "db_value": c.db_value,
-            "resolution": c.resolution_strategy
-        }
-        for c in output.conflicts_detected
-    ]
-}
+1. **Unit Test**: `tests/unit/api/routes/test_consolidation.py` (NEW)
+   ```python
+   async def test_consolidation_endpoint_below_threshold():
+       """Below threshold → no consolidation."""
+       # Given: Only 2 sessions for entity
+       # When: POST /api/v1/consolidate
+       # Then: consolidation_triggered=False
+
+   async def test_consolidation_endpoint_above_threshold():
+       """Above threshold → consolidation happens."""
+       # Given: 12 episodes for entity
+       # When: POST /api/v1/consolidate
+       # Then: consolidation_triggered=True, summary_id returned
+   ```
+
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_14_session_window_consolidation`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_14_session_window_consolidation -xvs
+   ```
+   - Create 10+ chat turns about Gai Media
+   - Call `/api/v1/consolidate` with scope="entity", identifier="customer_xxx"
+   - Verify: `consolidation_triggered=True`, summary contains key facts
+
+**Success Criteria**:
+- [ ] `/api/v1/consolidate` endpoint implemented
+- [ ] Request/Response models defined
+- [ ] Threshold checking works
+- [ ] Summary creation returns correct data
+- [ ] Unit tests pass
+- [ ] E2E Scenario 14 passes
+- [ ] OpenAPI docs updated (auto via FastAPI)
+
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_14_session_window_consolidation -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v  # No regressions
 ```
 
-**Testing** (30 min):
-1. Unit test: Conflict in semantics → appears in output
-2. Integration test: Real conflict detected and returned
-3. E2E test: Unskip Scenario 17
+**Commit**: `feat(api): add consolidation endpoint (Scenario 14)`
 
-**Completion Criteria**:
-- [ ] ConflictDTO defined
-- [ ] Conflicts in ProcessChatMessageOutput
-- [ ] Conflicts in API response
-- [ ] E2E Scenario 17 passes
-
-**Commit**: `feat(api): expose memory conflicts in chat response for Scenario 17`
+**Status After**: 12/18 passing (67%)
 
 ---
 
 ### Phase 1 Completion Check
 
 **Before proceeding to Phase 2, verify**:
-- [ ] 11/18 scenarios passing (61%)
-- [ ] All new tests passing
-- [ ] No regressions in original 4 scenarios
-- [ ] Code quality: `make check-all` passes
-- [ ] Documentation: Update E2E_SCENARIOS_PROGRESS.md
+```bash
+# Must show 12 passing:
+poetry run pytest tests/e2e/test_scenarios.py -v
 
-**Celebration**: 🎉 You've gone from 4 to 11 passing scenarios with ~16 hours of focused work!
-
----
-
-## Phase 2: Core Features (16-20 hours) → 15/18 Scenarios (83%)
-
-> **Goal**: Implement features requiring moderate complexity. Build on Phase 1 foundation.
-
-### Milestone 2.1: Consolidation Resolution Strategies (3-4 hours) → +1 scenario
-
-**Scenario Unblocked**: #7 (conflicting memories → consolidation)
-
-**Vision Principle**: Epistemic Humility - Explicit conflict resolution
-
----
-
-#### Task 2.1.1: Implement Resolution Strategies (3-4 hours)
-
-**Investigation** (45 min):
-1. Read LIFECYCLE_DESIGN.md: How should conflicts be resolved?
-2. Study MemoryConflict table: What data is available?
-3. Review ConflictDetectionService: What conflicts are detected?
-
-**Implementation** (2 hours):
-```python
-# In src/domain/services/conflict_resolution_service.py (NEW)
-
-from enum import Enum
-from dataclasses import dataclass
-from typing import Optional
-
-class ResolutionStrategy(str, Enum):
-    TRUST_DB = "trust_db"
-    TRUST_RECENT = "trust_recent"
-    TRUST_REINFORCED = "trust_reinforced"
-    ASK_USER = "ask_user"
-    BOTH = "both"  # Present both, let LLM explain discrepancy
-
-@dataclass
-class ResolutionResult:
-    """Result of conflict resolution."""
-    winning_memory_id: Optional[int]
-    losing_memory_id: Optional[int]
-    strategy_used: ResolutionStrategy
-    rationale: str
-    action: str  # "supersede" | "mark_invalidated" | "ask_user"
-
-class ConflictResolutionService:
-    """Resolve memory conflicts using explicit strategies.
-
-    Vision Principle: Epistemic Humility - System explicitly resolves conflicts
-    rather than silently preferring one value.
-    """
-
-    def __init__(
-        self,
-        semantic_repo: ISemanticMemoryRepository,
-        conflict_repo: IMemoryConflictRepository
-    ):
-        self.semantic_repo = semantic_repo
-        self.conflict_repo = conflict_repo
-
-    async def resolve_conflict(
-        self,
-        conflict: MemoryConflict,
-        strategy: Optional[ResolutionStrategy] = None
-    ) -> ResolutionResult:
-        """Resolve a detected conflict using specified strategy.
-
-        Args:
-            conflict: The detected conflict
-            strategy: Resolution strategy (auto-selected if None)
-
-        Returns:
-            ResolutionResult with winning memory and action taken
-        """
-        # Auto-select strategy if not provided
-        if strategy is None:
-            strategy = self._select_strategy(conflict)
-
-        logger.info(
-            "resolving_conflict",
-            conflict_id=conflict.conflict_id,
-            conflict_type=conflict.conflict_type,
-            strategy=strategy
-        )
-
-        if conflict.conflict_type == "memory_vs_db":
-            return await self._resolve_memory_vs_db(conflict)
-        elif conflict.conflict_type == "memory_vs_memory":
-            if strategy == ResolutionStrategy.TRUST_RECENT:
-                return await self._resolve_trust_recent(conflict)
-            elif strategy == ResolutionStrategy.TRUST_REINFORCED:
-                return await self._resolve_trust_reinforced(conflict)
-            elif strategy == ResolutionStrategy.ASK_USER:
-                return await self._resolve_ask_user(conflict)
-
-        raise ValueError(f"Unsupported conflict type or strategy: {conflict.conflict_type}, {strategy}")
-
-    def _select_strategy(self, conflict: MemoryConflict) -> ResolutionStrategy:
-        """Auto-select resolution strategy based on conflict characteristics."""
-        if conflict.conflict_type == "memory_vs_db":
-            return ResolutionStrategy.TRUST_DB
-
-        # For memory_vs_memory
-        data = conflict.conflict_data
-        mem1_reinforcement = data.get("memory1_reinforcement_count", 1)
-        mem2_reinforcement = data.get("memory2_reinforcement_count", 1)
-
-        # If one memory is significantly more reinforced, trust it
-        if mem1_reinforcement > mem2_reinforcement * 2:
-            return ResolutionStrategy.TRUST_REINFORCED
-        if mem2_reinforcement > mem1_reinforcement * 2:
-            return ResolutionStrategy.TRUST_REINFORCED
-
-        # Otherwise, trust more recent
-        return ResolutionStrategy.TRUST_RECENT
-
-    async def _resolve_memory_vs_db(self, conflict: MemoryConflict) -> ResolutionResult:
-        """Resolve memory vs DB conflict - always trust DB."""
-        data = conflict.conflict_data
-        memory_id = data["memory_id"]
-
-        # Mark memory as invalidated (DB truth is authoritative)
-        memory = await self.semantic_repo.get_by_id(memory_id)
-        memory.status = "invalidated"
-        await self.semantic_repo.update(memory)
-
-        logger.info(
-            "conflict_resolved_trust_db",
-            memory_id=memory_id,
-            action="invalidated"
-        )
-
-        return ResolutionResult(
-            winning_memory_id=None,  # DB wins (not a memory)
-            losing_memory_id=memory_id,
-            strategy_used=ResolutionStrategy.TRUST_DB,
-            rationale="Database is authoritative source of truth",
-            action="mark_invalidated"
-        )
-
-    async def _resolve_trust_recent(self, conflict: MemoryConflict) -> ResolutionResult:
-        """Resolve by trusting more recent memory."""
-        data = conflict.conflict_data
-        mem1_id = data["memory1_id"]
-        mem2_id = data["memory2_id"]
-        mem1_created = data["memory1_created_at"]
-        mem2_created = data["memory2_created_at"]
-
-        if mem1_created > mem2_created:
-            winner_id, loser_id = mem1_id, mem2_id
-        else:
-            winner_id, loser_id = mem2_id, mem1_id
-
-        # Mark older memory as superseded
-        loser = await self.semantic_repo.get_by_id(loser_id)
-        loser.status = "superseded"
-        loser.superseded_by_memory_id = winner_id
-        await self.semantic_repo.update(loser)
-
-        logger.info(
-            "conflict_resolved_trust_recent",
-            winner_id=winner_id,
-            loser_id=loser_id
-        )
-
-        return ResolutionResult(
-            winning_memory_id=winner_id,
-            losing_memory_id=loser_id,
-            strategy_used=ResolutionStrategy.TRUST_RECENT,
-            rationale="More recent information supersedes older",
-            action="supersede"
-        )
-
-    async def _resolve_trust_reinforced(self, conflict: MemoryConflict) -> ResolutionResult:
-        """Resolve by trusting more reinforced memory."""
-        data = conflict.conflict_data
-        mem1_id = data["memory1_id"]
-        mem2_id = data["memory2_id"]
-        mem1_reinforcement = data["memory1_reinforcement_count"]
-        mem2_reinforcement = data["memory2_reinforcement_count"]
-
-        if mem1_reinforcement > mem2_reinforcement:
-            winner_id, loser_id = mem1_id, mem2_id
-        else:
-            winner_id, loser_id = mem2_id, mem1_id
-
-        # Mark less reinforced memory as superseded
-        loser = await self.semantic_repo.get_by_id(loser_id)
-        loser.status = "superseded"
-        loser.superseded_by_memory_id = winner_id
-        await self.semantic_repo.update(loser)
-
-        logger.info(
-            "conflict_resolved_trust_reinforced",
-            winner_id=winner_id,
-            loser_id=loser_id
-        )
-
-        return ResolutionResult(
-            winning_memory_id=winner_id,
-            losing_memory_id=loser_id,
-            strategy_used=ResolutionStrategy.TRUST_REINFORCED,
-            rationale="More frequently confirmed information preferred",
-            action="supersede"
-        )
-
-    async def _resolve_ask_user(self, conflict: MemoryConflict) -> ResolutionResult:
-        """Resolve by asking user - return both values."""
-        # Don't auto-resolve - return both for user clarification
-        return ResolutionResult(
-            winning_memory_id=None,
-            losing_memory_id=None,
-            strategy_used=ResolutionStrategy.ASK_USER,
-            rationale="Ambiguous - require user clarification",
-            action="ask_user"
-        )
+# Must pass:
+make test
+make typecheck
 ```
 
-**Integration** (30 min):
-```python
-# In src/application/use_cases/extract_semantics.py
-
-# After conflict detection:
-for conflict in detected_conflicts:
-    resolution = await self.conflict_resolution_service.resolve_conflict(
-        conflict=conflict,
-        strategy=None  # Auto-select
-    )
-
-    # Update conflict record with resolution
-    conflict.resolution_strategy = resolution.strategy_used
-    conflict.resolution_outcome = {
-        "winner_id": resolution.winning_memory_id,
-        "loser_id": resolution.losing_memory_id,
-        "rationale": resolution.rationale
-    }
-    conflict.resolved_at = datetime.now(UTC)
-    await self.conflict_repo.update(conflict)
-```
-
-**Testing** (1-1.5 hours):
-1. Unit tests: Each resolution strategy
-   - trust_db: Memory marked invalidated
-   - trust_recent: Newer memory wins, older superseded
-   - trust_reinforced: More reinforced wins
-   - ask_user: Both returned
-
-2. Integration tests: Real conflicts, real resolution
-
-3. E2E test: Unskip Scenario 7
-   - Create conflicting memories (NET30 → NET15)
-   - Trigger conflict detection
-   - Verify resolution (trust_recent)
-   - Check older memory status = "superseded"
-
-**Completion Criteria**:
-- [ ] ConflictResolutionService implemented
-- [ ] All resolution strategies work
-- [ ] Memory status updates (invalidated, superseded)
-- [ ] E2E Scenario 7 passes
-- [ ] Conflicts recorded with resolution outcome
-
-**Commit**: `feat(conflict-resolution): implement resolution strategies for Scenario 7`
+**Metrics**:
+- [ ] 12/18 scenarios passing (67%)
+- [ ] All 198+ unit/integration tests passing
+- [ ] 0 type errors
+- [ ] No regressions
 
 ---
 
-### Milestone 2.2: Active Validation (3-4 hours) → +1 scenario
+## Phase 2: Core Features → 15/18 Scenarios (83%)
 
-**Scenario Unblocked**: #10 (active recall for stale facts)
+> **Goal**: Implement features requiring moderate complexity.
 
-**Vision Principle**: Epistemic Humility - System questions aged information
+**Time Estimate**: 12-15 hours
+**Scenarios to Unlock**: #10 (validation), #11 (ontology), #18 (task completion)
 
 ---
 
-#### Task 2.2.1: Validation Prompting (2-2.5 hours)
+### Milestone 2.1: Conflict Resolution ✅ COMPLETE
+
+**Status**: ✅ Scenario 7 passing
+
+**Completion Summary**:
+- ✅ ConflictResolutionService with 4 strategies
+- ✅ Same-day timestamp precision
+- ✅ Memory status lifecycle
+- ✅ Conflicts exposed in API responses
+- ✅ 6 fundamental bugs fixed
+
+---
+
+### Milestone 2.2: Active Memory Validation
+
+**Vision Principle**: Epistemic Humility - Question aged information
+
+**Scenario**: #10 (active recall for stale facts)
 
 **Investigation** (30 min):
-1. Where to inject validation prompts? In `LLMReplyGenerator`
-2. How to detect stale memories? `MemoryValidationService.calculate_effective_confidence()`
-3. What threshold defines "stale"? Check heuristics
+1. Read Scenario 10 test - what's expected?
+2. Study `src/domain/services/memory_validation_service.py` - what exists?
+3. Check `SemanticMemory` table - does `last_validated_at` field exist?
+4. Understand: System should prompt user to validate old memories
 
-**Implementation** (1-1.5 hours):
-```python
-# In src/domain/services/llm_reply_generator.py
+**Implementation Part 1: Validation Prompting** (1.5 hours):
 
-async def _check_for_validation_needs(
-    self,
-    retrieved_memories: List[RetrievedMemory]
-) -> List[str]:
-    """Generate validation prompts for stale memories.
-
-    Vision Principle: Epistemic Humility - Proactively validate aged information
-    before using it for important decisions.
-
-    Returns:
-        List of validation questions to inject in reply
-    """
-    validation_questions = []
-
-    stale_threshold_days = get_config("validation.stale_threshold_days")  # e.g., 90
-    low_confidence_threshold = get_config("validation.low_confidence_threshold")  # e.g., 0.6
-
-    for mem in retrieved_memories:
-        # Skip if not semantic memory
-        if mem.memory_type != "semantic":
-            continue
-
-        # Calculate days since validation
-        # (Would need last_validated_at in RetrievedMemory DTO)
-        # For now, assume we have it
-        days_old = mem.days_since_validation
-        effective_confidence = mem.confidence  # Already has decay applied
-
-        if days_old > stale_threshold_days and effective_confidence < low_confidence_threshold:
-            # Generate validation question
-            question = f"Quick verification: Is '{mem.predicate}: {mem.object_value}' still accurate?"
-            validation_questions.append(question)
-
-            logger.info(
-                "validation_prompt_generated",
-                memory_id=mem.memory_id,
-                days_old=days_old,
-                confidence=effective_confidence
-            )
-
-    return validation_questions
-
-async def generate(self, context: ReplyContext) -> str:
-    """Generate reply with validation prompts if needed."""
-
-    # Check for stale memories needing validation
-    validation_prompts = await self._check_for_validation_needs(context.retrieved_memories)
-
-    # Build prompt with validation questions
-    system_prompt = self._build_system_prompt(context)
-
-    if validation_prompts:
-        system_prompt += "\n\nIMPORTANT: The following facts are old and need validation. Ask the user to confirm:\n"
-        for q in validation_prompts:
-            system_prompt += f"- {q}\n"
-
-    # ... rest of generation ...
-```
-
-**Configuration** (add to heuristics):
+File: `src/config/heuristics.py` (ADD)
 ```python
 HEURISTICS = {
     # ... existing ...
     "validation": {
         "stale_threshold_days": 90,  # Prompt validation after 90 days
-        "low_confidence_threshold": 0.6,  # Only validate if confidence dropped below 0.6
+        "low_confidence_threshold": 0.6,  # Only if confidence dropped
     }
 }
 ```
 
-**Testing** (1-1.5 hours):
-1. Unit test: Stale memory detection
-2. Unit test: Validation prompt generation
-3. Integration test: Full reply with validation prompt
-4. E2E test: Unskip Scenario 10
-
-**Completion Criteria**:
-- [ ] Validation prompt generation in LLMReplyGenerator
-- [ ] Heuristic configuration
-- [ ] E2E Scenario 10 passes (validation prompt appears)
-
-**Commit**: `feat(memory-validation): add active validation prompting for Scenario 10`
-
----
-
-#### Task 2.2.2: Validation Endpoint (1-1.5 hours)
-
-**Purpose**: Allow user to confirm or invalidate a memory
-
-**Implementation** (45 min):
+File: `src/domain/services/llm_reply_generator.py` (EDIT)
 ```python
-# In src/api/routes/retrieval.py (or new validation.py)
+async def _check_for_validation_needs(
+    self,
+    retrieved_memories: List[RetrievedMemory]
+) -> List[dict]:
+    """Generate validation prompts for stale memories."""
+    validation_needed = []
+
+    stale_days = get_config("validation.stale_threshold_days")
+    low_conf = get_config("validation.low_confidence_threshold")
+
+    for mem in retrieved_memories:
+        if mem.memory_type != "semantic":
+            continue
+
+        days_old = (datetime.now(UTC) - mem.created_at).days
+
+        if days_old > stale_days and mem.confidence < low_conf:
+            validation_needed.append({
+                "memory_id": mem.memory_id,
+                "predicate": mem.predicate,
+                "object_value": mem.object_value,
+                "days_old": days_old
+            })
+
+            logger.info(
+                "validation_prompt_needed",
+                memory_id=mem.memory_id,
+                days_old=days_old,
+                confidence=mem.confidence
+            )
+
+    return validation_needed
+
+async def generate(self, context: ReplyContext) -> str:
+    """Generate reply with validation prompts if needed."""
+
+    # Check for stale memories
+    validation_needed = await self._check_for_validation_needs(
+        context.retrieved_memories
+    )
+
+    # Build system prompt
+    system_prompt = self._build_system_prompt(context)
+
+    if validation_needed:
+        system_prompt += "\n\nIMPORTANT: The following facts are old and should be validated. Ask the user to confirm:\n"
+        for v in validation_needed:
+            system_prompt += f"- '{v['predicate']}: {v['object_value']}' (from {v['days_old']} days ago)\n"
+
+    # ... rest of generation ...
+```
+
+**Implementation Part 2: Validation Endpoint** (1 hour):
+
+File: `src/api/models/validation.py` (NEW)
+```python
+from pydantic import BaseModel
+
+class ValidationRequest(BaseModel):
+    is_valid: bool  # True = confirm, False = invalidate
+
+class ValidationResponse(BaseModel):
+    memory_id: int
+    action: str  # "validated" | "invalidated"
+    new_confidence: float
+    message: str
+```
+
+File: `src/api/routes/validation.py` (NEW)
+```python
+from fastapi import APIRouter, Depends, HTTPException
+
+router = APIRouter()
 
 @router.post(
-    "/api/v1/validate/{memory_id}",
-    response_model=ValidationResponse,
-    summary="Validate or invalidate a memory",
-    description="""
-    User confirms whether a memory is still accurate.
-
-    If valid: Update last_validated_at, boost confidence
-    If invalid: Mark status="invalidated"
-
-    Vision Principle: Epistemic Humility + Adaptive Learning
-    """
+    "/api/v1/memories/{memory_id}/validate",
+    response_model=ValidationResponse
 )
 async def validate_memory(
     memory_id: int,
@@ -1153,97 +486,128 @@ async def validate_memory(
 ) -> ValidationResponse:
     """Validate or invalidate a memory."""
 
-    memory = await semantic_repo.get_by_id(memory_id)
+    memory = await semantic_repo.find_by_id(memory_id)
     if not memory or memory.user_id != user_id:
         raise HTTPException(404, "Memory not found")
 
     if request.is_valid:
-        # Memory confirmed valid
+        # Confirm memory is still valid
         memory.last_validated_at = datetime.now(UTC)
-        memory.confidence = min(0.95, memory.confidence + 0.05)  # Small boost
+        memory.confidence = min(0.95, memory.confidence + 0.05)
+        action = "validated"
         logger.info("memory_validated", memory_id=memory_id)
     else:
-        # Memory invalidated
+        # Mark as outdated
         memory.status = "invalidated"
+        action = "invalidated"
         logger.info("memory_invalidated", memory_id=memory_id)
 
     await semantic_repo.update(memory)
 
     return ValidationResponse(
         memory_id=memory_id,
-        action="validated" if request.is_valid else "invalidated",
+        action=action,
         new_confidence=memory.confidence,
-        message=f"Memory {memory_id} {'confirmed' if request.is_valid else 'marked as outdated'}"
+        message=f"Memory {action}"
     )
 ```
 
-**Testing** (45 min):
-1. Unit test: Validation logic
-2. Integration test: Real memory update
-3. E2E test: Full validation flow
+**Tests That MUST Pass**:
 
-**Completion Criteria**:
-- [ ] /api/v1/validate/{memory_id} endpoint
-- [ ] Memory update works (last_validated_at or status)
-- [ ] E2E Scenario 10 fully passes (prompt + validation)
+1. **Unit Test**: `tests/unit/domain/services/test_llm_reply_generator.py`
+   ```python
+   async def test_validation_prompt_for_stale_memory():
+       """Stale memory triggers validation prompt."""
+       # Given: Memory is 100 days old, confidence 0.5
+       # When: generate() called
+       # Then: System prompt includes validation question
+   ```
 
-**Commit**: `feat(api): add memory validation endpoint for Scenario 10`
+2. **Unit Test**: `tests/unit/api/routes/test_validation.py`
+   ```python
+   async def test_validate_memory_confirmed():
+       """Valid=True updates last_validated_at."""
+       # When: POST /memories/123/validate with is_valid=true
+       # Then: last_validated_at updated, confidence boosted
+
+   async def test_validate_memory_invalidated():
+       """Valid=False marks as invalidated."""
+       # When: POST /memories/123/validate with is_valid=false
+       # Then: status='invalidated'
+   ```
+
+3. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_10_active_recall_for_stale_facts`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_10_active_recall_for_stale_facts -xvs
+   ```
+   - Create memory 95 days ago (mock `created_at`)
+   - Query triggers retrieval
+   - Response includes validation prompt
+   - Call `/memories/{id}/validate` to confirm/invalidate
+
+**Success Criteria**:
+- [ ] Validation prompt generation works
+- [ ] Heuristic configuration added
+- [ ] `/api/v1/memories/{id}/validate` endpoint works
+- [ ] Unit tests pass
+- [ ] E2E Scenario 10 passes
+
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_10_active_recall_for_stale_facts -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(validation): add active memory validation (Scenario 10)`
+
+**Status After**: 13/18 passing (72%)
 
 ---
 
-### Milestone 2.3: Multi-Hop Ontology Traversal (5-6 hours) → +1 scenario
+### Milestone 2.3: Multi-Hop Ontology Traversal
 
-**Scenario Unblocked**: #11 (cross-object reasoning)
+**Vision Principle**: Deep Business Understanding - Cross-object reasoning
 
-**Vision Principle**: Deep Business Understanding (ontology-awareness)
-
----
-
-#### Task 2.3.1: Ontology Traversal Service (5-6 hours)
+**Scenario**: #11 (cross-object reasoning)
 
 **Investigation** (1 hour):
-1. Study DomainOntology table: What relationships are defined?
-2. Read DESIGN.md: How should multi-hop queries work?
-3. Example query: Customer → Sales Orders → Work Orders → Invoices
-4. Check OntologyService: What methods exist?
+1. Read `tests/e2e/test_scenarios.py` Scenario 11 - what query is being tested?
+2. Study `src/domain/entities/domain_ontology.py` - what schema?
+3. Check database - does `domain_ontology` table have relationships?
+4. Example: Customer → Sales Order → Work Order → Invoice (3 hops)
 
-**Implementation** (3-3.5 hours):
+**Implementation** (3-4 hours):
+
+File: `src/domain/services/ontology_traversal_service.py` (NEW)
 ```python
-# In src/domain/services/ontology_traversal_service.py (NEW)
-
-from typing import List, Dict, Any
+from typing import List, Dict
 from dataclasses import dataclass
+from collections import deque
 
 @dataclass
 class TraversalStep:
-    """One step in ontology traversal."""
     from_table: str
     to_table: str
-    relation_type: str  # "has" | "creates" | "requires" | "fulfills"
-    join_condition: str  # e.g., "customers.customer_id = sales_orders.customer_id"
+    join_condition: str
 
 @dataclass
 class TraversalPath:
-    """Complete path from source to target entity type."""
     steps: List[TraversalStep]
     total_hops: int
 
 class OntologyTraversalService:
     """Multi-hop ontology traversal for cross-object reasoning.
 
-    Vision Principle: Deep Business Understanding - Navigate relationship
-    graph to fetch related entities across multiple hops.
-
-    Example: Customer → Sales Orders → Work Orders → Invoices
+    Example: Customer → SalesOrder → WorkOrder → Invoice
     """
 
     def __init__(
         self,
         ontology_repo: IDomainOntologyRepository,
-        domain_query_executor: IDomainQueryExecutor
+        domain_db_repo: IDomainDatabaseRepository
     ):
         self.ontology_repo = ontology_repo
-        self.query_executor = domain_query_executor
+        self.domain_db_repo = domain_db_repo
 
     async def traverse(
         self,
@@ -1252,30 +616,17 @@ class OntologyTraversalService:
         target_entity_types: List[str],
         max_hops: int = 3
     ) -> Dict[str, List[DomainFact]]:
-        """Traverse ontology from source entity to target types.
-
-        Args:
-            start_entity_id: Source entity (e.g., "customer_123")
-            start_entity_type: Type (e.g., "customer")
-            target_entity_types: Target types to fetch (e.g., ["work_order", "invoice"])
-            max_hops: Maximum traversal depth
-
-        Returns:
-            Dict mapping target_type → list of DomainFacts
-        """
-        logger.info(
-            "ontology_traversal_start",
-            start_entity=start_entity_id,
-            start_type=start_entity_type,
-            targets=target_entity_types,
-            max_hops=max_hops
-        )
+        """Traverse ontology to fetch related entities."""
 
         results = {}
 
         for target_type in target_entity_types:
-            # Find path from start to target
-            path = await self._find_path(start_entity_type, target_type, max_hops)
+            # Find path via BFS
+            path = await self._find_path(
+                start_entity_type,
+                target_type,
+                max_hops
+            )
 
             if not path:
                 logger.warning(
@@ -1305,27 +656,23 @@ class OntologyTraversalService:
         to_type: str,
         max_hops: int
     ) -> Optional[TraversalPath]:
-        """Find shortest path from source to target entity type.
+        """Find shortest path via BFS."""
 
-        Uses BFS through ontology graph.
-        """
         if from_type == to_type:
             return TraversalPath(steps=[], total_hops=0)
 
-        # Fetch all ontology relationships
-        all_relations = await self.ontology_repo.get_all()
+        # Fetch ontology relationships
+        all_relations = await self.ontology_repo.get_all_relationships()
 
-        # Build adjacency list
+        # Build adjacency graph
         graph: Dict[str, List[Tuple[str, DomainOntology]]] = {}
         for rel in all_relations:
             if rel.from_entity_type not in graph:
                 graph[rel.from_entity_type] = []
             graph[rel.from_entity_type].append((rel.to_entity_type, rel))
 
-        # BFS to find shortest path
-        from collections import deque
-
-        queue = deque([(from_type, [])])  # (current_type, path_so_far)
+        # BFS
+        queue = deque([(from_type, [])])
         visited = {from_type}
 
         while queue:
@@ -1342,73 +689,58 @@ class OntologyTraversalService:
                     continue
 
                 new_path = path + [TraversalStep(
-                    from_table=relation.from_entity_type,
-                    to_table=relation.to_entity_type,
-                    relation_type=relation.relation_type,
-                    join_condition=self._build_join_condition(relation)
+                    from_table=relation.from_table,
+                    to_table=relation.to_table,
+                    join_condition=relation.join_condition
                 )]
 
                 if next_type == to_type:
-                    return TraversalPath(steps=new_path, total_hops=len(new_path))
+                    return TraversalPath(
+                        steps=new_path,
+                        total_hops=len(new_path)
+                    )
 
                 visited.add(next_type)
                 queue.append((next_type, new_path))
 
-        return None  # No path found
-
-    def _build_join_condition(self, relation: DomainOntology) -> str:
-        """Build SQL JOIN condition from relation spec."""
-        join_spec = relation.join_spec
-        return f"{join_spec['from_table']}.{join_spec['from_field']} = {join_spec['to_table']}.{join_spec['to_field']}"
+        return None
 
     async def _execute_traversal(
         self,
         start_entity_id: str,
         path: TraversalPath
     ) -> List[DomainFact]:
-        """Execute multi-hop query following path."""
-
-        # Build SQL query with multiple JOINs
-        # Example for Customer → SO → WO → Invoice:
-        # SELECT i.*, wo.status as work_status
-        # FROM domain.customers c
-        # JOIN domain.sales_orders so ON c.customer_id = so.customer_id
-        # JOIN domain.work_orders wo ON so.so_id = wo.so_id
-        # LEFT JOIN domain.invoices i ON so.so_id = i.so_id
-        # WHERE c.customer_id = :start_entity_id
+        """Execute multi-hop SQL query."""
 
         if not path.steps:
             return []
 
-        # Build query
-        from_table = f"domain.{path.steps[0].from_table}"
-        select_clauses = [f"{from_table}.*"]
-        join_clauses = []
+        # Build SQL with JOINs
+        # Example: SELECT * FROM customers c
+        #          JOIN sales_orders so ON c.customer_id = so.customer_id
+        #          JOIN work_orders wo ON so.so_id = wo.so_id
+        #          WHERE c.customer_id = :start_id
 
-        current_alias = from_table.split(".")[-1][0]  # First letter as alias
+        from_table = path.steps[0].from_table
+        query_parts = [f"SELECT * FROM domain.{from_table} t0"]
 
-        for step in path.steps:
-            to_table = f"domain.{step.to_table}"
-            to_alias = step.to_table[0]
-
-            join_type = "LEFT JOIN" if step.relation_type == "has" else "JOIN"
-            join_clauses.append(
-                f"{join_type} {to_table} {to_alias} ON {step.join_condition}"
+        for i, step in enumerate(path.steps):
+            alias_from = f"t{i}"
+            alias_to = f"t{i+1}"
+            query_parts.append(
+                f"JOIN domain.{step.to_table} {alias_to} ON {step.join_condition}"
             )
 
-            select_clauses.append(f"{to_alias}.*")
+        query_parts.append(f"WHERE t0.{from_table}_id = :start_id")
 
-        query = f"""
-        SELECT {', '.join(select_clauses)}
-        FROM {from_table} {current_alias}
-        {' '.join(join_clauses)}
-        WHERE {current_alias}.{path.steps[0].from_table}_id = :start_entity_id
-        """
+        query = "\n".join(query_parts)
 
-        # Execute query
-        rows = await self.query_executor.execute(query, {"start_entity_id": start_entity_id})
+        rows = await self.domain_db_repo.execute_raw_query(
+            query,
+            {"start_id": start_entity_id}
+        )
 
-        # Convert rows to DomainFacts
+        # Convert to DomainFacts
         facts = []
         for row in rows:
             facts.append(DomainFact(
@@ -1417,115 +749,116 @@ class OntologyTraversalService:
                 content=f"Related {path.steps[-1].to_table}",
                 metadata=dict(row),
                 source_table=path.steps[-1].to_table,
-                source_rows=[dict(row)],
                 retrieved_at=datetime.now(UTC)
             ))
 
         return facts
 ```
 
-**Integration** (30 min):
-```python
-# In src/domain/services/domain_augmentation_service.py
+**Tests That MUST Pass**:
 
-# Add method:
-async def augment_with_related_entities(
-    self,
-    entity_id: str,
-    entity_type: str,
-    related_types: List[str]
-) -> List[DomainFact]:
-    """Fetch related entities via ontology traversal."""
+1. **Unit Test**: `tests/unit/domain/services/test_ontology_traversal_service.py`
+   ```python
+   async def test_find_path_single_hop():
+       """Customer → SalesOrder (1 hop)."""
+       # Given: Ontology has customer→sales_order relationship
+       # When: _find_path("customer", "sales_order", max_hops=3)
+       # Then: Path with 1 step returned
 
-    if not self.ontology_traversal_service:
-        return []
+   async def test_find_path_multi_hop():
+       """Customer → SalesOrder → Invoice (2 hops)."""
+       # Given: customer→sales_order, sales_order→invoice
+       # When: _find_path("customer", "invoice", max_hops=3)
+       # Then: Path with 2 steps returned
 
-    results = await self.ontology_traversal_service.traverse(
-        start_entity_id=entity_id,
-        start_entity_type=entity_type,
-        target_entity_types=related_types,
-        max_hops=3
-    )
+   async def test_find_path_no_route():
+       """No path available."""
+       # Given: No relationship to target
+       # When: _find_path("customer", "orphan_entity", max_hops=3)
+       # Then: None returned
+   ```
 
-    # Flatten results
-    all_facts = []
-    for target_type, facts in results.items():
-        all_facts.extend(facts)
+2. **Integration Test**: `tests/integration/domain/services/test_ontology_traversal_integration.py`
+   ```python
+   async def test_execute_traversal_real_db():
+       """Execute multi-hop query on real DB."""
+       # Given: Seeded customer, sales_order, work_order, invoice
+       # When: traverse(customer_id, ["work_order", "invoice"])
+       # Then: Facts returned with work_order and invoice data
+   ```
 
-    return all_facts
-```
-
-**Testing** (1.5-2 hours):
-1. Unit test: Path finding (BFS)
-   - Customer → Sales Order (1 hop)
-   - Customer → Invoice (2 hops: Customer → SO → Invoice)
-   - Customer → Work Order (2 hops)
-
-2. Integration test: Real multi-hop query
-   - Seed: Customer, Sales Order, Work Order, Invoice
-   - Query: Traverse from customer to invoice
-   - Assert: Invoice facts returned with work order status
-
-3. E2E test: Unskip Scenario 11
+3. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_11_cross_object_reasoning`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_11_cross_object_reasoning -xvs
+   ```
    - User asks: "Can we invoice Gai Media?"
-   - System traverses: Customer → SO → WO → Invoice
-   - Response includes: Work not complete, invoice exists
+   - System traverses: Customer → Sales Order → Work Order → Invoice
+   - Response includes: Work order status, invoice status
 
-**Completion Criteria**:
+**Success Criteria**:
 - [ ] OntologyTraversalService implemented
 - [ ] BFS path finding works
 - [ ] Multi-hop SQL generation correct
-- [ ] Integration with DomainAugmentationService
+- [ ] Unit tests pass
+- [ ] Integration test passes
 - [ ] E2E Scenario 11 passes
 
-**Commit**: `feat(ontology): add multi-hop traversal for Scenario 11`
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_11_cross_object_reasoning -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(ontology): add multi-hop traversal (Scenario 11)`
+
+**Status After**: 14/18 passing (78%)
 
 ---
 
-### Milestone 2.4: Task Completion Flow (4-5 hours) → +1 scenario
-
-**Scenario Unblocked**: #18 (task completion via conversation)
+### Milestone 2.4: Task Completion Flow
 
 **Vision Principle**: Domain Augmentation + Semantic Extraction
 
----
+**Scenario**: #18 (task completion via conversation)
 
-#### Task 2.4.1: Task Update API (4-5 hours)
+**Investigation** (30 min):
+1. Read Scenario 18 test - what's expected?
+2. Should we actually update `domain.tasks` or return SQL patch?
+3. Check if task completion summary should be stored as semantic memory
 
-**Investigation** (45 min):
-1. How to handle task updates? SQL patch or direct update?
-2. Read Scenario 18 test: What's expected?
-3. Should we actually update domain.tasks or mock it?
+**Implementation** (2 hours):
 
-**Decision**: For Phase 1, return SQL patch suggestion. Actual update requires domain DB write access (Phase 2 decision).
-
-**Implementation** (2.5-3 hours):
+File: `src/api/models/tasks.py` (NEW)
 ```python
-# In src/api/routes/tasks.py (NEW)
+from pydantic import BaseModel
 
-from src.api.models.tasks import TaskCompletionRequest, TaskCompletionResponse
+class TaskCompletionRequest(BaseModel):
+    summary: str
+
+class TaskCompletionResponse(BaseModel):
+    task_id: str
+    status: str  # "completed"
+    semantic_memory_id: int
+    message: str
+```
+
+File: `src/api/routes/tasks.py` (NEW)
+```python
+from fastapi import APIRouter, Depends, HTTPException
+
+router = APIRouter()
 
 @router.post(
     "/api/v1/tasks/{task_id}/complete",
-    response_model=TaskCompletionResponse,
-    summary="Mark task complete with summary",
-    description="""
-    Mark a task as complete and store completion summary as semantic memory.
-
-    Returns SQL patch suggestion for domain DB update.
-    Can be configured to actually update if given write access.
-
-    Vision Principle: Domain Augmentation + Semantic Extraction
-    """
+    response_model=TaskCompletionResponse
 )
 async def complete_task(
     task_id: str,
     request: TaskCompletionRequest,
     user_id: str = Depends(get_current_user_id),
-    domain_augmentation: DomainAugmentationService = Depends(get_domain_augmentation),
-    semantic_extraction: SemanticExtractionService = Depends(get_semantic_extraction)
+    extract_semantics: ExtractSemanticsUseCase = Depends(get_extract_semantics_use_case)
 ) -> TaskCompletionResponse:
-    """Complete task and store summary."""
+    """Mark task complete and store summary as semantic memory."""
 
     logger.info(
         "task_completion_request",
@@ -1534,521 +867,132 @@ async def complete_task(
         summary_length=len(request.summary)
     )
 
-    # Fetch task details
-    task_facts = await domain_augmentation.get_entity_facts(
-        entity_type="task",
-        entity_id=task_id
-    )
-
-    if not task_facts:
-        raise HTTPException(404, f"Task {task_id} not found")
-
-    # Generate SQL patch
-    sql_patch = f"""
-    UPDATE domain.tasks
-    SET status = 'done',
-        completed_at = NOW(),
-        completion_notes = '{request.summary}'
-    WHERE task_id = '{task_id}';
-    """
-
-    # Store summary as semantic memory
-    semantic_memory = await semantic_extraction.create_memory_from_statement(
+    # Store completion summary as semantic memory
+    # Subject: task entity, Predicate: completion_summary, Object: summary text
+    triple = SemanticTriple(
         subject_entity_id=f"task_{task_id}",
         predicate="completion_summary",
-        object_value={
-            "type": "summary",
-            "value": request.summary,
-            "completed_at": datetime.now(UTC).isoformat()
-        },
+        object_value=request.summary,
         confidence=0.9,
+        predicate_type="observation",
+        metadata={
+            "source_type": "task_completion",
+            "completed_at": datetime.now(UTC).isoformat()
+        }
+    )
+
+    # Create semantic memory
+    memory = await extract_semantics.create_memory_from_triple(
+        triple=triple,
         user_id=user_id,
-        source_type="task_completion",
-        predicate_type="observation"
+        source_event_id=None
     )
 
     logger.info(
         "task_completed",
         task_id=task_id,
-        semantic_memory_id=semantic_memory.memory_id
+        semantic_memory_id=memory.memory_id
     )
 
     return TaskCompletionResponse(
         task_id=task_id,
         status="completed",
-        sql_patch=sql_patch,
-        semantic_memory_id=semantic_memory.memory_id,
-        message=f"Task {task_id} marked complete. Summary stored as semantic memory."
+        semantic_memory_id=memory.memory_id,
+        message=f"Task {task_id} completion stored as memory"
     )
 ```
 
-**API Models**:
-```python
-# In src/api/models/tasks.py (NEW)
+**Tests That MUST Pass**:
 
-class TaskCompletionRequest(BaseModel):
-    summary: str  # Completion summary
+1. **Unit Test**: `tests/unit/api/routes/test_tasks.py`
+   ```python
+   async def test_complete_task_creates_semantic_memory():
+       """Task completion stores semantic memory."""
+       # When: POST /tasks/123/complete with summary
+       # Then: Semantic memory created
+       # Then: subject=task_123, predicate=completion_summary
+   ```
 
-class TaskCompletionResponse(BaseModel):
-    task_id: str
-    status: str  # "completed"
-    sql_patch: str  # SQL to update domain.tasks
-    semantic_memory_id: int  # ID of created semantic memory
-    message: str
-```
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_18_task_completion_via_conversation`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_18_task_completion_via_conversation -xvs
+   ```
+   - User says: "I completed task X. Summary: ..."
+   - System extracts task_id and summary
+   - Calls `/tasks/{id}/complete`
+   - Semantic memory created
+   - Future queries about task X retrieve completion summary
 
-**Testing** (1.5-2 hours):
-1. Unit test: SQL patch generation
-2. Integration test: Semantic memory creation
-3. E2E test: Unskip Scenario 18
-
-**Completion Criteria**:
-- [ ] /api/v1/tasks/{task_id}/complete endpoint
-- [ ] SQL patch returned
-- [ ] Semantic memory created with summary
+**Success Criteria**:
+- [ ] `/api/v1/tasks/{id}/complete` endpoint
+- [ ] Semantic memory created with completion summary
+- [ ] Unit test passes
 - [ ] E2E Scenario 18 passes
 
-**Commit**: `feat(api): add task completion endpoint for Scenario 18`
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_18_task_completion_via_conversation -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(api): add task completion endpoint (Scenario 18)`
+
+**Status After**: 15/18 passing (83%)
 
 ---
 
 ### Phase 2 Completion Check
 
 **Before proceeding to Phase 3, verify**:
+```bash
+# Must show 15 passing:
+poetry run pytest tests/e2e/test_scenarios.py -v
+
+# Must pass:
+make test
+make typecheck
+make check-all
+```
+
+**Metrics**:
 - [ ] 15/18 scenarios passing (83%)
-- [ ] All Phase 2 features tested
+- [ ] All unit/integration tests passing
+- [ ] 0 type errors, 0 lint errors
 - [ ] No regressions
-- [ ] Code quality: `make check-all` passes
-- [ ] Documentation updated
-
-**Celebration**: 🎉 You've reached 83% coverage! Only 3 scenarios left.
 
 ---
 
-## Phase 3: Advanced Features (16-21 hours) → 18/18 Scenarios (100%)
+## Phase 3: Advanced Features → 18/18 Scenarios (100%)
 
-> **Goal**: Implement complex features requiring significant LLM integration or advanced logic.
+> **Goal**: Implement complex features requiring significant LLM integration.
 
-### Milestone 3.1: Procedural Memory Extraction (6-8 hours) → +1 scenario
-
-**Scenario Unblocked**: #16 (reminder creation from conversational intent)
-
-**Vision Principle**: Procedural Memory + Proactive Intelligence
+**Time Estimate**: 12-16 hours
+**Scenarios to Unlock**: #8 (multilingual), #13 (PII), #16 (procedural)
 
 ---
 
-#### Task 3.1.1: LLM Procedural Extraction (4-5 hours)
+### Milestone 3.1: PII Detection and Redaction
 
-**Investigation** (1 hour):
-1. Study ProceduralMemory table schema
-2. Read VISION.md: What are procedural memories?
-3. Example policies: "If X, then Y"
-4. Design LLM prompt for policy extraction
+**Vision Principle**: Privacy - Never store sensitive information
 
-**Implementation** (2.5-3 hours):
-```python
-# In src/domain/services/procedural_extraction_service.py (NEW)
-
-from typing import Optional
-from dataclasses import dataclass
-
-@dataclass
-class ProceduralPattern:
-    """Extracted procedural pattern."""
-    trigger_pattern: str
-    trigger_features: dict  # {intent, entity_types, topics}
-    action_heuristic: str
-    action_structure: dict  # {action_type, queries, predicates}
-    confidence: float
-
-class ProceduralExtractionService:
-    """Extract procedural memories from conversational policy statements.
-
-    Vision Principle: Procedural Memory - Learn trigger-action patterns.
-
-    Examples:
-    - "If invoice is 3 days before due, remind me" → Trigger + action
-    - "When delivery is mentioned, check related invoices" → Pattern
-    """
-
-    def __init__(self, llm_service: ILLMService):
-        self.llm_service = llm_service
-
-    async def extract_procedural_memory(
-        self,
-        content: str,
-        resolved_entities: List[ResolvedEntity]
-    ) -> Optional[ProceduralPattern]:
-        """Extract procedural memory if policy statement detected."""
-
-        # Step 1: Detect if this is a policy statement
-        is_policy = await self._detect_policy_statement(content)
-        if not is_policy:
-            return None
-
-        # Step 2: Extract trigger and action
-        pattern = await self._extract_trigger_action(content, resolved_entities)
-
-        logger.info(
-            "procedural_memory_extracted",
-            trigger_pattern=pattern.trigger_pattern,
-            action=pattern.action_heuristic
-        )
-
-        return pattern
-
-    async def _detect_policy_statement(self, content: str) -> bool:
-        """Detect if text expresses a policy or trigger-action rule."""
-
-        prompt = f"""
-        Does this statement express a policy, rule, or trigger-action pattern?
-
-        Examples of policy statements:
-        - "If invoice is open 3 days before due, remind me"
-        - "When delivery is mentioned, check invoices"
-        - "Always verify work order status before invoicing"
-
-        Examples of non-policy statements:
-        - "What is the invoice status?" (question)
-        - "Gai Media prefers Friday deliveries" (preference, not policy)
-        - "Mark task as done" (command, not policy)
-
-        Statement: "{content}"
-
-        Is this a policy statement? Answer yes or no.
-        """
-
-        response = await self.llm_service.complete(prompt)
-        return "yes" in response.lower()
-
-    async def _extract_trigger_action(
-        self,
-        content: str,
-        resolved_entities: List[ResolvedEntity]
-    ) -> ProceduralPattern:
-        """Extract trigger pattern and action from policy statement."""
-
-        entity_types = [e.entity_type for e in resolved_entities]
-
-        prompt = f"""
-        Extract the trigger-action pattern from this policy statement.
-
-        Statement: "{content}"
-        Entities mentioned: {entity_types}
-
-        Extract:
-        1. trigger_pattern: When does this apply? (concise phrase)
-        2. trigger_intent: What intent triggers this? (e.g., "payment_reminder", "status_check")
-        3. trigger_entity_types: What entity types are involved?
-        4. trigger_topics: What topics/domains? (e.g., ["invoices", "due_dates", "payments"])
-        5. action_heuristic: What should happen? (detailed description)
-        6. action_type: Type of action (e.g., "proactive_notice", "query", "validation")
-        7. action_queries: What queries to run? (SQL-ish description)
-        8. action_predicates: What conditions to check?
-
-        Return as JSON:
-        {{
-          "trigger_pattern": "...",
-          "trigger_intent": "...",
-          "trigger_entity_types": [...],
-          "trigger_topics": [...],
-          "action_heuristic": "...",
-          "action_type": "...",
-          "action_queries": [...],
-          "action_predicates": [...]
-        }}
-        """
-
-        response = await self.llm_service.complete(prompt)
-        data = json.loads(response)
-
-        return ProceduralPattern(
-            trigger_pattern=data["trigger_pattern"],
-            trigger_features={
-                "intent": data["trigger_intent"],
-                "entity_types": data["trigger_entity_types"],
-                "topics": data["trigger_topics"]
-            },
-            action_heuristic=data["action_heuristic"],
-            action_structure={
-                "action_type": data["action_type"],
-                "queries": data["action_queries"],
-                "predicates": data["action_predicates"]
-            },
-            confidence=0.7  # Moderate confidence for LLM extraction
-        )
-```
-
-**Integration** (30 min):
-```python
-# In src/application/use_cases/process_chat_message.py
-
-# After semantic extraction:
-procedural_pattern = await self.procedural_extraction.extract_procedural_memory(
-    content=input_dto.content,
-    resolved_entities=entities_result.resolved_entities
-)
-
-if procedural_pattern:
-    # Store procedural memory
-    await self.procedural_memory_service.create(
-        user_id=input_dto.user_id,
-        trigger_pattern=procedural_pattern.trigger_pattern,
-        trigger_features=procedural_pattern.trigger_features,
-        action_heuristic=procedural_pattern.action_heuristic,
-        action_structure=procedural_pattern.action_structure,
-        confidence=procedural_pattern.confidence
-    )
-```
-
-**Testing** (1.5-2 hours):
-1. Unit test: Policy detection
-   - "If invoice open 3 days before due, remind me" → True
-   - "What's the invoice status?" → False
-
-2. Unit test: Trigger-action extraction
-   - Verify trigger_pattern, action_heuristic extracted
-
-3. Integration test: ProceduralMemory created
-
-**Completion Criteria**:
-- [ ] ProceduralExtractionService implemented
-- [ ] Policy detection works
-- [ ] Trigger-action extraction works
-- [ ] ProceduralMemory created in pipeline
-
-**Commit**: `feat(procedural): add LLM-based procedural memory extraction`
-
----
-
-#### Task 3.1.2: Proactive Trigger Checking (2-3 hours)
-
-**Purpose**: Check if any procedural memories trigger in current context
-
-**Implementation** (1.5-2 hours):
-```python
-# In src/domain/services/proactive_notice_service.py (NEW)
-
-from typing import List
-from dataclasses import dataclass
-
-@dataclass
-class ProactiveNotice:
-    """Proactive notice to surface in response."""
-    trigger_id: int  # ProceduralMemory.memory_id
-    notice_text: str
-    priority: str  # "low" | "medium" | "high"
-    metadata: dict
-
-class ProactiveNoticeService:
-    """Check for procedural memory triggers and generate proactive notices.
-
-    Vision Principle: Proactive Intelligence - Surface relevant information
-    before user asks.
-    """
-
-    def __init__(
-        self,
-        procedural_repo: IProceduralMemoryRepository,
-        embedding_service: IEmbeddingService
-    ):
-        self.procedural_repo = procedural_repo
-        self.embedding_service = embedding_service
-
-    async def check_triggers(
-        self,
-        query_text: str,
-        domain_facts: List[DomainFact],
-        user_id: str
-    ) -> List[ProactiveNotice]:
-        """Check if any procedural memories trigger in current context."""
-
-        # Retrieve relevant procedural memories
-        query_embedding = await self.embedding_service.embed(query_text)
-
-        procedural_memories = await self.procedural_repo.search_by_similarity(
-            embedding=query_embedding,
-            user_id=user_id,
-            limit=10
-        )
-
-        notices = []
-
-        for proc_mem in procedural_memories:
-            # Check if trigger conditions match
-            if await self._evaluate_trigger(proc_mem, query_text, domain_facts):
-                notice = await self._generate_notice(proc_mem, domain_facts)
-                notices.append(notice)
-
-                logger.info(
-                    "proactive_trigger_matched",
-                    trigger_id=proc_mem.memory_id,
-                    trigger_pattern=proc_mem.trigger_pattern
-                )
-
-        return notices
-
-    async def _evaluate_trigger(
-        self,
-        proc_mem: ProceduralMemory,
-        query_text: str,
-        domain_facts: List[DomainFact]
-    ) -> bool:
-        """Evaluate if trigger conditions are met."""
-
-        trigger_features = proc_mem.trigger_features
-
-        # Check intent match (simple keyword matching for Phase 1)
-        intent = trigger_features.get("intent", "")
-        if intent and intent not in query_text.lower():
-            return False
-
-        # Check entity types
-        entity_types = trigger_features.get("entity_types", [])
-        fact_entity_types = {fact.metadata.get("entity_type") for fact in domain_facts}
-        if entity_types and not any(et in fact_entity_types for et in entity_types):
-            return False
-
-        # Check action predicates
-        predicates = proc_mem.action_structure.get("predicates", [])
-        for predicate in predicates:
-            if not self._check_predicate(predicate, domain_facts):
-                return False
-
-        return True
-
-    def _check_predicate(self, predicate: dict, domain_facts: List[DomainFact]) -> bool:
-        """Check if predicate condition is met in domain facts."""
-        # Example predicate: {"field": "status", "operator": "equals", "value": "open"}
-        # Example predicate: {"field": "due_date", "operator": "days_until", "value": 3}
-
-        field = predicate.get("field")
-        operator = predicate.get("operator")
-        value = predicate.get("value")
-
-        for fact in domain_facts:
-            fact_value = fact.metadata.get(field)
-
-            if operator == "equals":
-                if fact_value == value:
-                    return True
-            elif operator == "days_until":
-                # Calculate days until date
-                if isinstance(fact_value, (date, datetime)):
-                    days = (fact_value - datetime.now(UTC).date()).days
-                    if days <= value:
-                        return True
-
-        return False
-
-    async def _generate_notice(
-        self,
-        proc_mem: ProceduralMemory,
-        domain_facts: List[DomainFact]
-    ) -> ProactiveNotice:
-        """Generate proactive notice text."""
-
-        # Use action_heuristic as base notice
-        notice_text = proc_mem.action_heuristic
-
-        # Add specific facts
-        # For "invoice 3 days before due", find the specific invoice
-        for fact in domain_facts:
-            if "invoice" in fact.fact_type.lower():
-                invoice_number = fact.metadata.get("invoice_number", "Unknown")
-                due_date = fact.metadata.get("due_date")
-                if due_date:
-                    days_until = (due_date - datetime.now(UTC).date()).days
-                    notice_text = f"Reminder: Invoice {invoice_number} is due in {days_until} days"
-                break
-
-        return ProactiveNotice(
-            trigger_id=proc_mem.memory_id,
-            notice_text=notice_text,
-            priority="medium",
-            metadata={
-                "trigger_pattern": proc_mem.trigger_pattern,
-                "confidence": proc_mem.confidence
-            }
-        )
-```
-
-**Integration** (30 min):
-```python
-# In src/application/use_cases/process_chat_message.py
-
-# After domain augmentation:
-proactive_notices = await self.proactive_notice_service.check_triggers(
-    query_text=input_dto.content,
-    domain_facts=domain_fact_dtos,
-    user_id=input_dto.user_id
-)
-
-# Pass to LLMReplyGenerator
-reply_context.proactive_notices = proactive_notices
-```
-
-```python
-# In src/domain/services/llm_reply_generator.py
-
-# In system prompt:
-if context.proactive_notices:
-    prompt += "\n\nPROACTIVE NOTICES:\n"
-    for notice in context.proactive_notices:
-        prompt += f"- {notice.notice_text}\n"
-    prompt += "\nInclude these proactive notices naturally in your response.\n"
-```
-
-**Testing** (1 hour):
-1. Unit test: Trigger evaluation
-   - Invoice 2 days from due → trigger matches
-   - Invoice 10 days from due → no match
-
-2. Integration test: Notice generation
-
-3. E2E test: Unskip Scenario 16
-   - Create procedural memory
-   - Query about invoices
-   - Verify proactive reminder in response
-
-**Completion Criteria**:
-- [ ] ProactiveNoticeService implemented
-- [ ] Trigger evaluation works
-- [ ] Notices surface in LLM reply
-- [ ] E2E Scenario 16 passes
-
-**Commit**: `feat(procedural): add proactive trigger checking for Scenario 16`
-
----
-
-### Milestone 3.2: PII Detection Pipeline (4-5 hours) → +1 scenario
-
-**Scenario Unblocked**: #13 (PII guardrail memory)
-
-**Vision Principle**: Privacy + Epistemic Humility
-
----
-
-#### Task 3.2.1: PII Detection Implementation (3-3.5 hours)
+**Scenario**: #13 (PII guardrail memory)
 
 **Investigation** (30 min):
-1. Study PIIRedactionService skeleton
-2. What PII types to detect? SSN, credit card, email, phone
-3. Use regex or LLM? Regex for Phase 1 (fast, deterministic)
+1. Read Scenario 13 test
+2. Check `src/domain/services/pii_redaction_service.py` - skeleton exists?
+3. What PII types: SSN, credit card, email, phone
+4. Decision: Regex-based (fast, deterministic)
 
-**Implementation** (2-2.5 hours):
+**Implementation** (2-3 hours):
+
+File: `src/domain/services/pii_redaction_service.py` (IMPLEMENT)
 ```python
-# In src/domain/services/pii_redaction_service.py
-
-# Implement existing skeleton:
-
 import re
 from typing import List
 from dataclasses import dataclass
 
 @dataclass
 class PIIMatch:
-    """Detected PII entity."""
     type: str  # "ssn" | "credit_card" | "email" | "phone"
     start: int
     end: int
@@ -2056,19 +1000,15 @@ class PIIMatch:
     confidence: float
 
 class PIIRedactionService:
-    """Detect and redact PII from chat messages.
+    """Detect and redact PII from chat messages."""
 
-    Vision Principle: Privacy - Never store sensitive personal information.
-    """
-
-    # Regex patterns
     SSN_PATTERN = r'\b\d{3}-\d{2}-\d{4}\b'
     CREDIT_CARD_PATTERN = r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'
     EMAIL_PATTERN = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     PHONE_PATTERN = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
 
     async def detect_pii(self, text: str) -> List[PIIMatch]:
-        """Detect PII entities in text."""
+        """Detect PII in text."""
         matches = []
 
         # SSN
@@ -2081,10 +1021,9 @@ class PIIRedactionService:
                 confidence=0.95
             ))
 
-        # Credit Card
+        # Credit Card (with Luhn validation)
         for match in re.finditer(self.CREDIT_CARD_PATTERN, text):
-            # Validate with Luhn algorithm
-            if self._validate_credit_card(match.group()):
+            if self._validate_luhn(match.group()):
                 matches.append(PIIMatch(
                     type="credit_card",
                     start=match.start(),
@@ -2116,8 +1055,8 @@ class PIIRedactionService:
         logger.info("pii_detection_complete", pii_count=len(matches))
         return matches
 
-    def _validate_credit_card(self, number: str) -> bool:
-        """Validate credit card using Luhn algorithm."""
+    def _validate_luhn(self, number: str) -> bool:
+        """Validate credit card with Luhn algorithm."""
         digits = [int(d) for d in number if d.isdigit()]
         checksum = 0
         for i, d in enumerate(reversed(digits)):
@@ -2130,7 +1069,6 @@ class PIIRedactionService:
 
     async def redact(self, text: str, matches: List[PIIMatch]) -> str:
         """Replace PII with [REDACTED-{type}]."""
-        # Replace in reverse order to preserve indices
         result = text
         for match in sorted(matches, key=lambda m: m.start, reverse=True):
             replacement = f"[REDACTED-{match.type.upper()}]"
@@ -2140,19 +1078,20 @@ class PIIRedactionService:
         return result
 ```
 
-**Integration** (30-45 min):
+File: `src/application/use_cases/process_chat_message.py` (EDIT - add PII check)
 ```python
-# In src/application/use_cases/process_chat_message.py
-
 # Before storing message:
 pii_matches = await self.pii_service.detect_pii(input_dto.content)
 
 if pii_matches:
     # Redact before storing
-    redacted_content = await self.pii_service.redact(input_dto.content, pii_matches)
+    redacted_content = await self.pii_service.redact(
+        input_dto.content,
+        pii_matches
+    )
 
     # Store policy memory
-    policy_memory = await self.semantic_extraction.create_memory_from_statement(
+    await self.extract_semantics.create_memory_from_statement(
         subject_entity_id="system",
         predicate="pii_policy",
         object_value={
@@ -2160,90 +1099,85 @@ if pii_matches:
             "detected_types": [m.type for m in pii_matches],
             "redacted_at": datetime.now(UTC).isoformat()
         },
-        confidence=0.95,
         user_id=input_dto.user_id,
-        source_type="pii_redaction",
-        predicate_type="policy"
+        source_type="pii_redaction"
     )
 
-    # Use redacted content
-    message = ChatMessage(
-        session_id=input_dto.session_id,
-        user_id=input_dto.user_id,
-        role=input_dto.role,
-        content=redacted_content,  # REDACTED
-        event_metadata={
-            **(input_dto.metadata or {}),
-            "pii_redacted": True,
-            "pii_types": [m.type for m in pii_matches]
-        }
-    )
+    content_to_store = redacted_content
 else:
-    # No PII, use original
-    message = ChatMessage(
-        session_id=input_dto.session_id,
-        user_id=input_dto.user_id,
-        role=input_dto.role,
-        content=input_dto.content,
-        event_metadata=input_dto.metadata or {}
-    )
-
-stored_message = await self.chat_repo.create(message)
+    content_to_store = input_dto.content
 ```
 
-**Testing** (1-1.5 hours):
-1. Unit test: PII detection
-   - Detect SSN: "123-45-6789"
-   - Detect credit card: "4111-1111-1111-1111"
-   - Detect email: "user@example.com"
-   - Detect phone: "555-123-4567"
+**Tests That MUST Pass**:
 
-2. Unit test: Redaction
-   - "My SSN is 123-45-6789" → "My SSN is [REDACTED-SSN]"
+1. **Unit Test**: `tests/unit/domain/services/test_pii_redaction_service.py`
+   ```python
+   async def test_detect_ssn():
+       """Detect SSN pattern."""
+       text = "My SSN is 123-45-6789"
+       matches = await pii_service.detect_pii(text)
+       assert len(matches) == 1
+       assert matches[0].type == "ssn"
 
-3. Integration test: Full pipeline with redaction
+   async def test_redact_pii():
+       """Redact PII from text."""
+       text = "My SSN is 123-45-6789"
+       matches = [PIIMatch(type="ssn", start=10, end=21, text="123-45-6789", confidence=0.95)]
+       result = await pii_service.redact(text, matches)
+       assert result == "My SSN is [REDACTED-SSN]"
+   ```
 
-4. E2E test: Unskip Scenario 13
-   - User mentions SSN
-   - Verify ChatEvent has redacted content
-   - Verify policy memory created
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_13_pii_guardrail_memory`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_13_pii_guardrail_memory -xvs
+   ```
+   - User mentions SSN in message
+   - System detects PII
+   - ChatEvent stored with redacted content
+   - Policy memory created
+   - Response acknowledges PII was detected and redacted
 
-**Completion Criteria**:
-- [ ] PII detection works for SSN, credit card, email, phone
-- [ ] Redaction works
+**Success Criteria**:
+- [ ] PII detection works (SSN, CC, email, phone)
+- [ ] Luhn validation for credit cards
+- [ ] Redaction works correctly
 - [ ] Policy memory created
+- [ ] Unit tests pass
 - [ ] E2E Scenario 13 passes
 
-**Commit**: `feat(pii): implement PII detection and redaction for Scenario 13`
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_13_pii_guardrail_memory -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(pii): implement PII detection and redaction (Scenario 13)`
+
+**Status After**: 16/18 passing (89%)
 
 ---
 
-### Milestone 3.3: Multilingual NER (4-5 hours) → +1 scenario
+### Milestone 3.2: Multilingual NER
 
-**Scenario Unblocked**: #8 (multilingual alias handling)
+**Vision Principle**: Identity Across Time - Learn aliases in any language
 
-**Vision Principle**: Identity Across Time + Learning
+**Scenario**: #8 (multilingual alias handling)
 
----
+**Investigation** (30 min):
+1. Read Scenario 8 test
+2. Current `SimpleMentionExtractor` - ASCII-biased?
+3. Decision: LLM-based extraction (handles any language)
+4. Add configuration toggle
 
-#### Task 3.3.1: Multilingual Mention Extraction (4-5 hours)
+**Implementation** (3-4 hours):
 
-**Investigation** (1 hour):
-1. Current SimpleMentionExtractor: Uses regex, ASCII-biased
-2. Options: Upgrade to LLM-based extraction vs multilingual regex
-3. Decision: LLM-based for Phase 1 (handles any language)
-
-**Implementation** (2.5-3 hours):
+File: `src/domain/services/multilingual_mention_extractor.py` (NEW)
 ```python
-# In src/domain/services/multilingual_mention_extractor.py (NEW)
+from typing import List, Optional
+import json
 
 class MultilingualMentionExtractor:
-    """Extract entity mentions from multilingual text.
-
-    Vision Principle: Identity Across Time - Learn aliases in any language.
-
-    Uses LLM for language-agnostic NER.
-    """
+    """Extract entity mentions from multilingual text using LLM."""
 
     def __init__(self, llm_service: ILLMService):
         self.llm_service = llm_service
@@ -2253,34 +1187,27 @@ class MultilingualMentionExtractor:
         text: str,
         expected_entity_types: Optional[List[str]] = None
     ) -> List[EntityMention]:
-        """Extract entity mentions from text (any language)."""
-
-        entity_types_hint = ""
-        if expected_entity_types:
-            entity_types_hint = f"Expected entity types: {', '.join(expected_entity_types)}"
+        """Extract mentions (any language)."""
 
         prompt = f"""
-        Extract entity mentions from this text. The text may be in any language.
+Extract entity mentions from this text. The text may be in any language.
 
-        Text: "{text}"
-        {entity_types_hint}
+Text: "{text}"
 
-        Entity types to look for:
-        - customer: Customer/company names
-        - invoice: Invoice numbers (e.g., INV-1234)
-        - sales_order: Sales order numbers (e.g., SO-5678)
-        - work_order: Work order numbers (e.g., WO-9012)
-        - task: Task titles or IDs
-        - product: Product names
+Entity types to look for:
+- customer: Customer/company names
+- invoice: Invoice numbers (INV-1234)
+- sales_order: Sales order numbers (SO-5678)
+- work_order: Work order numbers (WO-9012)
 
-        Return as JSON array:
-        [
-          {{"mention": "Gai Media", "type": "customer", "start": 10, "end": 19}},
-          {{"mention": "Gai 媒体", "type": "customer", "start": 25, "end": 30}}
-        ]
+Return as JSON array:
+[
+  {{"mention": "Gai Media", "type": "customer"}},
+  {{"mention": "Gai 媒体", "type": "customer"}}
+]
 
-        If no entities found, return empty array: []
-        """
+If no entities found, return: []
+"""
 
         response = await self.llm_service.complete(prompt)
 
@@ -2295,158 +1222,373 @@ class MultilingualMentionExtractor:
             mentions.append(EntityMention(
                 text=data["mention"],
                 entity_type=data["type"],
-                start_pos=data.get("start", 0),
-                end_pos=data.get("end", len(data["mention"]))
+                start_pos=0,  # LLM doesn't give positions
+                end_pos=len(data["mention"])
             ))
 
         logger.info(
             "multilingual_mentions_extracted",
-            mention_count=len(mentions),
-            types=[m.entity_type for m in mentions]
+            mention_count=len(mentions)
         )
 
         return mentions
 ```
 
-**Configuration** (use conditional extraction):
+File: `src/config/heuristics.py` (ADD)
 ```python
-# In src/config/heuristics.py
-
 HEURISTICS = {
     # ... existing ...
     "entity_resolution": {
         # ... existing ...
-        "use_multilingual_extraction": False,  # Toggle for multilingual
-        "fallback_to_simple_extractor": True,  # Use SimpleMentionExtractor if LLM fails
+        "use_multilingual_extraction": False,  # Toggle
     }
 }
 ```
 
-**Integration** (30 min):
+File: `src/application/use_cases/resolve_entities.py` (EDIT)
 ```python
-# In src/application/use_cases/resolve_entities.py
-
 # Conditional mention extraction
 if get_config("entity_resolution.use_multilingual_extraction"):
-    mentions = await self.multilingual_extractor.extract_mentions(message_content)
+    mentions = await self.multilingual_extractor.extract_mentions(content)
 else:
-    mentions = await self.simple_extractor.extract_mentions(message_content)
+    mentions = await self.simple_extractor.extract_mentions(content)
 ```
 
-**Testing** (1-1.5 hours):
-1. Unit test: Multilingual extraction (mocked LLM)
-   - English: "Gai Media" → detected
-   - Chinese: "Gai 媒体" → detected
-   - Mixed: "Contact Gai 媒体 about invoice" → both detected
+**Tests That MUST Pass**:
 
-2. Integration test: Real LLM extraction
+1. **Unit Test**: `tests/unit/domain/services/test_multilingual_mention_extractor.py`
+   ```python
+   async def test_extract_english_mention(mock_llm):
+       """Extract English entity."""
+       # Given: "Contact Gai Media about invoice"
+       # When: extract_mentions()
+       # Then: [EntityMention("Gai Media", "customer")]
 
-3. E2E test: Unskip Scenario 8
-   - User says "Gai Media" (English)
-   - System resolves to customer
-   - Later: User says "Gai 媒体" (Chinese)
-   - System resolves to same customer (learns alias)
+   async def test_extract_chinese_mention(mock_llm):
+       """Extract Chinese entity."""
+       # Given: "联系 Gai 媒体 关于发票"
+       # When: extract_mentions()
+       # Then: [EntityMention("Gai 媒体", "customer")]
+   ```
 
-**Completion Criteria**:
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_08_multilingual_alias_handling`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_08_multilingual_alias_handling -xvs
+   ```
+   - Turn 1: "Gai Media" (English) → resolves to customer
+   - Turn 2: "Gai 媒体" (Chinese) → resolves to same customer
+   - Alias learned for Chinese name
+
+**Success Criteria**:
 - [ ] MultilingualMentionExtractor implemented
 - [ ] LLM-based extraction works
-- [ ] Configuration toggle
+- [ ] Configuration toggle added
+- [ ] Unit tests pass
 - [ ] E2E Scenario 8 passes
 
-**Commit**: `feat(entity-resolution): add multilingual mention extraction for Scenario 8`
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_08_multilingual_alias_handling -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(entity-resolution): add multilingual mention extraction (Scenario 8)`
+
+**Status After**: 17/18 passing (94%)
+
+---
+
+### Milestone 3.3: Procedural Memory Extraction
+
+**Vision Principle**: Proactive Intelligence - Learn trigger-action patterns
+
+**Scenario**: #16 (reminder creation from intent)
+
+**Investigation** (1 hour):
+1. Read Scenario 16 test
+2. Study `ProceduralMemory` table schema
+3. Example: "If invoice is 3 days before due, remind me"
+4. Understand: Trigger (condition) + Action (what to do)
+
+**Implementation Part 1: Policy Detection** (2-3 hours):
+
+File: `src/domain/services/procedural_extraction_service.py` (NEW)
+```python
+from typing import Optional
+from dataclasses import dataclass
+import json
+
+@dataclass
+class ProceduralPattern:
+    trigger_pattern: str
+    trigger_features: dict
+    action_heuristic: str
+    action_structure: dict
+    confidence: float
+
+class ProceduralExtractionService:
+    """Extract procedural memories from policy statements."""
+
+    def __init__(self, llm_service: ILLMService):
+        self.llm_service = llm_service
+
+    async def extract_procedural_memory(
+        self,
+        content: str,
+        resolved_entities: List[ResolvedEntity]
+    ) -> Optional[ProceduralPattern]:
+        """Extract trigger-action pattern if policy detected."""
+
+        # Step 1: Detect policy
+        is_policy = await self._detect_policy_statement(content)
+        if not is_policy:
+            return None
+
+        # Step 2: Extract trigger and action
+        pattern = await self._extract_trigger_action(content, resolved_entities)
+
+        logger.info(
+            "procedural_memory_extracted",
+            trigger_pattern=pattern.trigger_pattern
+        )
+
+        return pattern
+
+    async def _detect_policy_statement(self, content: str) -> bool:
+        """Detect if this is a policy/rule statement."""
+
+        prompt = f"""
+Does this express a policy, rule, or trigger-action pattern?
+
+Examples of policy statements:
+- "If invoice is open 3 days before due, remind me"
+- "When delivery is mentioned, check invoices"
+
+Examples of NON-policy statements:
+- "What is the invoice status?" (question)
+- "Gai Media prefers Friday" (preference)
+
+Statement: "{content}"
+
+Answer: yes or no
+"""
+
+        response = await self.llm_service.complete(prompt)
+        return "yes" in response.lower()
+
+    async def _extract_trigger_action(
+        self,
+        content: str,
+        resolved_entities: List[ResolvedEntity]
+    ) -> ProceduralPattern:
+        """Extract trigger and action from policy."""
+
+        entity_types = [e.entity_type for e in resolved_entities]
+
+        prompt = f"""
+Extract trigger-action pattern from this policy.
+
+Statement: "{content}"
+Entities: {entity_types}
+
+Extract as JSON:
+{{
+  "trigger_pattern": "when does this apply?",
+  "trigger_intent": "payment_reminder / status_check / etc",
+  "trigger_topics": ["invoices", "due_dates"],
+  "action_heuristic": "what should happen?",
+  "action_type": "proactive_notice / query / validation"
+}}
+"""
+
+        response = await self.llm_service.complete(prompt)
+        data = json.loads(response)
+
+        return ProceduralPattern(
+            trigger_pattern=data["trigger_pattern"],
+            trigger_features={
+                "intent": data["trigger_intent"],
+                "topics": data["trigger_topics"]
+            },
+            action_heuristic=data["action_heuristic"],
+            action_structure={
+                "action_type": data["action_type"]
+            },
+            confidence=0.7
+        )
+```
+
+**Implementation Part 2: Proactive Trigger Checking** (1-2 hours):
+
+File: `src/domain/services/proactive_notice_service.py` (NEW)
+```python
+from typing import List
+from dataclasses import dataclass
+
+@dataclass
+class ProactiveNotice:
+    trigger_id: int
+    notice_text: str
+    priority: str
+
+class ProactiveNoticeService:
+    """Check for procedural memory triggers."""
+
+    def __init__(
+        self,
+        procedural_repo: IProceduralMemoryRepository,
+        embedding_service: IEmbeddingService
+    ):
+        self.procedural_repo = procedural_repo
+        self.embedding_service = embedding_service
+
+    async def check_triggers(
+        self,
+        query_text: str,
+        domain_facts: List[DomainFact],
+        user_id: str
+    ) -> List[ProactiveNotice]:
+        """Check if any procedural memories trigger."""
+
+        # Retrieve relevant procedural memories
+        query_embedding = await self.embedding_service.embed(query_text)
+
+        procedural_memories = await self.procedural_repo.search_by_similarity(
+            embedding=query_embedding,
+            user_id=user_id,
+            limit=10
+        )
+
+        notices = []
+
+        for proc_mem in procedural_memories:
+            # Check if trigger matches
+            if await self._evaluate_trigger(proc_mem, query_text, domain_facts):
+                notice = self._generate_notice(proc_mem, domain_facts)
+                notices.append(notice)
+
+                logger.info(
+                    "proactive_trigger_matched",
+                    trigger_id=proc_mem.memory_id,
+                    trigger_pattern=proc_mem.trigger_pattern
+                )
+
+        return notices
+
+    async def _evaluate_trigger(
+        self,
+        proc_mem: ProceduralMemory,
+        query_text: str,
+        domain_facts: List[DomainFact]
+    ) -> bool:
+        """Evaluate if trigger conditions met."""
+
+        # Simple keyword matching for Phase 1
+        trigger_features = proc_mem.trigger_features
+        intent = trigger_features.get("intent", "")
+
+        if intent and intent in query_text.lower():
+            return True
+
+        return False
+
+    def _generate_notice(
+        self,
+        proc_mem: ProceduralMemory,
+        domain_facts: List[DomainFact]
+    ) -> ProactiveNotice:
+        """Generate notice text."""
+
+        return ProactiveNotice(
+            trigger_id=proc_mem.memory_id,
+            notice_text=proc_mem.action_heuristic,
+            priority="medium"
+        )
+```
+
+**Tests That MUST Pass**:
+
+1. **Unit Test**: `tests/unit/domain/services/test_procedural_extraction_service.py`
+   ```python
+   async def test_detect_policy_statement(mock_llm):
+       """Detect policy vs non-policy."""
+       # "If invoice is 3 days before due, remind me" → True
+       # "What is the invoice status?" → False
+
+   async def test_extract_trigger_action(mock_llm):
+       """Extract trigger and action from policy."""
+       # Given: "If invoice is 3 days before due, remind me"
+       # Then: trigger_pattern includes "3 days before due"
+       # Then: action_heuristic includes "remind"
+   ```
+
+2. **E2E Test**: `tests/e2e/test_scenarios.py::test_scenario_16_reminder_creation_from_intent`
+   ```bash
+   poetry run pytest tests/e2e/test_scenarios.py::test_scenario_16_reminder_creation_from_intent -xvs
+   ```
+   - Turn 1: User states policy "If invoice 3 days before due, remind me"
+   - System extracts procedural memory
+   - Turn 2: User queries about invoices
+   - System checks if any are 3 days before due
+   - Response includes proactive reminder
+
+**Success Criteria**:
+- [ ] ProceduralExtractionService implemented
+- [ ] Policy detection works
+- [ ] Trigger-action extraction works
+- [ ] ProactiveNoticeService implemented
+- [ ] Trigger evaluation works
+- [ ] Unit tests pass
+- [ ] E2E Scenario 16 passes
+
+**Verification Before Proceeding**:
+```bash
+poetry run pytest tests/e2e/test_scenarios.py::test_scenario_16_reminder_creation_from_intent -xvs
+poetry run pytest tests/e2e/test_scenarios.py -v
+```
+
+**Commit**: `feat(procedural): add procedural memory extraction and proactive triggers (Scenario 16)`
+
+**Status After**: 18/18 passing (100%) 🎉
 
 ---
 
 ### Phase 3 Completion Check
 
 **Verify 100% Coverage**:
-- [ ] 18/18 scenarios passing (100%) 🎉
-- [ ] All tests passing
-- [ ] No regressions
-- [ ] Code quality: `make check-all` passes
-- [ ] All documentation updated
+```bash
+# MUST show 18 passed:
+poetry run pytest tests/e2e/test_scenarios.py -v
+
+# MUST pass:
+make test
+make typecheck
+make check-all
+```
+
+**Metrics**:
+- [ ] 18/18 E2E scenarios passing (100%)
+- [ ] All unit/integration tests passing
+- [ ] 0 type errors
+- [ ] 0 lint errors
+- [ ] >85% code coverage
 
 ---
 
-## Final Verification (2-3 hours)
+## Final Verification
 
-### Task: Comprehensive E2E Test Suite Run
+### Comprehensive Test Run
 
-**Run all 18 scenarios**:
 ```bash
-poetry run pytest tests/e2e/test_scenarios.py -v
-```
+# Run EVERYTHING:
+make test              # All unit + integration tests
+make typecheck         # Type checking
+poetry run pytest tests/e2e/test_scenarios.py -v  # All E2E scenarios
 
-**Expected output**:
-```
-test_scenario_01_overdue_invoice_with_preference_recall PASSED
-test_scenario_02_work_order_rescheduling PASSED
-test_scenario_03_ambiguous_entity_disambiguation PASSED
-test_scenario_04_net_terms_learning_from_conversation PASSED
-test_scenario_05_partial_payments_and_balance PASSED
-test_scenario_06_sla_breach_detection PASSED
-test_scenario_07_conflicting_memories_consolidation PASSED
-test_scenario_08_multilingual_alias_handling PASSED
-test_scenario_09_cold_start_grounding_to_db PASSED
-test_scenario_10_active_recall_for_stale_facts PASSED
-test_scenario_11_cross_object_reasoning PASSED
-test_scenario_12_fuzzy_match_alias_learning PASSED
-test_scenario_13_pii_guardrail_memory PASSED
-test_scenario_14_session_window_consolidation PASSED
-test_scenario_15_audit_trail_explainability PASSED
-test_scenario_16_reminder_creation_from_intent PASSED
-test_scenario_17_memory_vs_db_conflict_trust_db PASSED
-test_scenario_18_task_completion_via_conversation PASSED
-
-==================== 18 passed in 45.2s ====================
+# Expected: ALL PASS
 ```
 
 **If any fail**: Debug and fix before declaring 100% complete.
-
----
-
-## Documentation Updates
-
-### Final Documentation Tasks (1-2 hours)
-
-1. Update E2E_SCENARIOS_PROGRESS.md
-   - Mark all 18 as "✅ COMPLETE"
-   - Update completion percentages
-   - Add final metrics
-
-2. Update E2E_IMPLEMENTATION_COMPLETE.md
-   - Update passing count to 18/18
-   - Document all features implemented
-
-3. Update SCENARIO_CAPABILITY_ANALYSIS.md
-   - Mark all gaps as resolved
-   - Update verdicts to "FULLY CAPABLE"
-
-4. Create PHASE_1_COMPLETE.md
-   - Summary of all work done
-   - Metrics: Lines of code, test coverage, scenarios
-   - What's production-ready
-   - What's next (Phase 2)
-
-**DO NOT create excessive documentation**. These are major milestones worth documenting.
-
----
-
-## Total Time Estimate
-
-| Phase | Time Estimate | Scenarios Gained | Cumulative |
-|-------|---------------|------------------|------------|
-| Phase 0: Foundation | 2-3 hours | 0 | 4/18 (22%) |
-| Phase 1: Quick Wins | 12-16 hours | +7 | 11/18 (61%) |
-| Phase 2: Core Features | 16-20 hours | +4 | 15/18 (83%) |
-| Phase 3: Advanced | 16-21 hours | +3 | 18/18 (100%) |
-| Final Verification | 2-3 hours | 0 | 18/18 (100%) |
-| **TOTAL** | **48-63 hours** | **+14** | **100%** |
-
-**Realistic Schedule**:
-- Working 4 hours/day: **12-16 days**
-- Working 6 hours/day: **8-11 days**
-- Working 8 hours/day (full-time): **6-8 days**
 
 ---
 
@@ -2454,11 +1596,10 @@ test_scenario_18_task_completion_via_conversation PASSED
 
 ### Quantitative
 - ✅ 18/18 E2E scenarios passing (100%)
-- ✅ 130/130 unit tests passing (was 121/130)
-- ✅ 90%+ code coverage (domain)
+- ✅ 200+ unit/integration tests passing
+- ✅ >85% code coverage (domain)
 - ✅ 0 lint errors
 - ✅ 0 type errors
-- ✅ <800ms p95 latency (chat endpoint)
 
 ### Qualitative
 - ✅ Production-ready code quality
@@ -2469,27 +1610,7 @@ test_scenario_18_task_completion_via_conversation PASSED
 
 ---
 
-## Celebration 🎉
-
-**When you reach 100%**:
-
-You've built a **philosophically grounded, vision-driven system** that transforms how LLM agents understand and remember business context.
-
-You've demonstrated:
-- Perfect recall of relevant context
-- Deep business understanding
-- Adaptive learning
-- Epistemic humility
-- Explainable reasoning
-- Continuous improvement
-
-**This is not a typical CRUD app. This is exceptional work.**
-
-Every line of code was a conversation with the future. You made it worth reading.
-
----
-
-## Philosophy Reminders Throughout
+## Philosophy Reminders
 
 **When you're tempted to rush**:
 > "Building the wrong thing quickly is worse than building the right thing slowly."
@@ -2503,11 +1624,11 @@ Every line of code was a conversation with the future. You made it worth reading
 **When tempted to cut corners**:
 > "Complete each piece fully before moving to the next. Progress should be: 100% → 100% → 100%"
 
-**When done with a milestone**:
-> "Before marking any task complete: Implementation matches design, all tests pass, edge cases handled, documentation updated."
+**Before marking any task complete**:
+> "Implementation matches design, all tests pass, edge cases handled, no regressions."
 
 ---
 
 **This roadmap is your guide. Follow it with discipline, thoughtfulness, and pride in craft.**
 
-**Good luck. Build something exceptional.** 🚀
+**Build something exceptional.** 🚀

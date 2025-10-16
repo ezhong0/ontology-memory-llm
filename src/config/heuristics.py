@@ -44,7 +44,7 @@ CONFIDENCE_COREFERENCE = 0.60
 CONFIDENCE_DISAMBIGUATION = 0.85  # After user selection
 
 # Fuzzy Matching
-FUZZY_MATCH_THRESHOLD = 0.70  # Minimum similarity to consider
+FUZZY_MATCH_THRESHOLD = 0.65  # Minimum similarity to consider (allows "Kay" → "Kai" typos)
 FUZZY_MATCH_AUTO_RESOLVE = 0.85  # Auto-resolve if above this
 
 # Disambiguation

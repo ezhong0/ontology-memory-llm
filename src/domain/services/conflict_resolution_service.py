@@ -125,7 +125,7 @@ class ConflictResolutionService:
         memory_id = conflict.existing_memory_id
 
         # Fetch and invalidate memory
-        memory = await self.semantic_memory_repo.get_by_id(memory_id)
+        memory = await self.semantic_memory_repo.find_by_id(memory_id)
         if not memory:
             msg = f"Memory {memory_id} not found"
             raise ValueError(msg)
@@ -165,15 +165,62 @@ class ConflictResolutionService:
             # New is newer - mark existing as superseded
             winner_id = conflict.new_memory_id
             loser_id = conflict.existing_memory_id
+        elif conflict.temporal_diff_days == 0:
+            # Same day - check actual timestamps if available
+            new_timestamp_str = conflict.metadata.get("new_timestamp")
+            existing_timestamp_str = conflict.metadata.get("existing_timestamp")
+
+            logger.debug(
+                "resolve_keep_newest_same_day",
+                new_timestamp_str=new_timestamp_str,
+                existing_timestamp_str=existing_timestamp_str,
+            )
+
+            if new_timestamp_str and existing_timestamp_str:
+                from datetime import datetime
+                try:
+                    new_timestamp = datetime.fromisoformat(new_timestamp_str)
+                    existing_timestamp = datetime.fromisoformat(existing_timestamp_str)
+
+                    logger.debug(
+                        "resolve_keep_newest_comparing_timestamps",
+                        new_timestamp=new_timestamp.isoformat(),
+                        existing_timestamp=existing_timestamp.isoformat(),
+                        new_is_newer=new_timestamp > existing_timestamp,
+                    )
+
+                    if new_timestamp > existing_timestamp:
+                        # New is newer (same day, later time)
+                        winner_id = conflict.new_memory_id
+                        loser_id = conflict.existing_memory_id
+                    else:
+                        # Existing is newer (same day, earlier time)
+                        winner_id = conflict.existing_memory_id
+                        loser_id = conflict.new_memory_id
+                except (ValueError, TypeError) as e:
+                    # Can't parse timestamps - keep existing as default
+                    logger.warning(
+                        "resolve_keep_newest_timestamp_parse_error",
+                        error=str(e),
+                    )
+                    winner_id = conflict.existing_memory_id
+                    loser_id = conflict.new_memory_id
+            else:
+                # No timestamp info - keep existing as default
+                logger.debug("resolve_keep_newest_no_timestamps")
+                winner_id = conflict.existing_memory_id
+                loser_id = conflict.new_memory_id
         else:
-            # Existing is newer or same age - keep existing
+            # Existing is newer (negative diff) - keep existing
             winner_id = conflict.existing_memory_id
             loser_id = conflict.new_memory_id
 
-        # Mark loser as superseded (if both exist)
+        # Mark loser as superseded
+        # Note: winner_id may be None (new memory not created yet), but we still
+        # mark the loser as superseded because we know the winner will be created next
         if loser_id:
-            loser = await self.semantic_memory_repo.get_by_id(loser_id)
-            if loser and winner_id:
+            loser = await self.semantic_memory_repo.find_by_id(loser_id)
+            if loser:
                 loser.mark_as_superseded(superseded_by_memory_id=winner_id)
                 await self.semantic_memory_repo.update(loser)
 
@@ -214,8 +261,10 @@ class ConflictResolutionService:
             loser_id = conflict.new_memory_id
 
         # Mark loser as superseded
-        if loser_id and winner_id:
-            loser = await self.semantic_memory_repo.get_by_id(loser_id)
+        # Note: winner_id may be None (new memory not created yet), but we still
+        # mark the loser as superseded because we know the winner will be created next
+        if loser_id:
+            loser = await self.semantic_memory_repo.find_by_id(loser_id)
             if loser:
                 loser.mark_as_superseded(superseded_by_memory_id=winner_id)
                 await self.semantic_memory_repo.update(loser)
@@ -262,8 +311,10 @@ class ConflictResolutionService:
             loser_id = conflict.new_memory_id
 
         # Mark loser as superseded
-        if loser_id and winner_id:
-            loser = await self.semantic_memory_repo.get_by_id(loser_id)
+        # Note: winner_id may be None (new memory not created yet), but we still
+        # mark the loser as superseded because we know the winner will be created next
+        if loser_id:
+            loser = await self.semantic_memory_repo.find_by_id(loser_id)
             if loser:
                 loser.mark_as_superseded(superseded_by_memory_id=winner_id)
                 await self.semantic_memory_repo.update(loser)

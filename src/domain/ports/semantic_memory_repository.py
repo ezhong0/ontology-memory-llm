@@ -42,16 +42,21 @@ class ISemanticMemoryRepository(ABC):
 
     @abstractmethod
     async def find_by_subject_predicate(
-        self, user_id: str, subject_entity_id: str, predicate: str
+        self,
+        subject_entity_id: str,
+        predicate: str,
+        user_id: str,
+        status_filter: str = "active",
     ) -> list[SemanticMemory]:
         """Find semantic memories by subject and predicate.
 
         Used for conflict detection.
 
         Args:
-            user_id: User identifier
             subject_entity_id: Subject entity ID
             predicate: Predicate name
+            user_id: User identifier
+            status_filter: Filter by status (default: "active")
 
         Returns:
             List of matching semantic memories
@@ -64,7 +69,7 @@ class ISemanticMemoryRepository(ABC):
         query_embedding: npt.NDArray[np.float64],
         limit: int = 50,
         min_confidence: float | None = None,
-    ) -> list[SemanticMemory]:
+    ) -> list[tuple[SemanticMemory, float]]:
         """Find similar semantic memories using pgvector.
 
         Args:
@@ -74,7 +79,7 @@ class ISemanticMemoryRepository(ABC):
             min_confidence: Optional minimum confidence threshold
 
         Returns:
-            List of similar semantic memories, ordered by similarity
+            List of tuples (semantic_memory, similarity_score), ordered by similarity descending
         """
 
     @abstractmethod

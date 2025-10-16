@@ -173,7 +173,7 @@ class DomainDatabaseRepository(DomainDatabasePort):
             return [
                 DomainFact(
                     fact_type="order_chain",
-                    entity_id=sales_order_number,
+                    entity_id=f"sales_order_{row.so_id}",  # Use full entity_id format to match canonical entities
                     content=content,
                     metadata={
                         "so_number": sales_order_number,

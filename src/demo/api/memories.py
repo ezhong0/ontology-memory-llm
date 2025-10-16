@@ -540,3 +540,91 @@ async def get_memory_stats(
         "memory_summaries": summaries_count,
         "memory_conflicts": conflicts_count,
     }
+
+
+@router.delete("/clear")
+async def clear_memories(
+    user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
+) -> dict:
+    """Clear all memories for a user (demo/development only).
+
+    CAUTION: This is a destructive operation that deletes:
+    - All chat events
+    - All episodic memories
+    - All semantic memories
+    - All procedural memories
+    - All memory summaries
+    - All entity aliases (user-specific)
+    - All memory conflicts
+
+    Args:
+        user_id: User ID to clear memories for (default: demo-user)
+        session: Database session (injected)
+
+    Returns:
+        Dictionary with count of deleted records per table
+    """
+    from sqlalchemy import delete
+
+    # Track deletion counts
+    deleted_counts = {}
+
+    # Layer 1: Chat events
+    chat_result = await session.execute(
+        delete(ChatEvent).where(ChatEvent.user_id == user_id).returning(ChatEvent.event_id)
+    )
+    deleted_counts["chat_events"] = len(chat_result.fetchall())
+
+    # Layer 2: Entity aliases (user-specific only, keep canonical entities)
+    alias_result = await session.execute(
+        delete(EntityAlias).where(EntityAlias.user_id == user_id).returning(EntityAlias.alias_id)
+    )
+    deleted_counts["entity_aliases"] = len(alias_result.fetchall())
+
+    # Layer 3: Episodic memories
+    episodic_result = await session.execute(
+        delete(EpisodicMemory)
+        .where(EpisodicMemory.user_id == user_id)
+        .returning(EpisodicMemory.memory_id)
+    )
+    deleted_counts["episodic_memories"] = len(episodic_result.fetchall())
+
+    # Layer 4: Semantic memories
+    semantic_result = await session.execute(
+        delete(SemanticMemory)
+        .where(SemanticMemory.user_id == user_id)
+        .returning(SemanticMemory.memory_id)
+    )
+    deleted_counts["semantic_memories"] = len(semantic_result.fetchall())
+
+    # Layer 5: Procedural memories
+    procedural_result = await session.execute(
+        delete(ProceduralMemory)
+        .where(ProceduralMemory.user_id == user_id)
+        .returning(ProceduralMemory.memory_id)
+    )
+    deleted_counts["procedural_memories"] = len(procedural_result.fetchall())
+
+    # Layer 6: Memory summaries
+    summaries_result = await session.execute(
+        delete(MemorySummary)
+        .where(MemorySummary.user_id == user_id)
+        .returning(MemorySummary.summary_id)
+    )
+    deleted_counts["memory_summaries"] = len(summaries_result.fetchall())
+
+    # Supporting: Memory conflicts (delete all for simplicity)
+    conflicts_result = await session.execute(
+        delete(MemoryConflict).returning(MemoryConflict.conflict_id)
+    )
+    deleted_counts["memory_conflicts"] = len(conflicts_result.fetchall())
+
+    # Commit all deletions
+    await session.commit()
+
+    return {
+        "status": "success",
+        "message": f"All memories cleared for user: {user_id}",
+        "deleted": deleted_counts,
+        "total_deleted": sum(deleted_counts.values()),
+    }

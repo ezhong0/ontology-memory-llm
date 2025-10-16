@@ -19,6 +19,7 @@ class ResolvedEntityDTO:
         mention_text: Original text that was resolved
         confidence: Resolution confidence [0.0, 1.0]
         method: Resolution method used (exact, alias, fuzzy, coreference)
+        is_implicit: True if entity inferred from session context (not explicitly mentioned)
     """
 
     entity_id: str
@@ -27,6 +28,7 @@ class ResolvedEntityDTO:
     mention_text: str
     confidence: float
     method: str
+    is_implicit: bool = False  # Phase 2.2: Session-aware context
 
 
 @dataclass
