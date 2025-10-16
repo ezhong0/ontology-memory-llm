@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.database.models import (
     CanonicalEntity,
+    ChatEvent,
     EntityAlias,
+    EpisodicMemory,
+    MemoryConflict,
+    MemorySummary,
+    ProceduralMemory,
     SemanticMemory,
 )
 from src.infrastructure.database.session import get_db
@@ -63,6 +68,81 @@ class EntityAliasResponse(BaseModel):
     alias_source: str
     confidence: float
     use_count: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ChatEventResponse(BaseModel):
+    """Chat event (raw conversation data)."""
+
+    event_id: int
+    session_id: str
+    user_id: str
+    role: str
+    content: str
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class EpisodicMemoryResponse(BaseModel):
+    """Episodic memory (event with meaning)."""
+
+    memory_id: int
+    user_id: str
+    session_id: str
+    summary: str
+    event_type: str
+    entities: dict
+    importance: float
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ProceduralMemoryResponse(BaseModel):
+    """Procedural memory (learned heuristic)."""
+
+    memory_id: int
+    user_id: str
+    trigger_pattern: str
+    action_heuristic: str
+    observed_count: int
+    confidence: float
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class MemorySummaryResponse(BaseModel):
+    """Memory summary (cross-session consolidation)."""
+
+    summary_id: int
+    user_id: str
+    scope_type: str
+    scope_identifier: str | None
+    summary_text: str
+    key_facts: dict
+    confidence: float
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class MemoryConflictResponse(BaseModel):
+    """Memory conflict (detected inconsistency)."""
+
+    conflict_id: int
+    conflict_type: str
+    conflict_data: dict
+    resolution_strategy: str | None
+    resolved_at: str | None
     created_at: str
 
     class Config:
@@ -207,6 +287,189 @@ async def list_entity_aliases(
     ]
 
 
+@router.get("/chat_events", response_model=list[ChatEventResponse])
+async def list_chat_events(
+    user_id: str = "demo-user",
+    limit: int = 50,
+    session: AsyncSession = Depends(get_db),
+) -> list[ChatEventResponse]:
+    """Get raw chat events for a user.
+
+    Args:
+        user_id: User ID to filter events (default: demo-user)
+        limit: Maximum number of events to return (default: 50)
+        session: Database session (injected)
+
+    Returns:
+        List of chat events ordered by creation time (most recent first)
+    """
+    query = (
+        select(ChatEvent)
+        .where(ChatEvent.user_id == user_id)
+        .order_by(ChatEvent.created_at.desc())
+        .limit(limit)
+    )
+
+    result = await session.execute(query)
+    events = result.scalars().all()
+
+    return [
+        ChatEventResponse(
+            event_id=event.event_id,
+            session_id=str(event.session_id),
+            user_id=event.user_id,
+            role=event.role,
+            content=event.content,
+            created_at=event.created_at.isoformat(),
+        )
+        for event in events
+    ]
+
+
+@router.get("/episodic", response_model=list[EpisodicMemoryResponse])
+async def list_episodic_memories(
+    user_id: str = "demo-user",
+    limit: int = 50,
+    session: AsyncSession = Depends(get_db),
+) -> list[EpisodicMemoryResponse]:
+    """Get episodic memories for a user.
+
+    Args:
+        user_id: User ID to filter memories (default: demo-user)
+        limit: Maximum number of memories to return (default: 50)
+        session: Database session (injected)
+
+    Returns:
+        List of episodic memories ordered by creation time (most recent first)
+    """
+    query = (
+        select(EpisodicMemory)
+        .where(EpisodicMemory.user_id == user_id)
+        .order_by(EpisodicMemory.created_at.desc())
+        .limit(limit)
+    )
+
+    result = await session.execute(query)
+    memories = result.scalars().all()
+
+    return [
+        EpisodicMemoryResponse(
+            memory_id=memory.memory_id,
+            user_id=memory.user_id,
+            session_id=str(memory.session_id),
+            summary=memory.summary,
+            event_type=memory.event_type,
+            entities=memory.entities,
+            importance=memory.importance,
+            created_at=memory.created_at.isoformat(),
+        )
+        for memory in memories
+    ]
+
+
+@router.get("/procedural", response_model=list[ProceduralMemoryResponse])
+async def list_procedural_memories(
+    user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
+) -> list[ProceduralMemoryResponse]:
+    """Get procedural memories (learned heuristics) for a user.
+
+    Args:
+        user_id: User ID to filter memories (default: demo-user)
+        session: Database session (injected)
+
+    Returns:
+        List of procedural memories ordered by confidence (highest first)
+    """
+    query = (
+        select(ProceduralMemory)
+        .where(ProceduralMemory.user_id == user_id)
+        .order_by(ProceduralMemory.confidence.desc())
+    )
+
+    result = await session.execute(query)
+    memories = result.scalars().all()
+
+    return [
+        ProceduralMemoryResponse(
+            memory_id=memory.memory_id,
+            user_id=memory.user_id,
+            trigger_pattern=memory.trigger_pattern,
+            action_heuristic=memory.action_heuristic,
+            observed_count=memory.observed_count,
+            confidence=memory.confidence,
+            created_at=memory.created_at.isoformat(),
+        )
+        for memory in memories
+    ]
+
+
+@router.get("/summaries", response_model=list[MemorySummaryResponse])
+async def list_memory_summaries(
+    user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
+) -> list[MemorySummaryResponse]:
+    """Get memory summaries (cross-session consolidation) for a user.
+
+    Args:
+        user_id: User ID to filter summaries (default: demo-user)
+        session: Database session (injected)
+
+    Returns:
+        List of memory summaries ordered by creation time (most recent first)
+    """
+    query = (
+        select(MemorySummary)
+        .where(MemorySummary.user_id == user_id)
+        .order_by(MemorySummary.created_at.desc())
+    )
+
+    result = await session.execute(query)
+    summaries = result.scalars().all()
+
+    return [
+        MemorySummaryResponse(
+            summary_id=summary.summary_id,
+            user_id=summary.user_id,
+            scope_type=summary.scope_type,
+            scope_identifier=summary.scope_identifier,
+            summary_text=summary.summary_text,
+            key_facts=summary.key_facts,
+            confidence=summary.confidence,
+            created_at=summary.created_at.isoformat(),
+        )
+        for summary in summaries
+    ]
+
+
+@router.get("/conflicts", response_model=list[MemoryConflictResponse])
+async def list_memory_conflicts(
+    session: AsyncSession = Depends(get_db),
+) -> list[MemoryConflictResponse]:
+    """Get memory conflicts (detected inconsistencies).
+
+    Args:
+        session: Database session (injected)
+
+    Returns:
+        List of memory conflicts ordered by creation time (most recent first)
+    """
+    query = select(MemoryConflict).order_by(MemoryConflict.created_at.desc())
+
+    result = await session.execute(query)
+    conflicts = result.scalars().all()
+
+    return [
+        MemoryConflictResponse(
+            conflict_id=conflict.conflict_id,
+            conflict_type=conflict.conflict_type,
+            conflict_data=conflict.conflict_data,
+            resolution_strategy=conflict.resolution_strategy,
+            resolved_at=conflict.resolved_at.isoformat() if conflict.resolved_at else None,
+            created_at=conflict.created_at.isoformat(),
+        )
+        for conflict in conflicts
+    ]
+
+
 @router.get("/stats")
 async def get_memory_stats(
     user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
@@ -218,9 +481,32 @@ async def get_memory_stats(
         session: Database session (injected)
 
     Returns:
-        Dictionary of memory statistics
+        Dictionary of memory statistics for all 6 layers
     """
-    # Count semantic memories
+    # Layer 1: Chat events
+    chat_events_result = await session.execute(
+        select(ChatEvent).where(ChatEvent.user_id == user_id)
+    )
+    chat_events_count = len(chat_events_result.scalars().all())
+
+    # Layer 2: Entities and aliases
+    entity_result = await session.execute(
+        select(CanonicalEntity).where(CanonicalEntity.entity_id.like("customer:%"))
+    )
+    entity_count = len(entity_result.scalars().all())
+
+    alias_result = await session.execute(
+        select(EntityAlias).where(EntityAlias.user_id == user_id)
+    )
+    alias_count = len(alias_result.scalars().all())
+
+    # Layer 3: Episodic memories
+    episodic_result = await session.execute(
+        select(EpisodicMemory).where(EpisodicMemory.user_id == user_id)
+    )
+    episodic_count = len(episodic_result.scalars().all())
+
+    # Layer 4: Semantic memories
     semantic_result = await session.execute(
         select(SemanticMemory).where(
             SemanticMemory.user_id == user_id, SemanticMemory.status == "active"
@@ -228,20 +514,29 @@ async def get_memory_stats(
     )
     semantic_count = len(semantic_result.scalars().all())
 
-    # Count canonical entities (customers only for demo)
-    entity_result = await session.execute(
-        select(CanonicalEntity).where(CanonicalEntity.entity_id.like("customer:%"))
+    # Layer 5: Procedural memories
+    procedural_result = await session.execute(
+        select(ProceduralMemory).where(ProceduralMemory.user_id == user_id)
     )
-    entity_count = len(entity_result.scalars().all())
+    procedural_count = len(procedural_result.scalars().all())
 
-    # Count aliases for demo user
-    alias_result = await session.execute(
-        select(EntityAlias).where(EntityAlias.user_id == user_id)
+    # Layer 6: Memory summaries
+    summaries_result = await session.execute(
+        select(MemorySummary).where(MemorySummary.user_id == user_id)
     )
-    alias_count = len(alias_result.scalars().all())
+    summaries_count = len(summaries_result.scalars().all())
+
+    # Supporting: Memory conflicts
+    conflicts_result = await session.execute(select(MemoryConflict))
+    conflicts_count = len(conflicts_result.scalars().all())
 
     return {
-        "semantic_memories": semantic_count,
+        "chat_events": chat_events_count,
         "canonical_entities": entity_count,
         "entity_aliases": alias_count,
+        "episodic_memories": episodic_count,
+        "semantic_memories": semantic_count,
+        "procedural_memories": procedural_count,
+        "memory_summaries": summaries_count,
+        "memory_conflicts": conflicts_count,
     }

@@ -953,6 +953,101 @@ async def test_entity_repository():
 - If unclear design: Ask for design doc clarification
 - If disagreement: Discuss with reference to vision principles
 
+### When To Create Documentation
+
+**CRITICAL**: Do NOT create markdown documentation files after every change unless they're genuinely useful.
+
+**Documentation bloat is a form of technical debt.**
+
+#### ❌ DO NOT Create Documentation For:
+
+- **Progress updates** - Don't create "COMPLETION_SUMMARY_v5.md" after fixing bugs
+- **Single changes** - Don't create "DATETIME_FIX_2025-10-16.md" for one-line fixes
+- **Temporary work** - Don't create "TEMP_NOTES.md" or "SCRATCH.md"
+- **Already documented features** - If docs exist, update them, don't create new ones
+- **Code changes that speak for themselves** - Type hints, tests, and code comments are documentation
+- **Every quality improvement** - Don't create "QUALITY_METRICS_v12.md" after linting
+
+#### ✅ DO Create Documentation For:
+
+- **New major features** - Phase 1C implementation with architecture changes
+- **API changes** - New endpoints or breaking changes to existing ones
+- **Architecture decisions** - When you make a significant design choice
+- **Migration guides** - When restructuring affects users
+- **Tutorials/guides** - When new patterns are introduced
+
+#### Default Behavior
+
+**When in doubt: DON'T create a new doc.**
+
+Instead:
+1. **Update existing docs** - If relevant docs exist, edit them
+2. **Use code comments** - For implementation details
+3. **Use git commit messages** - For change rationale
+4. **Use docstrings** - For function/class documentation
+5. **Ask first** - "Should I document this change? Where?"
+
+#### Examples
+
+**❌ BAD - Documentation Bloat**:
+```
+Scenario: Fixed datetime.utcnow() → datetime.now(UTC) in 2 files
+
+Bad Response:
+- Create "DATETIME_MIGRATION_2025-10-16.md" (unnecessary)
+- Create "QUALITY_FIX_DATETIME.md" (redundant)
+- Update "CHANGES.md" with verbose entry (over-documenting)
+
+Result: 3 new files for a 2-line change
+```
+
+**✅ GOOD - Appropriate Documentation**:
+```
+Scenario: Fixed datetime.utcnow() → datetime.now(UTC) in 2 files
+
+Good Response:
+- Update code (the change itself)
+- Git commit: "fix: use timezone-aware datetime.now(UTC)"
+- No new markdown files created
+
+Result: Change documented in git history, code is self-explanatory
+```
+
+**✅ ACCEPTABLE - When Major Work Warrants It**:
+```
+Scenario: Complete documentation overhaul (50+ files reorganized)
+
+Acceptable Response:
+- Create "DOCUMENTATION_OVERHAUL_SUMMARY.md" (explains major change)
+- Create "MIGRATION_GUIDE.md" (helps users navigate)
+- Create "START_HERE.md" (clear entry point)
+
+Result: 3 docs for a major structural change affecting all users
+```
+
+#### Questions to Ask Before Creating a Doc
+
+1. **Does this already exist?** - Check before creating
+2. **Will this be useful in 6 months?** - Or is it just status reporting?
+3. **Can this go in an existing doc?** - Update rather than create
+4. **Is this better as a code comment?** - Documentation lives best near code
+5. **Would a git commit message suffice?** - For small changes, yes
+
+#### When You Complete a Task
+
+**DO**:
+- ✅ Write clear commit messages
+- ✅ Update relevant existing docs if architecture changed
+- ✅ Add code comments for non-obvious logic
+- ✅ Write docstrings for new functions/classes
+
+**DON'T**:
+- ❌ Create "TASK_XYZ_COMPLETION.md"
+- ❌ Create "SUMMARY_OF_WORK_2025-10-16.md"
+- ❌ Create "METRICS_AFTER_FIX.md"
+
+**Remember**: Code, tests, and git history are documentation. Markdown files are for architecture, guides, and major changes only.
+
 ---
 
 ## Advanced Principles: Mastering the Philosophy

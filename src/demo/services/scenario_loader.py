@@ -76,6 +76,9 @@ class ScenarioLoaderService:
 
         logger.info(f"Loading scenario {scenario_id}: {scenario.title}")
 
+        # Validate scenario before loading
+        self._validate_scenario(scenario)
+
         try:
             # Clear tracking dicts
             self._entity_map = {}
@@ -121,6 +124,84 @@ class ScenarioLoaderService:
             logger.error(f"Failed to load scenario {scenario_id}: {e}")
             msg = f"Failed to load scenario {scenario_id}: {e}"
             raise ScenarioLoadError(msg) from e
+
+    def _validate_scenario(self, scenario: ScenarioDefinition) -> None:
+        """Validate scenario definition before loading.
+
+        Checks for:
+        - Referenced customers exist in customers list
+        - Referenced sales orders exist in sales_orders list
+        - Referenced invoices exist in invoices list
+        - Semantic memory subjects reference defined customers
+
+        Raises:
+            ScenarioLoadError: If validation fails with specific error message
+        """
+        customer_names = {c.name for c in scenario.domain_setup.customers}
+        so_numbers = {so.so_number for so in scenario.domain_setup.sales_orders}
+        invoice_numbers = {inv.invoice_number for inv in scenario.domain_setup.invoices}
+
+        # Validate sales orders reference existing customers
+        for so_setup in scenario.domain_setup.sales_orders:
+            if so_setup.customer_name not in customer_names:
+                msg = (
+                    f"Validation failed: Sales order '{so_setup.so_number}' references "
+                    f"customer '{so_setup.customer_name}' which is not defined in scenario. "
+                    f"Available customers: {sorted(customer_names)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        # Validate invoices reference existing sales orders
+        for invoice_setup in scenario.domain_setup.invoices:
+            if invoice_setup.sales_order_number not in so_numbers:
+                msg = (
+                    f"Validation failed: Invoice '{invoice_setup.invoice_number}' references "
+                    f"sales order '{invoice_setup.sales_order_number}' which is not defined in scenario. "
+                    f"Available sales orders: {sorted(so_numbers)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        # Validate work orders reference existing sales orders
+        for wo_setup in scenario.domain_setup.work_orders:
+            if wo_setup.sales_order_number not in so_numbers:
+                msg = (
+                    f"Validation failed: Work order references "
+                    f"sales order '{wo_setup.sales_order_number}' which is not defined in scenario. "
+                    f"Available sales orders: {sorted(so_numbers)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        # Validate payments reference existing invoices
+        for payment_setup in scenario.domain_setup.payments:
+            if payment_setup.invoice_number not in invoice_numbers:
+                msg = (
+                    f"Validation failed: Payment references "
+                    f"invoice '{payment_setup.invoice_number}' which is not defined in scenario. "
+                    f"Available invoices: {sorted(invoice_numbers)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        # Validate tasks reference existing customers (if specified)
+        for task_setup in scenario.domain_setup.tasks:
+            if task_setup.customer_name and task_setup.customer_name not in customer_names:
+                msg = (
+                    f"Validation failed: Task '{task_setup.title}' references "
+                    f"customer '{task_setup.customer_name}' which is not defined in scenario. "
+                    f"Available customers: {sorted(customer_names)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        # Validate semantic memories reference existing customers
+        for memory_setup in scenario.semantic_memories:
+            if memory_setup.subject not in customer_names:
+                msg = (
+                    f"Validation failed: Semantic memory references "
+                    f"subject '{memory_setup.subject}' which is not defined as a customer in scenario. "
+                    f"Available customers: {sorted(customer_names)}"
+                )
+                raise ScenarioLoadError(msg)
+
+        logger.debug(f"Scenario {scenario.scenario_id} validation passed")
 
     async def _load_customers(self, scenario: ScenarioDefinition) -> int:
         """Load customers from scenario (idempotent)."""
@@ -235,7 +316,7 @@ class ScenarioLoaderService:
         return count
 
     async def _load_work_orders(self, scenario: ScenarioDefinition) -> int:
-        """Load work orders from scenario."""
+        """Load work orders from scenario (idempotent)."""
         count = 0
         for wo_setup in scenario.domain_setup.work_orders:
             so_id = self._entity_map.get(wo_setup.sales_order_number)
@@ -244,6 +325,19 @@ class ScenarioLoaderService:
                 raise ScenarioLoadError(
                     msg
                 )
+
+            # Check if work order already exists (match by SO + description)
+            result = await self.session.execute(
+                select(DomainWorkOrder).where(
+                    DomainWorkOrder.so_id == so_id,
+                    DomainWorkOrder.description == wo_setup.description
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Work order for '%s' already exists", wo_setup.description)
+                continue
 
             work_order = DomainWorkOrder(
                 so_id=so_id,
@@ -254,12 +348,13 @@ class ScenarioLoaderService:
             )
             self.session.add(work_order)
             count += 1
+            logger.debug("Created work order: %s for SO %s", wo_setup.description, wo_setup.sales_order_number)
 
         await self.session.flush()
         return count
 
     async def _load_payments(self, scenario: ScenarioDefinition) -> int:
-        """Load payments from scenario."""
+        """Load payments from scenario (idempotent)."""
         count = 0
         for payment_setup in scenario.domain_setup.payments:
             invoice_id = self._entity_map.get(payment_setup.invoice_number)
@@ -269,6 +364,20 @@ class ScenarioLoaderService:
                     msg
                 )
 
+            # Check if payment already exists (match by invoice + amount + method)
+            result = await self.session.execute(
+                select(DomainPayment).where(
+                    DomainPayment.invoice_id == invoice_id,
+                    DomainPayment.amount == payment_setup.amount,
+                    DomainPayment.method == payment_setup.method
+                )
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Payment of $%s for invoice %s already exists", payment_setup.amount, payment_setup.invoice_number)
+                continue
+
             payment = DomainPayment(
                 invoice_id=invoice_id,
                 amount=payment_setup.amount,
@@ -276,12 +385,13 @@ class ScenarioLoaderService:
             )
             self.session.add(payment)
             count += 1
+            logger.debug("Created payment: $%s for invoice %s", payment_setup.amount, payment_setup.invoice_number)
 
         await self.session.flush()
         return count
 
     async def _load_tasks(self, scenario: ScenarioDefinition) -> int:
-        """Load tasks from scenario."""
+        """Load tasks from scenario (idempotent)."""
         count = 0
         for task_setup in scenario.domain_setup.tasks:
             customer_id = None
@@ -293,6 +403,16 @@ class ScenarioLoaderService:
                         msg
                     )
 
+            # Check if task already exists (match by title)
+            result = await self.session.execute(
+                select(DomainTask).where(DomainTask.title == task_setup.title)
+            )
+            existing = result.scalar_one_or_none()
+
+            if existing:
+                logger.debug("Task '%s' already exists", task_setup.title)
+                continue
+
             task = DomainTask(
                 customer_id=customer_id,
                 title=task_setup.title,
@@ -301,6 +421,7 @@ class ScenarioLoaderService:
             )
             self.session.add(task)
             count += 1
+            logger.debug("Created task: %s", task_setup.title)
 
         await self.session.flush()
         return count

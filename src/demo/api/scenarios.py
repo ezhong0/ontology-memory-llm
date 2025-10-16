@@ -24,6 +24,15 @@ class ScenarioSummaryResponse(BaseModel):
     description: str
     category: str
     expected_query: str
+    expected_behavior: str | None = None
+    # Setup preview - what will be created
+    customers_count: int = 0
+    sales_orders_count: int = 0
+    invoices_count: int = 0
+    work_orders_count: int = 0
+    payments_count: int = 0
+    tasks_count: int = 0
+    memories_count: int = 0
 
     class Config:
         from_attributes = True
@@ -64,7 +73,7 @@ async def list_scenarios() -> list[ScenarioSummaryResponse]:
     """List all available scenarios.
 
     Returns:
-        List of scenario summaries with ID, title, description, and expected query.
+        List of scenario summaries with ID, title, description, expected query, and setup counts.
     """
     scenarios = ScenarioRegistry.get_all()
     return [
@@ -74,6 +83,15 @@ async def list_scenarios() -> list[ScenarioSummaryResponse]:
             description=s.description,
             category=s.category,
             expected_query=s.expected_query,
+            expected_behavior=s.expected_behavior,
+            # Count what will be created
+            customers_count=len(s.domain_setup.customers),
+            sales_orders_count=len(s.domain_setup.sales_orders),
+            invoices_count=len(s.domain_setup.invoices),
+            work_orders_count=len(s.domain_setup.work_orders),
+            payments_count=len(s.domain_setup.payments),
+            tasks_count=len(s.domain_setup.tasks),
+            memories_count=len(s.semantic_memories),
         )
         for s in scenarios
     ]
@@ -87,7 +105,7 @@ async def get_scenario(scenario_id: int) -> ScenarioSummaryResponse:
         scenario_id: ID of the scenario (1-18)
 
     Returns:
-        Scenario summary
+        Scenario summary with setup counts
 
     Raises:
         404: If scenario not found
@@ -102,6 +120,15 @@ async def get_scenario(scenario_id: int) -> ScenarioSummaryResponse:
         description=scenario.description,
         category=scenario.category,
         expected_query=scenario.expected_query,
+        expected_behavior=scenario.expected_behavior,
+        # Count what will be created
+        customers_count=len(scenario.domain_setup.customers),
+        sales_orders_count=len(scenario.domain_setup.sales_orders),
+        invoices_count=len(scenario.domain_setup.invoices),
+        work_orders_count=len(scenario.domain_setup.work_orders),
+        payments_count=len(scenario.domain_setup.payments),
+        tasks_count=len(scenario.domain_setup.tasks),
+        memories_count=len(scenario.semantic_memories),
     )
 
 

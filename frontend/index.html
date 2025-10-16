@@ -5,6 +5,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memory System Demo</title>
     <style>
+        /* ============================================
+           PHASE 0: DESIGN TOKENS & THEME SYSTEM
+           ============================================ */
+
+        :root {
+            /* Colors - Light Mode */
+            --color-bg: #FAFAFA;
+            --color-surface: #FFFFFF;
+            --color-surface-hover: #F5F5F5;
+            --color-border: #E5E5E5;
+            --color-border-strong: #D4D4D4;
+
+            --color-primary: #2563EB;
+            --color-primary-hover: #1D4ED8;
+            --color-primary-light: #DBEAFE;
+
+            --color-success: #16A34A;
+            --color-success-light: #DCFCE7;
+            --color-danger: #DC2626;
+            --color-danger-hover: #B91C1C;
+            --color-danger-light: #FEE2E2;
+            --color-warning: #EA580C;
+            --color-warning-light: #FFEDD5;
+
+            --color-text-primary: #0F172A;
+            --color-text-secondary: #64748B;
+            --color-text-tertiary: #94A3B8;
+
+            /* Typography */
+            --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+            --font-mono: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+
+            --text-xs: 11px;
+            --text-sm: 13px;
+            --text-base: 14px;
+            --text-lg: 16px;
+            --text-xl: 20px;
+            --text-2xl: 24px;
+            --text-3xl: 32px;
+
+            /* Spacing */
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 20px;
+            --space-6: 24px;
+            --space-8: 32px;
+            --space-10: 40px;
+
+            /* Sizing */
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-full: 9999px;
+
+            /* Transitions */
+            --transition-fast: 150ms ease;
+            --transition-base: 200ms ease;
+        }
+
+        [data-theme="dark"] {
+            /* Colors - Dark Mode */
+            --color-bg: #0A0A0A;
+            --color-surface: #1A1A1A;
+            --color-surface-hover: #262626;
+            --color-border: #2A2A2A;
+            --color-border-strong: #3A3A3A;
+
+            --color-primary: #60A5FA;
+            --color-primary-hover: #3B82F6;
+            --color-primary-light: #1E3A5F;
+
+            --color-success: #22C55E;
+            --color-success-light: #14532D;
+            --color-danger: #EF4444;
+            --color-danger-hover: #DC2626;
+            --color-danger-light: #450A0A;
+            --color-warning: #F97316;
+            --color-warning-light: #431407;
+
+            --color-text-primary: #F1F5F9;
+            --color-text-secondary: #94A3B8;
+            --color-text-tertiary: #64748B;
+        }
+
+        /* ============================================
+           CATEGORY COLORS (Phase 2)
+           ============================================ */
+
+        :root {
+            --category-financial: #16A34A;
+            --category-operational: #2563EB;
+            --category-entity_resolution: #9333EA;
+            --category-memory_extraction: #EA580C;
+            --category-sla_monitoring: #DC2626;
+            --category-conflict_resolution: #EAB308;
+            --category-db_grounding: #14B8A6;
+            --category-confidence_management: #6366F1;
+            --category-consolidation: #EC4899;
+            --category-explainability: #06B6D4;
+            --category-procedural_memory: #8B5CF6;
+            --category-pii_safety: #991B1B;
+            --category-task_management: #6B7280;
+        }
+
+        /* ============================================
+           BASE STYLES
+           ============================================ */
+
         * {
             margin: 0;
             padding: 0;
@@ -12,62 +122,105 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: var(--font-sans);
+            background: var(--color-bg);
+            color: var(--color-text-primary);
             min-height: 100vh;
-            padding: 20px;
+            padding: var(--space-6);
+            transition: background-color var(--transition-base), color var(--transition-base);
         }
+
+        /* ============================================
+           LAYOUT
+           ============================================ */
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
         }
 
+        /* ============================================
+           HEADER & NAVIGATION
+           ============================================ */
+
         .header {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            margin-bottom: var(--space-6);
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            transition: background-color var(--transition-base), border-color var(--transition-base);
+        }
+
+        .header-content {
+            flex: 1;
         }
 
         h1 {
-            color: #2d3748;
-            font-size: 32px;
-            margin-bottom: 10px;
+            color: var(--color-text-primary);
+            font-size: var(--text-3xl);
+            font-weight: 600;
+            margin-bottom: var(--space-2);
+            letter-spacing: -0.02em;
         }
 
         .subtitle {
-            color: #718096;
-            font-size: 16px;
+            color: var(--color-text-secondary);
+            font-size: var(--text-base);
+        }
+
+        .theme-toggle {
+            background: var(--color-surface-hover);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .theme-toggle:hover {
+            background: var(--color-border);
+            border-color: var(--color-border-strong);
         }
 
         .nav-tabs {
             display: flex;
-            gap: 10px;
-            margin-top: 20px;
-            border-bottom: 2px solid #e2e8f0;
+            gap: var(--space-1);
+            margin-top: var(--space-5);
+            border-bottom: 1px solid var(--color-border);
         }
 
         .nav-tab {
-            padding: 12px 24px;
+            padding: var(--space-3) var(--space-5);
             background: none;
             border: none;
-            border-bottom: 3px solid transparent;
-            color: #718096;
-            font-size: 16px;
-            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            color: var(--color-text-secondary);
+            font-size: var(--text-base);
+            font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all var(--transition-fast);
+            position: relative;
+            top: 1px;
         }
 
         .nav-tab:hover {
-            color: #667eea;
+            color: var(--color-text-primary);
+            background: var(--color-surface-hover);
         }
 
         .nav-tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary);
         }
 
         .tab-content {
@@ -78,30 +231,46 @@
             display: block;
         }
 
+        /* ============================================
+           ACTIONS BAR
+           ============================================ */
+
         .actions-bar {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
+            margin-bottom: var(--space-6);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: background-color var(--transition-base), border-color var(--transition-base);
         }
 
         .actions-bar h3 {
-            color: #2d3748;
-            font-size: 20px;
+            color: var(--color-text-primary);
+            font-size: var(--text-xl);
+            font-weight: 600;
         }
 
+        /* ============================================
+           BUTTON SYSTEM
+           ============================================ */
+
         button {
-            padding: 12px 24px;
-            font-size: 14px;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
+            padding: 0 var(--space-5);
+            height: 40px;
+            font-size: var(--text-base);
+            font-weight: 500;
+            font-family: var(--font-sans);
+            border: 1px solid transparent;
+            border-radius: var(--radius-md);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-2);
         }
 
         button:disabled {
@@ -110,141 +279,266 @@
         }
 
         .btn-primary {
-            background: #667eea;
+            background: var(--color-primary);
             color: white;
+            border-color: var(--color-primary);
         }
 
         .btn-primary:hover:not(:disabled) {
-            background: #5a67d8;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            background: var(--color-primary-hover);
+            border-color: var(--color-primary-hover);
         }
 
         .btn-danger {
-            background: #fc8181;
+            background: var(--color-danger);
             color: white;
+            border-color: var(--color-danger);
         }
 
         .btn-danger:hover:not(:disabled) {
-            background: #f56565;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(252, 129, 129, 0.4);
+            background: var(--color-danger-hover);
+            border-color: var(--color-danger-hover);
         }
 
         .btn-secondary {
-            background: #e2e8f0;
-            color: #4a5568;
+            background: var(--color-surface-hover);
+            color: var(--color-text-primary);
+            border-color: var(--color-border);
         }
 
         .btn-secondary:hover:not(:disabled) {
-            background: #cbd5e0;
-            transform: translateY(-2px);
+            background: var(--color-border);
+            border-color: var(--color-border-strong);
         }
+
+        /* ============================================
+           SCENARIO CARDS
+           ============================================ */
 
         .scenarios-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
-            gap: 20px;
+            gap: var(--space-5);
         }
 
         .scenario-card {
-            background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            transition: all var(--transition-fast);
         }
 
         .scenario-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+            border-color: var(--color-border-strong);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
         }
 
         .scenario-header {
             display: flex;
             justify-content: space-between;
             align-items: start;
-            margin-bottom: 15px;
+            margin-bottom: var(--space-4);
         }
 
         .scenario-number {
-            background: #667eea;
+            background: var(--color-primary);
             color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-full);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            font-size: 18px;
+            font-weight: 600;
+            font-size: var(--text-lg);
             flex-shrink: 0;
         }
 
         .scenario-title {
-            color: #2d3748;
-            font-size: 18px;
+            color: var(--color-text-primary);
+            font-size: var(--text-lg);
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: var(--space-2);
             line-height: 1.4;
         }
 
         .scenario-category {
-            display: inline-block;
-            background: #edf2f7;
-            color: #4a5568;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
             font-weight: 600;
+            text-transform: capitalize;
+            letter-spacing: 0.03em;
+            margin-bottom: var(--space-3);
+            border: 1px solid;
+        }
+
+        /* Category-specific styles */
+        .category-financial {
+            background: rgba(22, 163, 74, 0.1);
+            color: var(--category-financial);
+            border-color: var(--category-financial);
+        }
+        .category-operational {
+            background: rgba(37, 99, 235, 0.1);
+            color: var(--category-operational);
+            border-color: var(--category-operational);
+        }
+        .category-entity_resolution {
+            background: rgba(147, 51, 234, 0.1);
+            color: var(--category-entity_resolution);
+            border-color: var(--category-entity_resolution);
+        }
+        .category-memory_extraction {
+            background: rgba(234, 88, 12, 0.1);
+            color: var(--category-memory_extraction);
+            border-color: var(--category-memory_extraction);
+        }
+        .category-sla_monitoring {
+            background: rgba(220, 38, 38, 0.1);
+            color: var(--category-sla_monitoring);
+            border-color: var(--category-sla_monitoring);
+        }
+        .category-conflict_resolution {
+            background: rgba(234, 179, 8, 0.1);
+            color: var(--category-conflict_resolution);
+            border-color: var(--category-conflict_resolution);
+        }
+        .category-db_grounding {
+            background: rgba(20, 184, 166, 0.1);
+            color: var(--category-db_grounding);
+            border-color: var(--category-db_grounding);
+        }
+        .category-confidence_management {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--category-confidence_management);
+            border-color: var(--category-confidence_management);
+        }
+        .category-consolidation {
+            background: rgba(236, 72, 153, 0.1);
+            color: var(--category-consolidation);
+            border-color: var(--category-consolidation);
+        }
+        .category-explainability {
+            background: rgba(6, 182, 212, 0.1);
+            color: var(--category-explainability);
+            border-color: var(--category-explainability);
+        }
+        .category-procedural_memory {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--category-procedural_memory);
+            border-color: var(--category-procedural_memory);
+        }
+        .category-pii_safety {
+            background: rgba(153, 27, 27, 0.1);
+            color: var(--category-pii_safety);
+            border-color: var(--category-pii_safety);
+        }
+        .category-task_management {
+            background: rgba(107, 114, 128, 0.1);
+            color: var(--category-task_management);
+            border-color: var(--category-task_management);
+        }
+
+        .scenario-setup {
+            background: var(--color-surface-hover);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            margin-bottom: var(--space-4);
+        }
+
+        .setup-title {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
             text-transform: uppercase;
-            margin-bottom: 12px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            margin-bottom: var(--space-2);
+        }
+
+        .setup-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .setup-item {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+        }
+
+        .setup-count {
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+
+        .scenario-behavior {
+            background: var(--color-primary-light);
+            border-left: 2px solid var(--color-primary);
+            padding: var(--space-3);
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-4);
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            line-height: 1.6;
         }
 
         .scenario-description {
-            color: #718096;
-            font-size: 14px;
+            color: var(--color-text-secondary);
+            font-size: var(--text-sm);
             line-height: 1.6;
-            margin-bottom: 15px;
+            margin-bottom: var(--space-4);
         }
 
         .scenario-query {
-            background: #f7fafc;
-            border-left: 3px solid #48bb78;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
+            background: var(--color-success-light);
+            border-left: 2px solid var(--color-success);
+            padding: var(--space-3);
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-4);
         }
 
         .query-label {
-            font-size: 11px;
-            color: #2d5f3d;
+            font-size: var(--text-xs);
+            color: var(--color-success);
             text-transform: uppercase;
-            font-weight: 700;
-            margin-bottom: 6px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            margin-bottom: var(--space-2);
         }
 
         .query-text {
-            color: #2d3748;
-            font-size: 13px;
+            color: var(--color-text-primary);
+            font-size: var(--text-sm);
             line-height: 1.5;
             font-style: italic;
         }
 
         .scenario-actions {
             display: flex;
-            gap: 10px;
+            gap: var(--space-3);
         }
+
+        /* ============================================
+           ALERTS & FEEDBACK
+           ============================================ */
 
         .spinner {
             border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
+            border-radius: var(--radius-full);
             border-top-color: white;
             width: 16px;
             height: 16px;
             animation: spin 0.8s linear infinite;
             display: inline-block;
-            margin-right: 8px;
         }
 
         @keyframes spin {
@@ -252,10 +546,11 @@
         }
 
         .alert {
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            padding: var(--space-4) var(--space-5);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-5);
             animation: slideIn 0.3s ease-out;
+            border: 1px solid;
         }
 
         @keyframes slideIn {
@@ -270,64 +565,81 @@
         }
 
         .alert-success {
-            background: #c6f6d5;
-            border-left: 4px solid #48bb78;
-            color: #22543d;
+            background: var(--color-success-light);
+            border-color: var(--color-success);
+            color: var(--color-success);
         }
 
         .alert-error {
-            background: #fed7d7;
-            border-left: 4px solid #fc8181;
-            color: #742a2a;
+            background: var(--color-danger-light);
+            border-color: var(--color-danger);
+            color: var(--color-danger);
         }
 
         .alert-title {
             font-weight: 600;
-            margin-bottom: 5px;
-            font-size: 14px;
+            margin-bottom: var(--space-2);
+            font-size: var(--text-base);
         }
+
+        .alert p {
+            color: var(--color-text-primary);
+            font-size: var(--text-sm);
+        }
+
+        /* ============================================
+           STATS & METRICS
+           ============================================ */
 
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-            gap: 8px;
-            margin-top: 12px;
+            gap: var(--space-2);
+            margin-top: var(--space-3);
         }
 
         .stat-box {
-            background: white;
-            padding: 8px;
-            border-radius: 6px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: var(--space-3);
+            border-radius: var(--radius-md);
             text-align: center;
         }
 
         .stat-value {
-            font-size: 20px;
+            font-size: var(--text-xl);
             font-weight: 700;
-            color: #667eea;
-            margin-bottom: 2px;
+            color: var(--color-primary);
+            margin-bottom: var(--space-1);
         }
 
         .stat-label {
-            font-size: 10px;
-            color: #718096;
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
             text-transform: uppercase;
+            letter-spacing: 0.03em;
         }
 
+        /* ============================================
+           DATA TABLES
+           ============================================ */
+
         .data-table {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
+            margin-bottom: var(--space-5);
+            transition: background-color var(--transition-base), border-color var(--transition-base);
         }
 
         .data-table h3 {
-            color: #2d3748;
-            font-size: 18px;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e2e8f0;
+            color: var(--color-text-primary);
+            font-size: var(--text-lg);
+            font-weight: 600;
+            margin-bottom: var(--space-4);
+            padding-bottom: var(--space-3);
+            border-bottom: 1px solid var(--color-border);
         }
 
         table {
@@ -336,71 +648,451 @@
         }
 
         th {
-            background: #f7fafc;
-            color: #4a5568;
+            background: var(--color-surface-hover);
+            color: var(--color-text-secondary);
             font-weight: 600;
-            font-size: 12px;
+            font-size: var(--text-xs);
             text-transform: uppercase;
-            padding: 12px;
+            letter-spacing: 0.03em;
+            padding: var(--space-3);
             text-align: left;
-            border-bottom: 2px solid #e2e8f0;
+            border-bottom: 1px solid var(--color-border);
         }
 
         td {
-            padding: 12px;
-            color: #2d3748;
-            font-size: 14px;
-            border-bottom: 1px solid #e2e8f0;
+            padding: var(--space-3);
+            color: var(--color-text-primary);
+            font-size: var(--text-sm);
+            border-bottom: 1px solid var(--color-border);
         }
 
         tr:hover {
-            background: #f7fafc;
+            background: var(--color-surface-hover);
         }
+
+        td code {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            background: var(--color-surface-hover);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-border);
+        }
+
+        /* ============================================
+           EMPTY STATES
+           ============================================ */
 
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
-            color: #718096;
+            padding: var(--space-10) var(--space-5);
+            color: var(--color-text-secondary);
         }
 
         .empty-state-icon {
             font-size: 48px;
-            margin-bottom: 16px;
+            margin-bottom: var(--space-4);
             opacity: 0.5;
         }
 
         .empty-state-title {
-            font-size: 20px;
+            font-size: var(--text-xl);
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: var(--space-2);
+            color: var(--color-text-primary);
         }
 
         .empty-state-text {
-            font-size: 14px;
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
         }
 
         .refresh-btn {
             margin-left: auto;
+        }
+
+        /* ============================================
+           DATABASE EXPLORER (Phase 3)
+           ============================================ */
+
+        .table-nav {
+            display: flex;
+            gap: var(--space-2);
+            margin-bottom: var(--space-5);
+            flex-wrap: wrap;
+        }
+
+        .table-nav-btn {
+            padding: var(--space-2) var(--space-4);
+            background: var(--color-surface-hover);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text-secondary);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .table-nav-btn:hover {
+            background: var(--color-border);
+            border-color: var(--color-border-strong);
+        }
+
+        .table-nav-btn.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            color: white;
+        }
+
+        .db-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: var(--space-4);
+            margin-bottom: var(--space-6);
+        }
+
+        .db-stat-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+            text-align: center;
+        }
+
+        .db-stat-value {
+            font-size: var(--text-3xl);
+            font-weight: 700;
+            color: var(--color-primary);
+            margin-bottom: var(--space-1);
+        }
+
+        .db-stat-label {
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-open {
+            background: var(--color-danger-light);
+            color: var(--color-danger);
+        }
+
+        .status-paid {
+            background: var(--color-success-light);
+            color: var(--color-success);
+        }
+
+        .status-fulfilled, .status-done {
+            background: var(--color-success-light);
+            color: var(--color-success);
+        }
+
+        .status-in_fulfillment, .status-in_progress, .status-doing {
+            background: var(--color-primary-light);
+            color: var(--color-primary);
+        }
+
+        .status-queued, .status-todo {
+            background: var(--color-surface-hover);
+            color: var(--color-text-secondary);
+        }
+
+        /* ============================================
+           MEMORY EXPLORER (Phase 4)
+           ============================================ */
+
+        .memory-layers {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+            margin-bottom: var(--space-6);
+        }
+
+        .memory-layer {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-4);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .memory-layer:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+        }
+
+        .memory-layer.active {
+            border-color: var(--color-primary);
+            border-width: 2px;
+            padding: calc(var(--space-4) - 1px);
+        }
+
+        .memory-layer.not-implemented {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .memory-layer.not-implemented:hover {
+            border-color: var(--color-border);
+            box-shadow: none;
+        }
+
+        .layer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--space-2);
+        }
+
+        .layer-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .layer-number {
+            background: var(--color-primary);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: var(--radius-full);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: var(--text-sm);
+        }
+
+        .layer-name {
+            font-size: var(--text-lg);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .layer-count {
+            background: var(--color-surface-hover);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-full);
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .layer-description {
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-2);
+        }
+
+        .layer-status {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-style: italic;
+        }
+
+        /* ============================================
+           CHAT INTERFACE (Phase 5)
+           ============================================ */
+
+        .chat-container {
+            display: flex;
+            gap: var(--space-5);
+            height: calc(100vh - 300px);
+        }
+
+        .chat-messages {
+            flex: 1;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-4);
+        }
+
+        .chat-message {
+            display: flex;
+            gap: var(--space-3);
+        }
+
+        .message-user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-full);
+            background: var(--color-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: var(--text-sm);
+            flex-shrink: 0;
+        }
+
+        .message-user .message-avatar {
+            background: var(--color-text-secondary);
+        }
+
+        .message-content {
+            flex: 1;
+            background: var(--color-surface-hover);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            line-height: 1.6;
+            max-width: 70%;
+        }
+
+        .message-user .message-content {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .chat-input-container {
+            margin-top: var(--space-4);
+            display: flex;
+            gap: var(--space-3);
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: var(--text-base);
+            font-family: var(--font-sans);
+            color: var(--color-text-primary);
+            transition: all var(--transition-fast);
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .debug-panel {
+            flex: 0 0 400px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-5);
+            overflow-y: auto;
+            display: none;
+        }
+
+        .debug-panel.active {
+            display: block;
+        }
+
+        .debug-section {
+            margin-bottom: var(--space-4);
+        }
+
+        .debug-title {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-2);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .debug-item {
+            background: var(--color-surface-hover);
+            padding: var(--space-2);
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-2);
+            font-size: var(--text-xs);
+        }
+
+        .debug-item-label {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-1);
+        }
+
+        .debug-item-value {
+            color: var(--color-text-primary);
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+        }
+
+        .example-queries {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--space-3);
+            margin-bottom: var(--space-5);
+        }
+
+        .example-query {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .example-query:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
+        }
+
+        .example-query-text {
+            font-size: var(--text-sm);
+            color: var(--color-text-primary);
+            font-style: italic;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Memory System Demo</h1>
-            <p class="subtitle">Week 2 - Complete Scenario Testing Interface</p>
+            <div class="header-content">
+                <h1>Memory System Demo</h1>
+                <p class="subtitle">6-Layer Architecture • 18 Scenarios • Domain Database Integration</p>
 
-            <div class="nav-tabs">
-                <button class="nav-tab active" onclick="switchTab('scenarios')">
-                    📋 Scenarios (6)
-                </button>
-                <button class="nav-tab" onclick="switchTab('database')">
-                    🗄️ Database Explorer
-                </button>
-                <button class="nav-tab" onclick="switchTab('memory')">
-                    🧠 Memory Explorer
-                </button>
+                <div class="nav-tabs">
+                    <button class="nav-tab active" onclick="switchTab('scenarios')">
+                        Scenarios <span id="scenarioCount">(18)</span>
+                    </button>
+                    <button class="nav-tab" onclick="switchTab('chat')">
+                        Chat Demo
+                    </button>
+                    <button class="nav-tab" onclick="switchTab('database')">
+                        Database Explorer
+                    </button>
+                    <button class="nav-tab" onclick="switchTab('memory')">
+                        Memory Explorer
+                    </button>
+                </div>
             </div>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                <span id="themeIcon">🌙</span>
+            </button>
         </div>
 
         <!-- Scenarios Tab -->
@@ -422,6 +1114,19 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Chat Demo Tab -->
+        <div id="chat-tab" class="tab-content">
+            <div class="actions-bar">
+                <h3>Chat with Memory System</h3>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="debugModeToggle" onchange="toggleDebugMode()" style="width: 20px; height: 20px; cursor: pointer;">
+                    <span style="font-size: 14px; font-weight: 500;">Show Debug Mode</span>
+                </label>
+            </div>
+
+            <div id="chatContent"></div>
         </div>
 
         <!-- Database Explorer Tab -->
@@ -453,7 +1158,34 @@
         const API_BASE = window.location.origin + '/api/v1/demo';
         let scenarios = [];
 
-        // Tab switching
+        // ============================================
+        // THEME MANAGEMENT (Phase 0)
+        // ============================================
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
+        }
+
+        // ============================================
+        // TAB NAVIGATION
+        // ============================================
+
         function switchTab(tabName) {
             // Update tab buttons
             document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -489,29 +1221,64 @@
         // Render scenarios grid
         function renderScenarios() {
             const grid = document.getElementById('scenariosGrid');
-            grid.innerHTML = scenarios.map(scenario => `
-                <div class="scenario-card">
-                    <div class="scenario-header">
-                        <div class="scenario-number">${scenario.scenario_id}</div>
-                    </div>
-                    <h3 class="scenario-title">${scenario.title}</h3>
-                    <div class="scenario-category">${scenario.category.replace(/_/g, ' ')}</div>
-                    <p class="scenario-description">${scenario.description}</p>
+            grid.innerHTML = scenarios.map(scenario => {
+                // Build setup items array
+                const setupItems = [];
+                if (scenario.customers_count > 0) setupItems.push({ label: 'Customers', count: scenario.customers_count, icon: '👤' });
+                if (scenario.sales_orders_count > 0) setupItems.push({ label: 'Orders', count: scenario.sales_orders_count, icon: '📦' });
+                if (scenario.invoices_count > 0) setupItems.push({ label: 'Invoices', count: scenario.invoices_count, icon: '💰' });
+                if (scenario.work_orders_count > 0) setupItems.push({ label: 'Work Orders', count: scenario.work_orders_count, icon: '🔧' });
+                if (scenario.payments_count > 0) setupItems.push({ label: 'Payments', count: scenario.payments_count, icon: '💳' });
+                if (scenario.tasks_count > 0) setupItems.push({ label: 'Tasks', count: scenario.tasks_count, icon: '✓' });
+                if (scenario.memories_count > 0) setupItems.push({ label: 'Memories', count: scenario.memories_count, icon: '🧠' });
 
-                    <div class="scenario-query">
-                        <div class="query-label">Expected Query</div>
-                        <div class="query-text">"${scenario.expected_query}"</div>
-                    </div>
+                return `
+                    <div class="scenario-card">
+                        <div class="scenario-header">
+                            <div class="scenario-number">${scenario.scenario_id}</div>
+                        </div>
+                        <h3 class="scenario-title">${scenario.title}</h3>
+                        <div class="scenario-category category-${scenario.category}">
+                            ${scenario.category.replace(/_/g, ' ')}
+                        </div>
+                        <p class="scenario-description">${scenario.description}</p>
 
-                    <div class="scenario-actions">
-                        <button class="btn-primary" onclick="loadScenario(${scenario.scenario_id})" id="loadBtn${scenario.scenario_id}">
-                            Load Scenario ${scenario.scenario_id}
-                        </button>
-                    </div>
+                        ${setupItems.length > 0 ? `
+                            <div class="scenario-setup">
+                                <div class="setup-title">This scenario creates:</div>
+                                <div class="setup-items">
+                                    ${setupItems.map(item => `
+                                        <div class="setup-item">
+                                            <span>${item.icon}</span>
+                                            <span class="setup-count">${item.count}</span>
+                                            <span>${item.label}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
 
-                    <div id="result${scenario.scenario_id}"></div>
-                </div>
-            `).join('');
+                        <div class="scenario-query">
+                            <div class="query-label">Expected Query</div>
+                            <div class="query-text">"${scenario.expected_query}"</div>
+                        </div>
+
+                        ${scenario.expected_behavior ? `
+                            <div class="scenario-behavior">
+                                <strong>Expected:</strong> ${scenario.expected_behavior}
+                            </div>
+                        ` : ''}
+
+                        <div class="scenario-actions">
+                            <button class="btn-primary" onclick="loadScenario(${scenario.scenario_id})" id="loadBtn${scenario.scenario_id}">
+                                Load Scenario
+                            </button>
+                        </div>
+
+                        <div id="result${scenario.scenario_id}"></div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // Load a specific scenario
@@ -613,114 +1380,319 @@
             }
         }
 
-        // Load database data
+        // ============================================
+        // DATABASE EXPLORER (Phase 3)
+        // ============================================
+
+        let currentTable = 'customers';
+        let dbStats = {};
+
         async function loadDatabaseData() {
             const content = document.getElementById('databaseContent');
+            content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading database...</div></div>';
+
+            try {
+                // Fetch stats
+                const statsRes = await fetch(`${API_BASE}/database/stats`);
+                dbStats = await statsRes.json();
+
+                // Render database explorer
+                renderDatabaseExplorer();
+
+                // Load default table
+                await loadTable('customers');
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        <div class="alert-title">❌ Failed to load database</div>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderDatabaseExplorer() {
+            const content = document.getElementById('databaseContent');
             content.innerHTML = `
-                <div class="data-table">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">🏗️</div>
-                        <div class="empty-state-title">Database Explorer</div>
-                        <div class="empty-state-text">Coming soon! This will show domain.customers, domain.sales_orders, domain.invoices, etc.</div>
+                <div class="db-stats">
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.customers || 0}</div>
+                        <div class="db-stat-label">Customers</div>
+                    </div>
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.sales_orders || 0}</div>
+                        <div class="db-stat-label">Sales Orders</div>
+                    </div>
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.invoices || 0}</div>
+                        <div class="db-stat-label">Invoices</div>
+                    </div>
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.work_orders || 0}</div>
+                        <div class="db-stat-label">Work Orders</div>
+                    </div>
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.payments || 0}</div>
+                        <div class="db-stat-label">Payments</div>
+                    </div>
+                    <div class="db-stat-card">
+                        <div class="db-stat-value">${dbStats.tasks || 0}</div>
+                        <div class="db-stat-label">Tasks</div>
                     </div>
                 </div>
+
+                <div class="table-nav">
+                    <button class="table-nav-btn active" onclick="loadTable('customers')">Customers</button>
+                    <button class="table-nav-btn" onclick="loadTable('sales_orders')">Sales Orders</button>
+                    <button class="table-nav-btn" onclick="loadTable('invoices')">Invoices</button>
+                    <button class="table-nav-btn" onclick="loadTable('work_orders')">Work Orders</button>
+                    <button class="table-nav-btn" onclick="loadTable('payments')">Payments</button>
+                    <button class="table-nav-btn" onclick="loadTable('tasks')">Tasks</button>
+                </div>
+
+                <div id="tableContent"></div>
             `;
         }
 
-        // Load memory data
-        async function loadMemoryData() {
-            const content = document.getElementById('memoryContent');
-            content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading memory data...</div></div>';
+        async function loadTable(tableName) {
+            currentTable = tableName;
+
+            // Update active button
+            document.querySelectorAll('.table-nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.toLowerCase().replace(' ', '_') === tableName) {
+                    btn.classList.add('active');
+                }
+            });
+
+            const tableContent = document.getElementById('tableContent');
+            tableContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading table...</div></div>';
 
             try {
-                // Fetch all memory data
-                const [semanticRes, entitiesRes, statsRes] = await Promise.all([
-                    fetch(`${API_BASE}/memories/semantic`),
-                    fetch(`${API_BASE}/memories/entities`),
-                    fetch(`${API_BASE}/memories/stats`)
-                ]);
+                const response = await fetch(`${API_BASE}/database/${tableName}`);
+                const data = await response.json();
 
-                const semanticMemories = await semanticRes.json();
-                const entities = await entitiesRes.json();
-                const stats = await statsRes.json();
+                if (data.length === 0) {
+                    tableContent.innerHTML = `
+                        <div class="data-table">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📭</div>
+                                <div class="empty-state-title">No ${tableName.replace('_', ' ')} data</div>
+                                <div class="empty-state-text">Load a scenario to populate this table</div>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
 
-                // Render memory explorer with tabs
-                content.innerHTML = `
-                    <div class="stats-grid" style="margin-bottom: 20px;">
-                        <div class="stat-box">
-                            <div class="stat-value">${stats.semantic_memories}</div>
-                            <div class="stat-label">Semantic Memories</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-value">${stats.canonical_entities}</div>
-                            <div class="stat-label">Canonical Entities</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-value">${stats.entity_aliases}</div>
-                            <div class="stat-label">Entity Aliases</div>
-                        </div>
+                tableContent.innerHTML = renderTable(tableName, data);
+            } catch (error) {
+                tableContent.innerHTML = `
+                    <div class="alert alert-error">
+                        <div class="alert-title">❌ Failed to load table</div>
+                        <p>${error.message}</p>
                     </div>
+                `;
+            }
+        }
 
+        function renderTable(tableName, data) {
+            const tables = {
+                customers: (rows) => `
                     <div class="data-table">
-                        <h3>Semantic Memories</h3>
-                        ${semanticMemories.length > 0 ? `
+                        <h3>Customers (${rows.length})</h3>
+                        <div class="table-container">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Subject Entity</th>
-                                        <th>Predicate</th>
-                                        <th>Type</th>
-                                        <th>Object Value</th>
-                                        <th>Confidence</th>
-                                        <th>Reinforcements</th>
+                                        <th>Name</th>
+                                        <th>Industry</th>
+                                        <th>Customer ID</th>
+                                        <th>Notes</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${semanticMemories.map(m => `
+                                    ${rows.map(r => `
                                         <tr>
-                                            <td><strong>${m.subject_entity_name}</strong></td>
-                                            <td>${m.predicate}</td>
-                                            <td><span style="background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${m.predicate_type}</span></td>
-                                            <td><code style="font-size: 12px;">${JSON.stringify(m.object_value)}</code></td>
-                                            <td><span style="background: ${m.confidence >= 0.8 ? '#c6f6d5' : '#fed7d7'}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${(m.confidence * 100).toFixed(0)}%</span></td>
-                                            <td>${m.reinforcement_count}</td>
+                                            <td><strong>${r.name}</strong></td>
+                                            <td>${r.industry || 'N/A'}</td>
+                                            <td><code>${r.customer_id.substring(0, 8)}...</code></td>
+                                            <td>${r.notes || ''}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
                             </table>
-                        ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Semantic Memories</div><div class="empty-state-text">Load a scenario to create memories</div></div>'}
+                        </div>
                     </div>
-
+                `,
+                sales_orders: (rows) => `
                     <div class="data-table">
-                        <h3>Canonical Entities</h3>
-                        ${entities.length > 0 ? `
+                        <h3>Sales Orders (${rows.length})</h3>
+                        <div class="table-container">
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Entity ID</th>
-                                        <th>Type</th>
-                                        <th>Name</th>
-                                        <th>External Ref</th>
-                                        <th>Aliases</th>
+                                        <th>SO Number</th>
+                                        <th>Customer</th>
+                                        <th>Title</th>
+                                        <th>Status</th>
                                         <th>Created</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${entities.map(e => `
+                                    ${rows.map(r => `
                                         <tr>
-                                            <td><code style="font-size: 11px;">${e.entity_id}</code></td>
-                                            <td><span style="background: #edf2f7; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${e.entity_type}</span></td>
-                                            <td><strong>${e.canonical_name}</strong></td>
-                                            <td><code style="font-size: 11px;">${e.external_ref ? e.external_ref.table : 'N/A'}</code></td>
-                                            <td>${e.alias_count}</td>
-                                            <td>${new Date(e.created_at).toLocaleString()}</td>
+                                            <td><strong>${r.so_number}</strong></td>
+                                            <td>${r.customer_name}</td>
+                                            <td>${r.title}</td>
+                                            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+                                            <td>${new Date(r.created_at).toLocaleString()}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
                             </table>
-                        ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Entities</div><div class="empty-state-text">Load a scenario to create entities</div></div>'}
+                        </div>
                     </div>
-                `;
+                `,
+                invoices: (rows) => `
+                    <div class="data-table">
+                        <h3>Invoices (${rows.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Invoice #</th>
+                                        <th>SO Number</th>
+                                        <th>Amount</th>
+                                        <th>Due Date</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map(r => `
+                                        <tr>
+                                            <td><strong>${r.invoice_number}</strong></td>
+                                            <td>${r.so_number}</td>
+                                            <td><strong>$${parseFloat(r.amount).toFixed(2)}</strong></td>
+                                            <td>${new Date(r.due_date).toLocaleDateString()}</td>
+                                            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+                                            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `,
+                work_orders: (rows) => `
+                    <div class="data-table">
+                        <h3>Work Orders (${rows.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>SO Number</th>
+                                        <th>Description</th>
+                                        <th>Status</th>
+                                        <th>Technician</th>
+                                        <th>Scheduled For</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map(r => `
+                                        <tr>
+                                            <td><strong>${r.so_number}</strong></td>
+                                            <td>${r.description}</td>
+                                            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+                                            <td>${r.technician || 'Unassigned'}</td>
+                                            <td>${r.scheduled_for ? new Date(r.scheduled_for).toLocaleDateString() : 'Not scheduled'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `,
+                payments: (rows) => `
+                    <div class="data-table">
+                        <h3>Payments (${rows.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Invoice #</th>
+                                        <th>Amount</th>
+                                        <th>Method</th>
+                                        <th>Paid At</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map(r => `
+                                        <tr>
+                                            <td><strong>${r.invoice_number}</strong></td>
+                                            <td><strong>$${parseFloat(r.amount).toFixed(2)}</strong></td>
+                                            <td>${r.method || 'N/A'}</td>
+                                            <td>${new Date(r.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `,
+                tasks: (rows) => `
+                    <div class="data-table">
+                        <h3>Tasks (${rows.length})</h3>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Customer</th>
+                                        <th>Status</th>
+                                        <th>Body</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.map(r => `
+                                        <tr>
+                                            <td><strong>${r.title}</strong></td>
+                                            <td>${r.customer_name || 'N/A'}</td>
+                                            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+                                            <td>${r.body || ''}</td>
+                                            <td>${new Date(r.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `
+            };
+
+            return tables[tableName](data);
+        }
+
+        // ============================================
+        // MEMORY EXPLORER (Phase 4)
+        // ============================================
+
+        let memoryStats = {};
+        let currentLayer = null;
+
+        async function loadMemoryData() {
+            const content = document.getElementById('memoryContent');
+            content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading memory system...</div></div>';
+
+            try {
+                // Fetch stats
+                const statsRes = await fetch(`${API_BASE}/memories/stats`);
+                memoryStats = await statsRes.json();
+
+                // Render 6-layer architecture
+                renderMemoryLayers();
             } catch (error) {
                 content.innerHTML = `
                     <div class="alert alert-error">
@@ -729,6 +1701,567 @@
                     </div>
                 `;
             }
+        }
+
+        function renderMemoryLayers() {
+            const content = document.getElementById('memoryContent');
+
+            const layers = [
+                {
+                    number: 1,
+                    name: 'Raw Events',
+                    key: 'chat_events',
+                    description: 'Immutable audit trail of every user message and system response',
+                    count: memoryStats.chat_events || 0,
+                    implemented: true
+                },
+                {
+                    number: 2,
+                    name: 'Entity Resolution',
+                    key: 'entities',
+                    description: 'Canonical entities with aliases for identity tracking across conversations',
+                    count: (memoryStats.canonical_entities || 0) + (memoryStats.entity_aliases || 0),
+                    implemented: true
+                },
+                {
+                    number: 3,
+                    name: 'Episodic Memories',
+                    key: 'episodic',
+                    description: 'Event-based memories with temporal context and entity coreference',
+                    count: memoryStats.episodic_memories || 0,
+                    implemented: true
+                },
+                {
+                    number: 4,
+                    name: 'Semantic Memories',
+                    key: 'semantic',
+                    description: 'Fact triples extracted from conversations with confidence tracking',
+                    count: memoryStats.semantic_memories || 0,
+                    implemented: true
+                },
+                {
+                    number: 5,
+                    name: 'Procedural Memories',
+                    key: 'procedural',
+                    description: 'Learned patterns and workflows extracted from repeated behaviors',
+                    count: memoryStats.procedural_memories || 0,
+                    implemented: true
+                },
+                {
+                    number: 6,
+                    name: 'Summaries',
+                    key: 'summaries',
+                    description: 'Consolidated high-level insights from multiple conversation sessions',
+                    count: memoryStats.memory_summaries || 0,
+                    implemented: true
+                }
+            ];
+
+            content.innerHTML = `
+                <div class="memory-layers">
+                    ${layers.map(layer => `
+                        <div class="memory-layer ${layer.implemented ? '' : 'not-implemented'}"
+                             onclick="${layer.implemented ? `loadMemoryLayer('${layer.key}')` : ''}"
+                             id="layer-${layer.key}">
+                            <div class="layer-header">
+                                <div class="layer-title">
+                                    <div class="layer-number">${layer.number}</div>
+                                    <div class="layer-name">${layer.name}</div>
+                                </div>
+                                <div class="layer-count">${layer.count} ${layer.count === 1 ? 'record' : 'records'}</div>
+                            </div>
+                            <div class="layer-description">${layer.description}</div>
+                            ${!layer.implemented ? '<div class="layer-status">Not implemented yet (Phase 1D)</div>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div id="layerContent"></div>
+            `;
+        }
+
+        async function loadMemoryLayer(layerKey) {
+            currentLayer = layerKey;
+
+            // Update active layer
+            document.querySelectorAll('.memory-layer').forEach(l => l.classList.remove('active'));
+            document.getElementById(`layer-${layerKey}`).classList.add('active');
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading layer...</div></div>';
+
+            try {
+                if (layerKey === 'chat_events') {
+                    await loadChatEventsLayer();
+                } else if (layerKey === 'entities') {
+                    await loadEntityLayer();
+                } else if (layerKey === 'episodic') {
+                    await loadEpisodicLayer();
+                } else if (layerKey === 'semantic') {
+                    await loadSemanticLayer();
+                } else if (layerKey === 'procedural') {
+                    await loadProceduralLayer();
+                } else if (layerKey === 'summaries') {
+                    await loadSummariesLayer();
+                }
+            } catch (error) {
+                layerContent.innerHTML = `
+                    <div class="alert alert-error">
+                        <div class="alert-title">❌ Failed to load layer</div>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadEntityLayer() {
+            const [entitiesRes, aliasesRes] = await Promise.all([
+                fetch(`${API_BASE}/memories/entities`),
+                fetch(`${API_BASE}/memories/aliases`)
+            ]);
+
+            const entities = await entitiesRes.json();
+            const aliases = await aliasesRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Canonical Entities (${entities.length})</h3>
+                    ${entities.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Entity ID</th>
+                                        <th>Type</th>
+                                        <th>Canonical Name</th>
+                                        <th>External Ref</th>
+                                        <th>Aliases</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${entities.map(e => `
+                                        <tr>
+                                            <td><code>${e.entity_id}</code></td>
+                                            <td><span class="status-badge" style="background: var(--color-primary-light); color: var(--color-primary);">${e.entity_type}</span></td>
+                                            <td><strong>${e.canonical_name}</strong></td>
+                                            <td><code>${e.external_ref ? e.external_ref.table : 'N/A'}</code></td>
+                                            <td>${e.alias_count}</td>
+                                            <td>${new Date(e.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Entities</div><div class="empty-state-text">Load a scenario to create entities</div></div>'}
+                </div>
+
+                <div class="data-table">
+                    <h3>Entity Aliases (${aliases.length})</h3>
+                    ${aliases.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Alias Text</th>
+                                        <th>Canonical Name</th>
+                                        <th>Source</th>
+                                        <th>Confidence</th>
+                                        <th>Use Count</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${aliases.map(a => `
+                                        <tr>
+                                            <td><strong>${a.alias_text}</strong></td>
+                                            <td>${a.canonical_entity_name}</td>
+                                            <td><span class="status-badge" style="background: var(--color-success-light); color: var(--color-success);">${a.alias_source}</span></td>
+                                            <td>${(a.confidence * 100).toFixed(0)}%</td>
+                                            <td>${a.use_count}</td>
+                                            <td>${new Date(a.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Aliases</div></div>'}
+                </div>
+            `;
+        }
+
+        async function loadSemanticLayer() {
+            const semanticRes = await fetch(`${API_BASE}/memories/semantic`);
+            const semanticMemories = await semanticRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Semantic Memories (${semanticMemories.length})</h3>
+                    ${semanticMemories.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Subject</th>
+                                        <th>Predicate</th>
+                                        <th>Type</th>
+                                        <th>Object Value</th>
+                                        <th>Confidence</th>
+                                        <th>Reinforcements</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${semanticMemories.map(m => `
+                                        <tr>
+                                            <td><strong>${m.subject_entity_name}</strong></td>
+                                            <td>${m.predicate}</td>
+                                            <td><span class="status-badge" style="background: var(--color-warning-light); color: var(--color-warning);">${m.predicate_type}</span></td>
+                                            <td><code>${JSON.stringify(m.object_value)}</code></td>
+                                            <td><span class="status-badge ${m.confidence >= 0.8 ? 'status-fulfilled' : 'status-open'}">${(m.confidence * 100).toFixed(0)}%</span></td>
+                                            <td>${m.reinforcement_count}</td>
+                                            <td>${new Date(m.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Semantic Memories</div><div class="empty-state-text">Load a scenario to create memories</div></div>'}
+                </div>
+            `;
+        }
+
+        async function loadChatEventsLayer() {
+            const eventsRes = await fetch(`${API_BASE}/memories/chat_events`);
+            const events = await eventsRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Chat Events (${events.length})</h3>
+                    ${events.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Event ID</th>
+                                        <th>Role</th>
+                                        <th>Content</th>
+                                        <th>Session ID</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${events.map(e => `
+                                        <tr>
+                                            <td><code>${e.event_id}</code></td>
+                                            <td><span class="status-badge ${e.role === 'user' ? 'status-fulfilled' : 'status-in_progress'}">${e.role}</span></td>
+                                            <td>${e.content.substring(0, 100)}${e.content.length > 100 ? '...' : ''}</td>
+                                            <td><code>${e.session_id.substring(0, 8)}...</code></td>
+                                            <td>${new Date(e.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Chat Events</div><div class="empty-state-text">Send chat messages to create events</div></div>'}
+                </div>
+            `;
+        }
+
+        async function loadEpisodicLayer() {
+            const episodicRes = await fetch(`${API_BASE}/memories/episodic`);
+            const memories = await episodicRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Episodic Memories (${memories.length})</h3>
+                    ${memories.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Summary</th>
+                                        <th>Event Type</th>
+                                        <th>Entities</th>
+                                        <th>Importance</th>
+                                        <th>Session</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${memories.map(m => `
+                                        <tr>
+                                            <td><strong>${m.summary}</strong></td>
+                                            <td><span class="status-badge" style="background: var(--color-primary-light); color: var(--color-primary);">${m.event_type}</span></td>
+                                            <td>${Object.keys(m.entities || {}).length} entities</td>
+                                            <td><span class="status-badge ${m.importance >= 0.7 ? 'status-fulfilled' : 'status-open'}">${(m.importance * 100).toFixed(0)}%</span></td>
+                                            <td><code>${m.session_id.substring(0, 8)}...</code></td>
+                                            <td>${new Date(m.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Episodic Memories</div><div class="empty-state-text">Phase 1D feature - not yet populated</div></div>'}
+                </div>
+            `;
+        }
+
+        async function loadProceduralLayer() {
+            const proceduralRes = await fetch(`${API_BASE}/memories/procedural`);
+            const memories = await proceduralRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Procedural Memories (${memories.length})</h3>
+                    ${memories.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Trigger Pattern</th>
+                                        <th>Action Heuristic</th>
+                                        <th>Observed Count</th>
+                                        <th>Confidence</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${memories.map(m => `
+                                        <tr>
+                                            <td><strong>${m.trigger_pattern}</strong></td>
+                                            <td>${m.action_heuristic.substring(0, 80)}${m.action_heuristic.length > 80 ? '...' : ''}</td>
+                                            <td>${m.observed_count}</td>
+                                            <td><span class="status-badge ${m.confidence >= 0.8 ? 'status-fulfilled' : 'status-open'}">${(m.confidence * 100).toFixed(0)}%</span></td>
+                                            <td>${new Date(m.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Procedural Memories</div><div class="empty-state-text">Phase 1D feature - not yet populated</div></div>'}
+                </div>
+            `;
+        }
+
+        async function loadSummariesLayer() {
+            const summariesRes = await fetch(`${API_BASE}/memories/summaries`);
+            const summaries = await summariesRes.json();
+
+            const layerContent = document.getElementById('layerContent');
+            layerContent.innerHTML = `
+                <div class="data-table">
+                    <h3>Memory Summaries (${summaries.length})</h3>
+                    ${summaries.length > 0 ? `
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Scope Type</th>
+                                        <th>Scope Identifier</th>
+                                        <th>Summary Text</th>
+                                        <th>Key Facts</th>
+                                        <th>Confidence</th>
+                                        <th>Created</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${summaries.map(s => `
+                                        <tr>
+                                            <td><span class="status-badge" style="background: var(--color-success-light); color: var(--color-success);">${s.scope_type}</span></td>
+                                            <td>${s.scope_identifier || 'N/A'}</td>
+                                            <td><strong>${s.summary_text.substring(0, 100)}${s.summary_text.length > 100 ? '...' : ''}</strong></td>
+                                            <td>${Object.keys(s.key_facts || {}).length} facts</td>
+                                            <td><span class="status-badge ${s.confidence >= 0.8 ? 'status-fulfilled' : 'status-open'}">${(s.confidence * 100).toFixed(0)}%</span></td>
+                                            <td>${new Date(s.created_at).toLocaleString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">No Memory Summaries</div><div class="empty-state-text">Phase 1D feature - not yet populated</div></div>'}
+                </div>
+            `;
+        }
+
+        // ============================================
+        // CHAT INTERFACE (Phase 5)
+        // ============================================
+
+        let chatMessages = [];
+        let chatDebugMode = false;
+        let lastDebugData = null;
+
+        function loadChatInterface() {
+            const content = document.getElementById('chatContent');
+
+            const exampleQueries = [
+                "What invoices are overdue?",
+                "Tell me about Kai Media",
+                "Show me recent sales orders"
+            ];
+
+            content.innerHTML = `
+                <div class="example-queries">
+                    ${exampleQueries.map(q => `
+                        <div class="example-query" onclick="sendExampleQuery('${q}')">
+                            <div class="example-query-text">"${q}"</div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="chat-container">
+                    <div style="flex: 1;">
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">💬</div>
+                                <div class="empty-state-title">Start a conversation</div>
+                                <div class="empty-state-text">Ask about customers, invoices, or any data loaded from scenarios</div>
+                            </div>
+                        </div>
+
+                        <div class="chat-input-container">
+                            <input type="text" class="chat-input" id="chatInput" placeholder="Type your message..." onkeypress="if(event.key==='Enter') sendChatMessage()">
+                            <button class="btn-primary" onclick="sendChatMessage()">Send</button>
+                        </div>
+                    </div>
+
+                    <div class="debug-panel ${chatDebugMode ? 'active' : ''}" id="chatDebugPanel">
+                        <div class="debug-title">Debug Information</div>
+                        <div id="debugContent">
+                            <div class="empty-state">
+                                <div class="empty-state-text">Send a message to see debug traces</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleDebugMode() {
+            chatDebugMode = document.getElementById('debugModeToggle').checked;
+            const panel = document.getElementById('chatDebugPanel');
+            if (panel) {
+                panel.classList.toggle('active', chatDebugMode);
+            }
+        }
+
+        function sendExampleQuery(query) {
+            document.getElementById('chatInput').value = query;
+            sendChatMessage();
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            input.value = '';
+
+            // Add user message to chat
+            addChatMessage('user', message);
+
+            try {
+                const response = await fetch(`${API_BASE}/chat/message`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, user_id: 'demo-user' })
+                });
+
+                const data = await response.json();
+
+                // Add assistant response
+                addChatMessage('assistant', data.reply);
+
+                // Update debug panel
+                if (data.debug || data.traces) {
+                    lastDebugData = { debug: data.debug, traces: data.traces };
+                    updateDebugPanel(lastDebugData);
+                }
+
+            } catch (error) {
+                addChatMessage('assistant', `Error: ${error.message}`);
+            }
+        }
+
+        function addChatMessage(role, content) {
+            chatMessages.push({ role, content });
+
+            const messagesDiv = document.getElementById('chatMessages');
+
+            // Remove empty state if present
+            if (messagesDiv.querySelector('.empty-state')) {
+                messagesDiv.innerHTML = '';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role === 'user' ? 'message-user' : ''}`;
+
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${role === 'user' ? 'U' : 'AI'}</div>
+                <div class="message-content">${content.replace(/\n/g, '<br>')}</div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateDebugPanel(data) {
+            const debugContent = document.getElementById('debugContent');
+
+            const sections = [];
+
+            // Domain Facts
+            if (data.debug?.domain_facts_used?.length > 0) {
+                sections.push(`
+                    <div class="debug-section">
+                        <div class="debug-title">Domain Facts (${data.debug.domain_facts_used.length})</div>
+                        ${data.debug.domain_facts_used.slice(0, 3).map(fact => `
+                            <div class="debug-item">
+                                <div class="debug-item-label">${fact.type}</div>
+                                <div class="debug-item-value">${fact.content}</div>
+                            </div>
+                        `).join('')}
+                        ${data.debug.domain_facts_used.length > 3 ? `<div style="font-size: 12px; color: var(--color-text-tertiary);">... and ${data.debug.domain_facts_used.length - 3} more</div>` : ''}
+                    </div>
+                `);
+            }
+
+            // Memories
+            if (data.debug?.memories_used?.length > 0) {
+                sections.push(`
+                    <div class="debug-section">
+                        <div class="debug-title">Memories Used (${data.debug.memories_used.length})</div>
+                        ${data.debug.memories_used.slice(0, 3).map(mem => `
+                            <div class="debug-item">
+                                <div class="debug-item-label">${mem.type} (conf: ${(mem.confidence * 100).toFixed(0)}%)</div>
+                                <div class="debug-item-value">${mem.content}</div>
+                            </div>
+                        `).join('')}
+                        ${data.debug.memories_used.length > 3 ? `<div style="font-size: 12px; color: var(--color-text-tertiary);">... and ${data.debug.memories_used.length - 3} more</div>` : ''}
+                    </div>
+                `);
+            }
+
+            // Traces
+            if (data.traces) {
+                sections.push(`
+                    <div class="debug-section">
+                        <div class="debug-title">Execution Traces</div>
+                        <div class="debug-item">
+                            <div class="debug-item-value">${JSON.stringify(data.traces, null, 2)}</div>
+                        </div>
+                    </div>
+                `);
+            }
+
+            debugContent.innerHTML = sections.length > 0 ? sections.join('') : '<div class="empty-state"><div class="empty-state-text">No debug data available</div></div>';
         }
 
         // Global alerts
@@ -753,7 +2286,12 @@
             `;
         }
 
-        // Initialize
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
+        // Initialize theme and load data
+        initTheme();
         loadScenarios();
     </script>
 </body>
