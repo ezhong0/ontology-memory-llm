@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from typing import AsyncGenerator
 from datetime import datetime, timedelta
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from httpx import AsyncClient
 
@@ -95,7 +96,8 @@ async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
     """
     Create isolated database session for each test.
 
-    Each test gets a clean database via transaction rollback.
+    Uses TRUNCATE for cleanup since we're on a dedicated test database.
+    This is simpler and more reliable than transaction rollbacks for E2E tests.
     """
     async_session = async_sessionmaker(
         test_db_engine,
@@ -104,14 +106,17 @@ async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
     )
 
     async with async_session() as session:
-        # Start transaction
-        await session.begin()
+        # Clean up before test
+        await session.execute(text("TRUNCATE TABLE domain.payments, domain.invoices, domain.work_orders, domain.sales_orders, domain.tasks, domain.customers CASCADE"))
+        await session.execute(text("TRUNCATE TABLE app.episodic_memories, app.semantic_memories, app.entity_aliases, app.canonical_entities CASCADE"))
+        await session.commit()
 
-        try:
-            yield session
-        finally:
-            # Always rollback for test isolation (never commit)
-            await session.rollback()
+        yield session
+
+        # Clean up after test
+        await session.execute(text("TRUNCATE TABLE domain.payments, domain.invoices, domain.work_orders, domain.sales_orders, domain.tasks, domain.customers CASCADE"))
+        await session.execute(text("TRUNCATE TABLE app.episodic_memories, app.semantic_memories, app.entity_aliases, app.canonical_entities CASCADE"))
+        await session.commit()
 
 
 @pytest_asyncio.fixture(scope="function")

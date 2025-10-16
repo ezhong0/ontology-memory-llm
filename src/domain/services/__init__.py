@@ -3,6 +3,7 @@
 Business logic services that don't belong to a single entity.
 """
 from src.domain.services.conflict_detection_service import ConflictDetectionService
+from src.domain.services.conflict_resolution_service import ConflictResolutionService
 from src.domain.services.consolidation_service import ConsolidationService
 from src.domain.services.consolidation_trigger_service import (
     ConsolidationTriggerService,
@@ -33,6 +34,8 @@ __all__ = [
     "SemanticExtractionService",
     "MemoryValidationService",
     "ConflictDetectionService",
+    # Phase 2.1
+    "ConflictResolutionService",
     # Phase 1D
     "ConsolidationService",
     "ConsolidationTriggerService",

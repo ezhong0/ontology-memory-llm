@@ -139,9 +139,14 @@ class EntityRepository(IEntityRepository):
     async def fuzzy_search(
         self, search_text: str, threshold: float = 0.6, limit: int = 5
     ) -> list[tuple[CanonicalEntity, float]]:
-        """Fuzzy search using pg_trgm similarity.
+        """Multi-strategy fuzzy search.
 
-        Uses PostgreSQL pg_trgm extension for trigram similarity matching.
+        Uses multiple strategies to find similar entities:
+        1. Prefix matching: "Apple" matches "Apple Inc" (confidence: 0.95)
+        2. Word containment: "Media" matches "Kai Media" (confidence: 0.85)
+        3. Trigram similarity: "Aple" matches "Apple" (confidence: varies)
+
+        This approach better matches human search behavior than pure trigram matching.
 
         Args:
             search_text: Text to search for
@@ -152,15 +157,34 @@ class EntityRepository(IEntityRepository):
             List of (entity, similarity_score) tuples, sorted by similarity descending
         """
         try:
-            # Use pg_trgm similarity function
+            # Multi-strategy search with confidence scoring
+            # Strategy 1: Prefix match (highest confidence - user likely means entity starting with this)
+            # Strategy 2: Word containment (high confidence - search term is a complete word in entity name)
+            # Strategy 3: Trigram similarity (medium confidence - for typos)
             stmt = text(
                 """
+                WITH scored_entities AS (
+                    SELECT
+                        entity_id, canonical_name, entity_type, external_ref,
+                        properties, created_at, updated_at,
+                        CASE
+                            -- Strategy 1: Prefix match (e.g., "Apple" matches "Apple Inc")
+                            WHEN LOWER(canonical_name) LIKE LOWER(:search_text) || '%' THEN 0.95
+
+                            -- Strategy 2: Word boundary match (e.g., "Media" matches "Kai Media")
+                            -- Check if search_text appears as a complete word
+                            WHEN LOWER(canonical_name) ~ ('\\m' || LOWER(:search_text) || '\\M') THEN 0.85
+
+                            -- Strategy 3: Trigram similarity (for typos like "Aple" → "Apple")
+                            ELSE similarity(canonical_name, :search_text)
+                        END as score
+                    FROM app.canonical_entities
+                )
                 SELECT entity_id, canonical_name, entity_type, external_ref,
-                       properties, created_at, updated_at,
-                       similarity(canonical_name, :search_text) as sim_score
-                FROM app.canonical_entities
-                WHERE similarity(canonical_name, :search_text) > :threshold
-                ORDER BY sim_score DESC
+                       properties, created_at, updated_at, score
+                FROM scored_entities
+                WHERE score > :threshold
+                ORDER BY score DESC, canonical_name ASC
                 LIMIT :limit
                 """
             )
@@ -189,7 +213,7 @@ class EntityRepository(IEntityRepository):
                     updated_at=row.updated_at,
                 )
 
-                matches.append((entity, float(row.sim_score)))
+                matches.append((entity, float(row.score)))
 
             return matches
 

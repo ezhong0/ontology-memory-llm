@@ -22,16 +22,19 @@ class AmbiguousEntityError(EntityResolutionError):
     Attributes:
         mention_text: The ambiguous mention
         candidates: List of (entity_id, confidence) tuples
+        entities: Optional list of full entity dicts with details (canonical_name, properties, etc)
     """
 
     def __init__(
         self,
         mention_text: str,
         candidates: list[tuple[str, float]],
+        entities: list[dict[str, any]] | None = None,
         message: str | None = None,
     ):
         self.mention_text = mention_text
         self.candidates = candidates
+        self.entities = entities or []
         super().__init__(
             message or f'Ambiguous mention "{mention_text}": {len(candidates)} candidates'
         )

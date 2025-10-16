@@ -37,6 +37,9 @@ from src.infrastructure.database.models import (
 from src.infrastructure.database.session import get_db
 from src.infrastructure.di.container import container
 
+# Import activity publisher
+from src.demo.api import activity
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -144,6 +147,14 @@ async def send_chat_message(
             facts_count=len(domain_facts),
         )
 
+        # Publish activity
+        activity.add_activity(
+            event_type="database_query",
+            summary=f"Retrieved {len(domain_facts)} domain facts from database",
+            details={"user_id": request.user_id, "facts_count": len(domain_facts)},
+            duration_ms=duration_ms,
+        )
+
         # Step 2: Fetch relevant memories
         start_time = datetime.now(UTC)
         memories = await _fetch_relevant_memories(session, request.user_id)
@@ -168,6 +179,17 @@ async def send_chat_message(
             memories_count=len(memories),
         )
 
+        # Publish activity
+        activity.add_activity(
+            event_type="memory_retrieval",
+            summary=f"Retrieved {len(memories)} relevant memories for context",
+            details={
+                "user_id": request.user_id,
+                "memories_count": len(memories),
+                "query": request.message[:50] + "..." if len(request.message) > 50 else request.message,
+            },
+        )
+
         # Step 2.5: Fetch recent conversation history
         chat_history = await _fetch_recent_chat_events(session, session_id, exclude_event_id=user_event.event_id)
 
@@ -190,6 +212,17 @@ async def send_chat_message(
             "chat_reply_generated",
             user_id=request.user_id,
             reply_length=len(reply),
+        )
+
+        # Publish activity
+        activity.add_activity(
+            event_type="llm_call",
+            summary=f"Generated LLM reply ({len(reply)} chars)",
+            details={
+                "user_id": request.user_id,
+                "reply_length": len(reply),
+                "query_preview": request.message[:40] + "..." if len(request.message) > 40 else request.message,
+            },
         )
 
         # Store assistant reply in chat_events

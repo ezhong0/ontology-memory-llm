@@ -95,10 +95,10 @@ class MemoryFactory:
         # Save to database
         saved_memory = await self.semantic_repo.create(memory)
 
-        # Flush to make data visible to other queries in same transaction
-        await self.session.flush()
+        # Commit to make data visible across all queries (E2E tests need this)
+        # The test fixture will still rollback at the end for isolation
+        await self.session.commit()
 
-        # NOTE: Don't commit - let test manage transaction lifecycle
         return saved_memory
 
     async def create_episodic_memory(
@@ -292,8 +292,56 @@ class MemoryFactory:
             },
         )
 
+        # Commit to make data visible across all queries (E2E tests need this)
+        # The test fixture will still rollback at the end for isolation
+        await self.session.commit()
+
+        return entity_id
+
+    async def create_entity_alias(
+        self,
+        canonical_entity_id: str,
+        alias_text: str,
+        alias_source: str = "user_stated",
+        user_id: Optional[str] = None,
+        confidence: float = 0.9,
+    ) -> int:
+        """
+        Create an entity alias for testing.
+
+        Args:
+            canonical_entity_id: Entity ID this alias points to
+            alias_text: Alias text
+            alias_source: Source of alias (user_stated, learned, fuzzy)
+            user_id: User ID for user-specific alias (None = global)
+            confidence: Alias confidence (default 0.9)
+
+        Returns:
+            alias_id of created alias
+        """
+        result = await self.session.execute(
+            text("""
+                INSERT INTO app.entity_aliases
+                (canonical_entity_id, alias_text, alias_source, user_id, confidence, use_count, alias_metadata, created_at)
+                VALUES (:canonical_entity_id, :alias_text, :alias_source, :user_id, :confidence, :use_count, :alias_metadata, :created_at)
+                RETURNING alias_id
+            """),
+            {
+                "canonical_entity_id": canonical_entity_id,
+                "alias_text": alias_text,
+                "alias_source": alias_source,
+                "user_id": user_id,
+                "confidence": confidence,
+                "use_count": 0,
+                "alias_metadata": json.dumps({}),
+                "created_at": datetime.now(timezone.utc),
+            },
+        )
+
+        alias_id = result.scalar_one()
+
         # Flush to make data visible to other queries in same transaction
         await self.session.flush()
 
         # NOTE: Don't commit - let test manage transaction lifecycle
-        return entity_id
+        return alias_id

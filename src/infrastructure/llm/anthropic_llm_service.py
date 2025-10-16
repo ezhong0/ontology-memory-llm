@@ -23,9 +23,9 @@ logger = structlog.get_logger(__name__)
 
 
 class AnthropicLLMService(ILLMService):
-    """Anthropic implementation of ILLMService using Claude 3.5 Haiku.
+    """Anthropic implementation of ILLMService using Claude Haiku 4.5.
 
-    Uses Claude 3.5 Haiku for coreference resolution and semantic extraction.
+    Uses Claude Haiku 4.5 for coreference resolution and semantic extraction.
     Optimized for cost-effectiveness while maintaining high accuracy.
 
     Pricing: $1.00 per 1M input tokens, $5.00 per 1M output tokens
@@ -33,7 +33,7 @@ class AnthropicLLMService(ILLMService):
     """
 
     # Model configuration
-    MODEL = "claude-3-5-haiku-20241022"
+    MODEL = "claude-haiku-4-5"
     MAX_TOKENS = 1000  # Claude's max_tokens parameter
     TEMPERATURE = 0.0  # Deterministic output for coreference
     TEMPERATURE_EXTRACTION = 0.1  # Slightly higher for extraction
@@ -323,6 +323,16 @@ Respond with ONLY the JSON object. If no triples can be extracted, return {{"tri
             return []
 
         try:
+            # Strip markdown code blocks if present (```json ... ```)
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]  # Remove ```json
+            if response_text.startswith("```"):
+                response_text = response_text[3:]  # Remove ```
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]  # Remove trailing ```
+            response_text = response_text.strip()
+
             # Parse JSON response
             parsed = json.loads(response_text)
 

@@ -27,7 +27,7 @@ class ResolveEntitiesResult:
         mention_count: Total number of mentions extracted
         successful_resolutions: Number of successfully resolved mentions
         resolution_success_rate: Percentage of successful resolutions
-        ambiguous_entities: List of ambiguous entity mentions (for user clarification)
+        ambiguous_entities: List of AmbiguousEntityError exceptions (for user clarification)
     """
 
     def __init__(
@@ -36,7 +36,7 @@ class ResolveEntitiesResult:
         mention_count: int,
         successful_resolutions: int,
         resolution_success_rate: float,
-        ambiguous_entities: list[tuple[str, list]] | None = None,
+        ambiguous_entities: list[AmbiguousEntityError] | None = None,
     ):
         self.resolved_entities = resolved_entities
         self.mention_count = mention_count
@@ -125,7 +125,7 @@ class ResolveEntitiesUseCase:
         # Step 3: Resolve each mention
         resolved_entities: list[ResolvedEntityDTO] = []
         successful_resolutions = 0
-        ambiguous_entities: list[tuple[str, list]] = []
+        ambiguous_entities: list[AmbiguousEntityError] = []
 
         for mention in mentions:
             try:
@@ -169,7 +169,8 @@ class ResolveEntitiesUseCase:
                     mention=mention.text,
                     candidates=e.candidates,
                 )
-                ambiguous_entities.append((mention.text, e.candidates))
+                # Store the full exception to preserve entity details
+                ambiguous_entities.append(e)
                 # Continue processing other mentions
 
         # Step 4: Calculate success rate

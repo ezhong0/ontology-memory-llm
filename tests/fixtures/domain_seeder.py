@@ -67,11 +67,9 @@ class DomainSeeder:
         for payment_data in data.get("payments", []):
             await self._create_payment(payment_data)
 
-        # Flush to make data visible to other queries in same transaction
-        await self.session.flush()
-
-        # NOTE: Don't commit here - let the test manage transaction lifecycle
-        # Tests can commit or rollback as needed for isolation
+        # Commit to make data visible across all queries (E2E tests need this)
+        # The test fixture will still rollback at the end for isolation
+        await self.session.commit()
 
         return self._id_mapping
 

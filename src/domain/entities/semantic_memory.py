@@ -45,6 +45,7 @@ class SemanticMemory:
     source_event_ids: list[int] = field(default_factory=list)
     embedding: list[float] | None = None
     memory_id: int | None = None
+    superseded_by_memory_id: int | None = None  # Phase 2: Track supersession chain
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_validated_at: datetime | None = None
@@ -69,8 +70,8 @@ class SemanticMemory:
         if not (0.0 <= self.confidence <= 1.0):
             msg = f"confidence must be in [0.0, 1.0], got: {self.confidence}"
             raise ValueError(msg)
-        if self.status not in ["active", "inactive", "conflicted"]:
-            msg = f"status must be active/inactive/conflicted, got: {self.status}"
+        if self.status not in ["active", "inactive", "conflicted", "superseded", "invalidated", "aging"]:
+            msg = f"status must be active/inactive/conflicted/superseded/invalidated/aging, got: {self.status}"
             raise ValueError(msg)
         if self.reinforcement_count < 1:
             msg = f"reinforcement_count must be >= 1, got: {self.reinforcement_count}"
@@ -140,6 +141,21 @@ class SemanticMemory:
     def mark_as_inactive(self) -> None:
         """Mark memory as inactive."""
         self.status = "inactive"
+        self.updated_at = datetime.now(UTC)
+
+    def mark_as_superseded(self, superseded_by_memory_id: int) -> None:
+        """Mark memory as superseded by another memory.
+
+        Args:
+            superseded_by_memory_id: ID of memory that supersedes this one
+        """
+        self.status = "superseded"
+        self.superseded_by_memory_id = superseded_by_memory_id
+        self.updated_at = datetime.now(UTC)
+
+    def mark_as_invalidated(self) -> None:
+        """Mark memory as invalidated (contradicts authoritative source)."""
+        self.status = "invalidated"
         self.updated_at = datetime.now(UTC)
 
     def to_dict(self) -> dict[str, Any]:

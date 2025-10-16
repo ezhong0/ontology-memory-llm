@@ -275,7 +275,7 @@ Message: "{message}"
 Task: Extract all semantic triples where the subject is one of the resolved entities.
 
 Instructions:
-1. Analyze the message for factual statements about the entities
+1. Analyze the message for factual information about the entities
 2. Extract each fact as a subject-predicate-object triple
 3. Use entity_id from resolved entities as subject
 4. Normalize predicates to snake_case (e.g., "prefers_delivery_day")

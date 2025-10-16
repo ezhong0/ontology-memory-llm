@@ -344,3 +344,30 @@ async def reset_all(session: AsyncSession = Depends(get_db)) -> ResetResponse:
             status_code=500,
             detail="Failed to reset demo data. Please check server logs for details."
         ) from None
+
+
+@router.post("/reset-memories", response_model=ResetResponse)
+async def reset_memories(session: AsyncSession = Depends(get_db)) -> ResetResponse:
+    """Reset only memory data (keep domain data intact).
+
+    WARNING: This is destructive and cannot be undone.
+    Deletes all chat events, entities, aliases, and memories for demo users.
+
+    Args:
+        session: Database session (injected)
+
+    Returns:
+        Success message
+
+    Raises:
+        500: If reset fails
+    """
+    try:
+        loader = ScenarioLoaderService(session)
+        await loader.reset_memories_only()
+        return ResetResponse(message="Memory data cleared successfully")
+    except ScenarioLoadError:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to clear memory data. Please check server logs for details."
+        ) from None

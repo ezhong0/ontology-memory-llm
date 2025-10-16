@@ -14,6 +14,7 @@ from src.application.use_cases import (
 from src.config.settings import Settings
 from src.domain.services import (
     ConflictDetectionService,
+    ConflictResolutionService,
     DomainAugmentationService,
     EntityResolutionService,
     LLMReplyGenerator,
@@ -29,7 +30,12 @@ from src.infrastructure.database.repositories import (
 )
 from src.infrastructure.database.session import async_session_factory
 from src.infrastructure.embedding import OpenAIEmbeddingService
-from src.infrastructure.llm import AnthropicLLMService, OpenAILLMService, OpenAIProvider
+from src.infrastructure.llm import (
+    AnthropicLLMService,
+    AnthropicProvider,
+    OpenAILLMService,
+    OpenAIProvider,
+)
 
 
 def create_llm_service(settings: Settings) -> OpenAILLMService | AnthropicLLMService:
@@ -45,6 +51,36 @@ def create_llm_service(settings: Settings) -> OpenAILLMService | AnthropicLLMSer
         return AnthropicLLMService(api_key=settings.anthropic_api_key)
     else:
         return OpenAILLMService(api_key=settings.openai_api_key)
+
+
+def create_llm_provider(settings: Settings) -> OpenAIProvider | AnthropicProvider:
+    """Factory function to create LLM provider for reply generation.
+
+    Args:
+        settings: Application settings
+
+    Returns:
+        Configured LLM provider (OpenAI or Anthropic)
+    """
+    if settings.llm_provider == "anthropic":
+        return AnthropicProvider(api_key=settings.anthropic_api_key)
+    else:
+        return OpenAIProvider(api_key=settings.openai_api_key)
+
+
+def get_llm_model(settings: Settings) -> str:
+    """Get the LLM model name based on provider configuration.
+
+    Args:
+        settings: Application settings
+
+    Returns:
+        Model name for the configured provider
+    """
+    if settings.llm_provider == "anthropic":
+        return settings.anthropic_model
+    else:
+        return settings.openai_llm_model
 
 
 class Container(containers.DeclarativeContainer):
@@ -70,10 +106,10 @@ class Container(containers.DeclarativeContainer):
         settings=settings,
     )
 
-    # OpenAI Provider for LLMReplyGenerator (hexagonal architecture port/adapter)
-    openai_provider = providers.Singleton(
-        OpenAIProvider,
-        api_key=settings.provided.openai_api_key,
+    # LLM Provider for reply generation (conditionally uses OpenAI or Anthropic)
+    llm_provider = providers.Singleton(
+        create_llm_provider,
+        settings=settings,
     )
 
     embedding_service = providers.Singleton(
@@ -128,14 +164,25 @@ class Container(containers.DeclarativeContainer):
         ConflictDetectionService,
     )
 
+    # Phase 2.1 Services
+    conflict_resolution_service_factory = providers.Factory(
+        ConflictResolutionService,
+        # semantic_memory_repository provided per-request
+    )
+
     # Phase 1C Services
     domain_augmentation_service = providers.Singleton(
         DomainAugmentationService,
     )
 
+    # LLM Reply Generator (uses configurable provider and model)
     llm_reply_generator = providers.Singleton(
         LLMReplyGenerator,
-        llm_provider=openai_provider,
+        llm_provider=llm_provider,
+        model=providers.Callable(
+            get_llm_model,
+            settings=settings,
+        ),
     )
 
     # Phase 1D Services
@@ -152,13 +199,14 @@ class Container(containers.DeclarativeContainer):
         mention_extractor=mention_extractor,
     )
 
-    # Phase 1B: Semantic Extraction
+    # Phase 1B: Semantic Extraction (updated for Phase 2.1 conflict resolution)
     extract_semantics_use_case_factory = providers.Factory(
         ExtractSemanticsUseCase,
         # Repository provided per-request
         semantic_extraction_service=semantic_extraction_service,
         memory_validation_service=memory_validation_service,
         conflict_detection_service=conflict_detection_service,
+        conflict_resolution_service=conflict_resolution_service_factory,
         embedding_service=embedding_service,
     )
 

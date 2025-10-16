@@ -127,6 +127,23 @@ class ProcessChatMessageUseCase:
             session_id=input_dto.session_id,
         )
 
+        # Task 1.2.1: Check for ambiguous entities and propagate to API
+        # If entity resolution found ambiguities, raise exception for API to handle
+        # This enables the disambiguation flow (alias-first learning loop)
+        if entities_result.ambiguous_entities:
+            from src.domain.exceptions import AmbiguousEntityError
+
+            # Raise first ambiguity for API disambiguation handler
+            # Note: entities_result.ambiguous_entities stores AmbiguousEntityError exceptions
+            ambiguous_error = entities_result.ambiguous_entities[0]
+            logger.info(
+                "propagating_ambiguous_entity_to_api",
+                mention=ambiguous_error.mention_text,
+                candidates_count=len(ambiguous_error.candidates),
+            )
+            # Re-raise the original exception with all details intact
+            raise ambiguous_error
+
         # Early exit if no entities found
         if not entities_result.resolved_entities:
             logger.debug("no_entities_resolved_generating_reply_without_context")

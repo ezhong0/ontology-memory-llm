@@ -887,6 +887,144 @@
             30% { opacity: 1; transform: translateY(-4px); }
         }
 
+        /* Flow diagram styles */
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: var(--space-6) 0;
+        }
+
+        .flow-step {
+            width: 100%;
+            max-width: 800px;
+            background: var(--color-surface);
+            border: 2px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin: var(--space-2) 0;
+        }
+
+        .flow-step-orchestrator {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border-color: var(--color-primary);
+        }
+
+        .flow-step-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+
+        .flow-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 60px;
+            padding: 4px 12px;
+            background: var(--color-primary);
+            color: white;
+            font-size: var(--text-xs);
+            font-weight: 700;
+            font-family: var(--font-mono);
+            border-radius: var(--radius-sm);
+        }
+
+        .flow-step-title {
+            font-size: var(--text-base);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .flow-step-content {
+            font-size: var(--text-sm);
+            color: var(--color-text-secondary);
+            font-family: var(--font-mono);
+            line-height: 1.8;
+        }
+
+        .substep {
+            padding: var(--space-2) 0;
+            padding-left: var(--space-4);
+            border-left: 2px solid rgba(59, 130, 246, 0.3);
+            margin: var(--space-2) 0;
+        }
+
+        .substep strong {
+            color: var(--color-primary-light);
+        }
+
+        .flow-arrow {
+            font-size: 24px;
+            color: var(--color-primary);
+            margin: var(--space-2) 0;
+            font-weight: bold;
+        }
+
+        /* Processing steps for real-time debug mode */
+        .processing-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 0;
+            padding: 8px;
+            background: var(--color-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--color-border);
+            max-height: 500px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out;
+        }
+
+        .processing-steps.collapsed {
+            max-height: 0;
+            padding: 0;
+            margin: 0;
+            border: none;
+        }
+
+        .processing-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            padding: 4px 6px;
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            transition: all var(--transition);
+        }
+
+        .processing-step.completed {
+            color: var(--color-text-primary);
+        }
+
+        .processing-step-icon {
+            font-size: 16px;
+            min-width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .processing-step-text {
+            flex: 1;
+        }
+
+        .processing-step-details {
+            font-size: 10px;
+            color: var(--color-text-tertiary);
+            margin-top: 2px;
+        }
+
+        .toggle-icon {
+            font-size: 12px;
+            transition: transform 0.2s;
+            user-select: none;
+        }
+
+        .processing-step-text {
+            flex: 1;
+        }
+
         /* Chat suggestions */
         .chat-suggestions {
             display: flex;
@@ -1109,6 +1247,421 @@
         }
 
         /* ============================================
+           ACTIVITY FEED - LIVE SYSTEM MONITORING
+           ============================================ */
+
+        .activity-feed {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 380px;
+            max-height: 400px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-bottom: none;
+            border-right: none;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            box-shadow: var(--shadow-xl);
+            z-index: 98;
+            display: flex;
+            flex-direction: column;
+            transition: all var(--transition);
+        }
+
+        .activity-feed.collapsed {
+            max-height: 48px;
+        }
+
+        .activity-feed-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-surface-elevated);
+            border-bottom: 1px solid var(--color-border);
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .activity-feed-header:hover {
+            background: var(--color-surface-hover);
+        }
+
+        .activity-feed-title {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .activity-feed-live-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .activity-feed-count {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-family: var(--font-mono);
+        }
+
+        .activity-feed-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-2);
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-3);
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            transition: all var(--transition);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .activity-item:hover {
+            background: var(--color-surface);
+            border-color: var(--color-border-hover);
+        }
+
+        .activity-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .activity-icon.database-query {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--color-indigo);
+        }
+
+        .activity-icon.memory-retrieval {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--color-success);
+        }
+
+        .activity-icon.llm-call {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--color-purple);
+        }
+
+        .activity-icon.entity-resolution {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--color-primary);
+        }
+
+        .activity-icon.reasoning-step {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--color-warning);
+        }
+
+        .activity-icon.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--color-danger);
+        }
+
+        .activity-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .activity-summary {
+            font-size: var(--text-sm);
+            color: var(--color-text-primary);
+            margin-bottom: 2px;
+            line-height: 1.4;
+        }
+
+        .activity-meta {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+        }
+
+        .activity-time {
+            font-family: var(--font-mono);
+        }
+
+        .activity-duration {
+            padding: 2px var(--space-2);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+        }
+
+        .activity-empty {
+            padding: var(--space-10);
+            text-align: center;
+            color: var(--color-text-tertiary);
+            font-size: var(--text-sm);
+        }
+
+        /* ============================================
+           CHAT REASONING PANE (SPLIT VIEW)
+           ============================================ */
+
+        .chat-container.split-view {
+            display: grid;
+            grid-template-columns: 1fr 0.538fr; /* 65/35 split */
+            grid-template-rows: 1fr auto;
+            gap: var(--space-4);
+        }
+
+        .chat-container.split-view .chat-messages {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .chat-container.split-view .chat-input-container {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .reasoning-pane {
+            grid-column: 2;
+            grid-row: 1 / 3; /* Span both rows */
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .reasoning-pane-header {
+            padding: var(--space-4);
+            background: linear-gradient(180deg, var(--color-surface-elevated) 0%, var(--color-surface) 100%);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .reasoning-pane-title {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .reasoning-pane-close {
+            background: transparent;
+            border: none;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            padding: var(--space-2);
+            border-radius: var(--radius-md);
+            transition: all var(--transition);
+            font-size: var(--text-base);
+            line-height: 1;
+        }
+
+        .reasoning-pane-close:hover {
+            background: var(--color-bg);
+            color: var(--color-text-primary);
+        }
+
+        .reasoning-pane-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--space-4);
+        }
+
+        .reasoning-toggle-btn {
+            position: fixed;
+            top: 240px;
+            right: var(--space-8);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            padding: var(--space-3) var(--space-4);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            font-size: var(--text-sm);
+            font-weight: 500;
+            color: var(--color-text-primary);
+            box-shadow: var(--shadow-lg);
+            z-index: 99;
+            transition: all var(--transition);
+        }
+
+        .reasoning-toggle-btn:hover {
+            background: var(--color-surface-elevated);
+            border-color: var(--color-border-hover);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .reasoning-toggle-btn.active {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        /* Reasoning Steps - Timeline Design */
+        .reasoning-timeline {
+            position: relative;
+            padding-left: var(--space-6);
+        }
+
+        .reasoning-timeline::before {
+            content: '';
+            position: absolute;
+            left: 11px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--color-border);
+        }
+
+        .reasoning-step {
+            position: relative;
+            margin-bottom: var(--space-5);
+            animation: slideInRight 0.3s ease-out forwards;
+            opacity: 0;
+        }
+
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .reasoning-step-marker {
+            position: absolute;
+            left: -29px;
+            top: 2px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            background: var(--step-bg);
+            color: var(--step-color);
+            border: 2px solid var(--color-surface);
+            box-shadow: 0 0 0 2px var(--step-bg);
+        }
+
+        .reasoning-step.database-query {
+            --step-bg: rgba(99, 102, 241, 0.15);
+            --step-color: var(--color-indigo);
+        }
+
+        .reasoning-step.memory-retrieval {
+            --step-bg: rgba(16, 185, 129, 0.15);
+            --step-color: var(--color-success);
+        }
+
+        .reasoning-step.reasoning {
+            --step-bg: rgba(139, 92, 246, 0.15);
+            --step-color: var(--color-purple);
+        }
+
+        .reasoning-step.llm-generation {
+            --step-bg: rgba(245, 158, 11, 0.15);
+            --step-color: var(--color-warning);
+        }
+
+        .reasoning-step-content {
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+        }
+
+        .reasoning-step-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-2);
+        }
+
+        .reasoning-step-title {
+            font-size: var(--text-sm);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .reasoning-step-duration {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-family: var(--font-mono);
+        }
+
+        .reasoning-step-description {
+            font-size: var(--text-xs);
+            color: var(--color-text-secondary);
+            margin-bottom: var(--space-2);
+        }
+
+        .reasoning-step-details {
+            font-size: var(--text-xs);
+            color: var(--color-text-tertiary);
+            font-family: var(--font-mono);
+            background: var(--color-surface);
+            padding: var(--space-2);
+            border-radius: var(--radius-sm);
+            margin-top: var(--space-2);
+        }
+
+        .reasoning-empty {
+            padding: var(--space-10) var(--space-4);
+            text-align: center;
+            color: var(--color-text-tertiary);
+        }
+
+        .reasoning-empty-icon {
+            font-size: 48px;
+            margin-bottom: var(--space-3);
+            opacity: 0.3;
+        }
+
+        .reasoning-empty-text {
+            font-size: var(--text-sm);
+        }
+
+        /* ============================================
            GRID LAYOUTS
            ============================================ */
 
@@ -1246,76 +1799,12 @@
     <nav class="nav">
         <div class="nav-content">
             <button class="nav-tab active" onclick="showTab('scenarios')">Scenarios</button>
+            <button class="nav-tab" onclick="showTab('architecture')">Architecture</button>
             <button class="nav-tab" onclick="showTab('database')">Domain Database</button>
             <button class="nav-tab" onclick="showTab('memory')">Memory Layers</button>
             <button class="nav-tab" onclick="showTab('chat')">Chat Interface</button>
         </div>
     </nav>
-
-    <!-- Architecture Diagram Toggle Button -->
-    <button class="architecture-toggle-btn" onclick="toggleArchitecture()" id="archToggleBtn">
-        ▼ 6-Layer Architecture
-    </button>
-
-    <!-- Architecture Diagram Panel -->
-    <div class="architecture-panel expanded" id="architecturePanel">
-        <div class="architecture-content">
-            <div class="architecture-layers">
-                <!-- Layer 0: Domain Database -->
-                <div class="layer-box layer-0" onclick="showTab('database')">
-                    <div class="layer-number">LAYER 0</div>
-                    <div class="layer-name">Domain Database</div>
-                    <div class="layer-count" id="layer0-count">0</div>
-                    <div class="layer-description">Authoritative business data</div>
-                    <div class="layer-arrow">→</div>
-                </div>
-
-                <!-- Layer 1: Raw Events -->
-                <div class="layer-box layer-1" onclick="loadLayerFromDiagram(1)">
-                    <div class="layer-number">LAYER 1</div>
-                    <div class="layer-name">Raw Events</div>
-                    <div class="layer-count" id="layer1-count">0</div>
-                    <div class="layer-description">Immutable audit trail</div>
-                    <div class="layer-arrow">→</div>
-                </div>
-
-                <!-- Layer 2: Entity Resolution -->
-                <div class="layer-box layer-2" onclick="loadLayerFromDiagram(2)">
-                    <div class="layer-number">LAYER 2</div>
-                    <div class="layer-name">Entity Resolution</div>
-                    <div class="layer-count" id="layer2-count">0</div>
-                    <div class="layer-description">Identity grounding</div>
-                    <div class="layer-arrow">→</div>
-                </div>
-
-                <!-- Layer 3: Episodic -->
-                <div class="layer-box layer-3" onclick="loadLayerFromDiagram(3)">
-                    <div class="layer-number">LAYER 3</div>
-                    <div class="layer-name">Episodic</div>
-                    <div class="layer-count" id="layer3-count">0</div>
-                    <div class="layer-description">Events with context</div>
-                    <div class="layer-arrow">→</div>
-                </div>
-
-                <!-- Layer 4: Semantic -->
-                <div class="layer-box layer-4" onclick="loadLayerFromDiagram(4)">
-                    <div class="layer-number">LAYER 4</div>
-                    <div class="layer-name">Semantic</div>
-                    <div class="layer-count" id="layer4-count">0</div>
-                    <div class="layer-description">Fact triples</div>
-                    <div class="layer-arrow">→</div>
-                </div>
-
-                <!-- Layer 5: Procedural -->
-                <div class="layer-box layer-5" onclick="loadLayerFromDiagram(5)">
-                    <div class="layer-number">LAYER 5</div>
-                    <div class="layer-name">Procedural</div>
-                    <div class="layer-count" id="layer5-count">0</div>
-                    <div class="layer-description">Learned patterns</div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Main Content -->
     <div class="container">
@@ -1329,10 +1818,343 @@
                         <div class="card-title">Demo Scenarios</div>
                         <div class="card-subtitle">Load test data to explore system capabilities</div>
                     </div>
-                    <button class="btn btn-danger" onclick="resetAllData()">Reset All Data</button>
+                    <div style="display: flex; gap: var(--space-2);">
+                        <button class="btn btn-secondary" onclick="clearMemoriesOnly()">Clear Memories</button>
+                        <button class="btn btn-danger" onclick="resetAllData()">Reset All Data</button>
+                    </div>
                 </div>
                 <div id="scenariosList" class="loading">
                     <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Architecture -->
+        <div id="tab-architecture" class="tab-content">
+            <div class="card">
+                <div class="card-title">System Flow: End-to-End Request Processing</div>
+                <div class="card-subtitle">Complete technical breakdown of the 7-step pipeline • Total latency: 200-800ms</div>
+
+                <div class="flow-diagram">
+                    <!-- Client Request -->
+                    <div class="flow-step">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number">START</span>
+                            <span class="flow-step-title">Client Request</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Endpoint:</strong> POST /api/v1/chat<br>
+                            <strong>Payload:</strong> { user_id, message, session_id }<br>
+                            <strong>Entry Point:</strong> src/api/routes/chat.py → process_chat_simplified()
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Step 1: Store Event -->
+                    <div class="flow-step">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number">STEP 1</span>
+                            <span class="flow-step-title">Store Raw Chat Event</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Action:</strong> INSERT INTO app.chat_events<br>
+                            <strong>Purpose:</strong> Immutable audit trail (Layer 1)<br>
+                            <strong>Idempotency:</strong> SHA256(content) prevents duplicates<br>
+                            <strong>Time:</strong> ~5ms
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Phase 1A: Entity Resolution -->
+                    <div class="flow-step" style="border-color: var(--color-primary); background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.1));">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number" style="background: var(--color-primary);">PHASE 1A</span>
+                            <span class="flow-step-title">Entity Resolution (5-Stage Hybrid)</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Goal:</strong> Resolve "Kai" → customer:kai_media_123 • Cost: ~$0.0003 • Time: 30-200ms<br><br>
+                            <strong>5 Stages (fast → slow, stop at first match):</strong><br>
+                            1️⃣ <strong>Exact Match:</strong> SELECT FROM canonical_entities WHERE canonical_name = 'Kai'<br>
+                            2️⃣ <strong>Alias Lookup:</strong> SELECT FROM entity_aliases WHERE alias_text = 'Kai'<br>
+                            3️⃣ <strong>Fuzzy Match:</strong> similarity('Kai', canonical_name) > 0.7 (pg_trgm)<br>
+                            4️⃣ <strong>LLM Coreference:</strong> "they" → previous entity in conversation (5% of cases)<br>
+                            5️⃣ <strong>Domain DB:</strong> SELECT FROM domain.customers WHERE name ILIKE '%Kai%'<br><br>
+                            <strong>Output:</strong> ResolvedEntity(entity_id, confidence, method, metadata)
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Phase 1B: Semantic Extraction -->
+                    <div class="flow-step" style="border-color: var(--color-success); background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(16, 185, 129, 0.1));">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number" style="background: var(--color-success);">PHASE 1B</span>
+                            <span class="flow-step-title">Semantic Extraction (LLM Triple Extraction)</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Goal:</strong> Extract facts as (subject, predicate, object) triples • Cost: ~$0.001 • Time: 200-500ms<br>
+                            <strong>Model:</strong> gpt-4o-mini<br><br>
+                            <strong>Example:</strong> "Kai prefers delivery on Fridays" →<br>
+                            &nbsp;&nbsp;• subject_entity_id: customer:kai_media_123<br>
+                            &nbsp;&nbsp;• predicate: "delivery_preference"<br>
+                            &nbsp;&nbsp;• object_value: "Friday"<br>
+                            &nbsp;&nbsp;• confidence: 0.85<br>
+                            &nbsp;&nbsp;• INSERT INTO app.semantic_memories<br><br>
+                            <strong>Conflict Detection:</strong> Compare new facts vs existing semantic_memories + domain.customers<br>
+                            <strong>Output:</strong> List of SemanticMemory objects + detected conflicts
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Phase 1C: Domain Augmentation -->
+                    <div class="flow-step" style="border-color: var(--color-warning); background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), rgba(245, 158, 11, 0.1));">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number" style="background: var(--color-warning);">PHASE 1C</span>
+                            <span class="flow-step-title">Domain Augmentation (SQL Queries)</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Goal:</strong> Fetch authoritative business data • Cost: $0 • Time: 10-50ms<br><br>
+                            <strong>Query Triggers:</strong><br>
+                            • <strong>Customer:</strong> When entity → customer:* | SELECT * FROM domain.customers<br>
+                            • <strong>Invoice:</strong> When "invoice" OR "payment" mentioned | SELECT * FROM domain.invoices WHERE status = 'open'<br>
+                            • <strong>Sales Order:</strong> When "order" mentioned | SELECT * FROM domain.sales_orders<br>
+                            • <strong>Work Order:</strong> When "task" OR "work order" mentioned | SELECT * FROM domain.work_orders<br><br>
+                            <strong>Output:</strong> List of DomainFact(type, entity_id, content, metadata, source_table)
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Phase 1D: Memory Scoring -->
+                    <div class="flow-step" style="border-color: var(--color-purple); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(139, 92, 246, 0.1));">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number" style="background: var(--color-purple);">PHASE 1D</span>
+                            <span class="flow-step-title">Memory Scoring (Multi-Signal Ranking)</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Goal:</strong> Rank memories by relevance to query • Cost: $0 • Time: 10-30ms<br><br>
+                            <strong>Scoring Formula:</strong><br>
+                            relevance = <strong>0.40</strong> × semantic_similarity (pgvector cosine)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <strong>0.25</strong> × entity_overlap (Jaccard similarity)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <strong>0.20</strong> × recency (exp(-days × decay_rate))<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ <strong>0.15</strong> × confidence (base × validation_decay)<br><br>
+                            <strong>Output:</strong> Top 10 memories ranked by relevance_score (0.0-1.0)
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Step 6: Generate LLM Reply -->
+                    <div class="flow-step flow-step-orchestrator">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number">STEP 6</span>
+                            <span class="flow-step-title">Generate LLM Reply</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Input Context:</strong><br>
+                            • User query<br>
+                            • Resolved entities (from Phase 1A)<br>
+                            • Domain facts (from Phase 1C)<br>
+                            • Top memories (from Phase 1D)<br>
+                            • Conversation history (last 10 messages)<br><br>
+                            <strong>Model:</strong> gpt-4o-mini • <strong>Time:</strong> 100-300ms<br>
+                            <strong>Output:</strong> Natural language reply synthesizing all context
+                        </div>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <!-- Step 7: Assemble Response -->
+                    <div class="flow-step">
+                        <div class="flow-step-header">
+                            <span class="flow-step-number">END</span>
+                            <span class="flow-step-title">JSON Response with Full Provenance</span>
+                        </div>
+                        <div class="flow-step-content">
+                            <strong>Response Structure:</strong><br>
+                            {<br>
+                            &nbsp;&nbsp;"response": "Natural language reply...",<br>
+                            &nbsp;&nbsp;"augmentation": { domain_facts, memories_retrieved, entities_resolved },<br>
+                            &nbsp;&nbsp;"memories_created": [{ memory_type, event_id, content }],<br>
+                            &nbsp;&nbsp;"provenance": { memory_ids, similarity_scores, source_types },<br>
+                            &nbsp;&nbsp;"conflicts": [{ subject, existing_value, new_value, resolution }]<br>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memory Storage & Creation Section -->
+                <div class="card mt-6">
+                    <div class="card-title">Memory Storage & Creation: Deep Dive</div>
+                    <div class="card-subtitle">How the system stores, creates, and manages memories throughout the pipeline</div>
+
+                    <div style="margin-top: var(--space-6);">
+                        <h3 style="font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-4); color: var(--color-text-primary);">
+                            📦 Where Memories Are Stored
+                        </h3>
+
+                        <div style="background: var(--color-bg); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: var(--space-5);">
+                            <strong>Database Schema: 10 Essential Tables</strong><br><br>
+
+                            <div style="margin-left: var(--space-4);">
+                                <strong style="color: var(--color-primary);">Layer 1: Raw Events</strong><br>
+                                • <code>app.chat_events</code> - Immutable audit trail of all conversations<br>
+                                &nbsp;&nbsp;• Stores: user_id, session_id, role, content, content_hash, created_at<br>
+                                &nbsp;&nbsp;• Purpose: Complete provenance (who said what, when)<br><br>
+
+                                <strong style="color: var(--color-primary);">Layer 2: Entity Resolution</strong><br>
+                                • <code>app.canonical_entities</code> - Resolved entities with canonical names<br>
+                                &nbsp;&nbsp;• Stores: entity_id (PK), canonical_name, entity_type, created_at<br>
+                                &nbsp;&nbsp;• Example: "customer:acme_123" → "Acme Corporation"<br>
+                                • <code>app.entity_aliases</code> - Learned aliases for entities<br>
+                                &nbsp;&nbsp;• Stores: alias_text → canonical_entity_id (FK), user_id, confidence<br>
+                                &nbsp;&nbsp;• Example: "Acme" → customer:acme_123, "Kai" → customer:kai_media_123<br><br>
+
+                                <strong style="color: var(--color-success);">Layer 3: Episodic Memories</strong><br>
+                                • <code>app.episodic_memories</code> - Event-based memories (not yet implemented)<br>
+                                &nbsp;&nbsp;• Stores: user_id, event_id (FK), summary, entities, created_at<br>
+                                &nbsp;&nbsp;• Purpose: "User asked about invoice INV-1234 on March 10th"<br><br>
+
+                                <strong style="color: var(--color-success);">Layer 4: Semantic Memories</strong><br>
+                                • <code>app.semantic_memories</code> - Fact-based memories (SPO triples)<br>
+                                &nbsp;&nbsp;• Stores: subject_entity_id (FK), predicate, object_value (JSONB), confidence<br>
+                                &nbsp;&nbsp;• Example: customer:acme_123 | "delivery_preference" | {"day": "Friday"}<br>
+                                &nbsp;&nbsp;• Status lifecycle: active → deprecated → conflicted<br>
+                                &nbsp;&nbsp;• Confidence decay: confidence × e^(-age × decay_rate)<br><br>
+
+                                <strong style="color: var(--color-warning);">Layer 5: Procedural Memories</strong><br>
+                                • <code>app.procedural_memories</code> - Pattern-based memories (Phase 1D)<br>
+                                &nbsp;&nbsp;• Stores: pattern_name, condition, action, confidence<br>
+                                &nbsp;&nbsp;• Example: "When delivery mentioned → check invoices"<br><br>
+
+                                <strong style="color: var(--color-purple);">Layer 6: Memory Summaries</strong><br>
+                                • <code>app.memory_summaries</code> - Consolidated summaries (Phase 2)<br>
+                                &nbsp;&nbsp;• Stores: entity_id (FK), summary_text, source_memory_ids, created_at<br>
+                                &nbsp;&nbsp;• Example: "Acme Corp profile (3 sessions, 12 facts)"<br><br>
+
+                                <strong>Supporting Tables:</strong><br>
+                                • <code>app.memory_conflicts</code> - Tracks contradicting facts<br>
+                                • <code>app.domain_ontology</code> - Business domain schema<br>
+                                • <code>app.system_config</code> - Tunable heuristics
+                            </div>
+                        </div>
+
+                        <h3 style="font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-4); color: var(--color-text-primary);">
+                            ⚙️ How Memories Are Created (By Pipeline Stage)
+                        </h3>
+
+                        <div style="background: var(--color-bg); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: var(--space-5);">
+                            <strong>Stage 1: Store Chat Event</strong><br>
+                            <code>src/demo/api/chat.py → send_chat_message()</code><br>
+                            • Creates <strong>ChatEvent</strong> record immediately on request<br>
+                            • Content hashed (SHA256) for deduplication<br>
+                            • Both user message AND assistant reply stored<br>
+                            • Database: INSERT INTO app.chat_events<br><br>
+
+                            <strong>Stage 2: Entity Resolution (Phase 1A)</strong><br>
+                            <code>src/domain/services/entity_resolution_service.py</code><br>
+                            • Creates <strong>CanonicalEntity</strong> on first mention (lazy creation)<br>
+                            • Creates <strong>EntityAlias</strong> when fuzzy match succeeds<br>
+                            • Learning: User-specific aliases stored for future resolution<br>
+                            • Database: INSERT INTO app.canonical_entities, app.entity_aliases<br><br>
+
+                            <strong>Stage 3: Semantic Extraction (Phase 1B)</strong><br>
+                            <code>src/application/use_cases/extract_semantics.py</code><br>
+                            • LLM extracts SPO triples from message<br>
+                            • Creates <strong>SemanticMemory</strong> records (batch INSERT)<br>
+                            • Each triple: subject_entity_id + predicate + object_value<br>
+                            • Initial confidence: 0.85 (explicit), 0.70 (implicit), 0.50 (inferred)<br>
+                            • Database: INSERT INTO app.semantic_memories<br><br>
+
+                            <strong>Stage 4: Conflict Detection</strong><br>
+                            <code>src/domain/services/conflict_detection_service.py</code><br>
+                            • Compares new facts vs existing semantic_memories<br>
+                            • Compares new facts vs authoritative domain.customers<br>
+                            • Creates <strong>MemoryConflict</strong> record if contradiction found<br>
+                            • Resolution strategies: trust_db, trust_recent, ask_user<br>
+                            • Database: INSERT INTO app.memory_conflicts<br><br>
+
+                            <strong>Stage 5: Memory Validation</strong><br>
+                            <code>src/domain/services/memory_validation_service.py</code><br>
+                            • Reinforces confidence when memory is validated (confidence +0.05, capped at 0.95)<br>
+                            • Marks memory as deprecated if contradicted<br>
+                            • Updates last_validated_at timestamp<br>
+                            • Database: UPDATE app.semantic_memories SET confidence, last_validated_at, status<br><br>
+
+                            <strong>Future: Procedural Memory Creation (Phase 1D)</strong><br>
+                            • Extracts patterns from repeated user behaviors<br>
+                            • Creates <strong>ProceduralMemory</strong> when pattern confidence > 0.75<br>
+                            • Example: "User always asks about invoices after mentioning delivery"<br>
+                            • Database: INSERT INTO app.procedural_memories
+                        </div>
+
+                        <h3 style="font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-4); color: var(--color-text-primary);">
+                            🔄 Memory Lifecycle Management
+                        </h3>
+
+                        <div style="background: var(--color-bg); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-border); margin-bottom: var(--space-5);">
+                            <strong>State Transitions (Semantic Memories):</strong><br><br>
+
+                            <code>ACTIVE</code> → Initial state when fact is extracted<br>
+                            &nbsp;&nbsp;↓ (confidence decays over time without validation)<br>
+                            <code>ACTIVE</code> → Confidence reinforced when fact is used (+0.05, max 0.95)<br>
+                            &nbsp;&nbsp;↓ (conflict detected with newer information)<br>
+                            <code>CONFLICTED</code> → Marked when contradiction found<br>
+                            &nbsp;&nbsp;↓ (resolved in favor of newer/more authoritative source)<br>
+                            <code>DEPRECATED</code> → Fact superseded, kept for audit trail<br><br>
+
+                            <strong>Confidence Decay Formula (Passive Computation):</strong><br>
+                            <code>effective_confidence = base_confidence × e^(-days_since_validation × decay_rate)</code><br>
+                            • decay_rate: 0.0115 per day (configurable)<br>
+                            • Never pre-computed - calculated on-demand when scoring memories<br>
+                            • Ensures freshness without background jobs<br><br>
+
+                            <strong>Retrieval & Scoring:</strong><br>
+                            • Phase 1D: Multi-signal relevance scoring<br>
+                            • Formula: 0.40×semantic + 0.25×entity_overlap + 0.20×recency + 0.15×confidence<br>
+                            • Semantic similarity: pgvector cosine distance on embeddings<br>
+                            • Entity overlap: Jaccard similarity between entity sets<br>
+                            • Recency: Exponential decay based on created_at<br>
+                            • Confidence: Effective confidence after decay
+                        </div>
+
+                        <h3 style="font-size: var(--text-lg); font-weight: 600; margin-bottom: var(--space-4); color: var(--color-text-primary);">
+                            🎯 Key Design Decisions
+                        </h3>
+
+                        <div style="background: var(--color-bg); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+                            <strong>1. Surgical LLM Integration</strong><br>
+                            • LLM only for semantic extraction (Phase 1B) and coreference (Phase 1A Stage 4)<br>
+                            • Entity resolution: 95% deterministic (pg_trgm fuzzy match), 5% LLM<br>
+                            • Cost: ~$0.002 per turn vs $0.03 for pure-LLM approach<br><br>
+
+                            <strong>2. Passive Computation (No Background Jobs)</strong><br>
+                            • Confidence decay calculated on-demand, not pre-computed<br>
+                            • Simpler, more accurate, avoids staleness<br>
+                            • Pre-computation is Phase 2 optimization<br><br>
+
+                            <strong>3. Epistemic Humility</strong><br>
+                            • Max confidence: 0.95 (never 100% certain)<br>
+                            • All conflicts logged to memory_conflicts table<br>
+                            • Resolution strategy explicitly tracked<br>
+                            • System admits uncertainty when confidence < 0.70<br><br>
+
+                            <strong>4. JSONB for Context-Specific Data</strong><br>
+                            • object_value in semantic_memories: flexible schema<br>
+                            • confidence_factors: evidence varies per memory<br>
+                            • metadata in entity_aliases: disambiguation context<br>
+                            • Allows rich context without schema migrations<br><br>
+
+                            <strong>5. Dual Truth Architecture</strong><br>
+                            • Domain database (domain.*): Authoritative business facts<br>
+                            • Memory system (app.*): Contextual understanding<br>
+                            • Both are sources of truth - neither alone is sufficient<br>
+                            • Conflicts resolved via explicit strategy, never silently
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1374,7 +2196,7 @@
                     Debug Mode
                 </label>
             </div>
-            <div class="chat-container">
+            <div class="chat-container" id="chatContainer">
                 <div class="chat-messages" id="chatMessages">
                     <div class="chat-suggestions">
                         <div class="chat-suggestions-title">Try one of these example queries:</div>
@@ -1419,6 +2241,159 @@
             'Conflict Resolution': 'conflict',
             'Intelligence': 'intelligence'
         };
+
+        // ============================================
+        // TAB MANAGEMENT
+        // ============================================
+
+        function updateHeaderCounts() {
+            // Update header stats (Domain Database count and Memory Entries count)
+            if (databaseStatsData) {
+                const totalDb = Object.values(databaseStatsData).reduce((sum, val) => sum + val, 0);
+                document.getElementById('totalDbRecords').textContent = totalDb;
+            }
+
+            if (memoryStatsData) {
+                const totalMemories = Object.values(memoryStatsData).reduce((sum, val) => sum + val, 0);
+                document.getElementById('totalMemories').textContent = totalMemories;
+            }
+        }
+
+        // ============================================
+        // DATA LOADING
+        // ============================================
+
+        // ============================================
+        // SCENARIOS MANAGEMENT
+        // ============================================
+
+        let reasoningPaneVisible = false;
+
+        function toggleReasoningPane() {
+            reasoningPaneVisible = !reasoningPaneVisible;
+
+            const chatContainer = document.getElementById('chatContainer');
+            const reasoningPane = document.getElementById('reasoningPane');
+            const toggleBtn = document.getElementById('reasoningToggleBtn');
+
+            if (reasoningPaneVisible) {
+                // Show reasoning pane - split view
+                chatContainer.classList.add('split-view');
+                reasoningPane.style.display = 'flex';
+                toggleBtn.classList.add('active');
+                toggleBtn.textContent = '✕ Hide Reasoning';
+            } else {
+                // Hide reasoning pane - full width
+                chatContainer.classList.remove('split-view');
+                reasoningPane.style.display = 'none';
+                toggleBtn.classList.remove('active');
+                toggleBtn.textContent = '🤔 Show Reasoning';
+
+                // Mark as manually dismissed so it doesn't auto-open again
+                localStorage.setItem('reasoning_pane_dismissed', 'true');
+            }
+        }
+
+        function renderReasoningSteps(traces) {
+            const container = document.getElementById('reasoningPaneContent');
+
+            if (!traces || !traces.traces || traces.traces.length === 0) {
+                container.innerHTML = `
+                    <div class="reasoning-empty">
+                        <div class="reasoning-empty-icon">🤖</div>
+                        <div class="reasoning-empty-text">No reasoning traces available</div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Build timeline of steps
+            const timeline = document.createElement('div');
+            timeline.className = 'reasoning-timeline';
+
+            // Parse and render each trace
+            traces.traces.forEach((trace, index) => {
+                const step = createReasoningStep(trace, index);
+                timeline.appendChild(step);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(timeline);
+
+            // Progressive reveal animation
+            const steps = container.querySelectorAll('.reasoning-step');
+            steps.forEach((step, index) => {
+                setTimeout(() => {
+                    step.style.animationDelay = `${index * 0.1}s`;
+                }, 50);
+            });
+        }
+
+        function createReasoningStep(trace, index) {
+            const step = document.createElement('div');
+
+            // Determine step type and icon
+            let stepType = 'reasoning';
+            let icon = '🤔';
+
+            if (trace.trace_type === 'database_query') {
+                stepType = 'database-query';
+                icon = '🗄️';
+            } else if (trace.trace_type === 'memory_retrieval') {
+                stepType = 'memory-retrieval';
+                icon = '🧠';
+            } else if (trace.trace_type === 'reasoning_step') {
+                stepType = 'reasoning';
+                icon = '🤔';
+            } else if (trace.description && trace.description.toLowerCase().includes('llm')) {
+                stepType = 'llm-generation';
+                icon = '✨';
+            }
+
+            step.className = `reasoning-step ${stepType}`;
+
+            // Build step content
+            const title = trace.step || trace.description || `Step ${index + 1}`;
+            const description = trace.description || '';
+            const duration = trace.duration_ms ? `${Math.round(trace.duration_ms)}ms` : '';
+
+            // Build details from trace data
+            let details = '';
+            if (trace.trace_type === 'database_query') {
+                details = `Query: ${trace.query_type} on ${trace.table} (${trace.rows_affected} rows)`;
+            } else if (trace.trace_type === 'memory_retrieval') {
+                details = `Found ${trace.memories_found} memories using ${trace.retrieval_method}`;
+                if (trace.top_memory) {
+                    details += `\nTop memory: "${trace.top_memory.content.substring(0, 50)}..." (relevance: ${trace.top_memory.relevance})`;
+                }
+            } else if (trace.output_data) {
+                details = JSON.stringify(trace.output_data, null, 2);
+            }
+
+            step.innerHTML = `
+                <div class="reasoning-step-marker">${icon}</div>
+                <div class="reasoning-step-content">
+                    <div class="reasoning-step-header">
+                        <div class="reasoning-step-title">${title}</div>
+                        ${duration ? `<div class="reasoning-step-duration">${duration}</div>` : ''}
+                    </div>
+                    ${description ? `<div class="reasoning-step-description">${description}</div>` : ''}
+                    ${details ? `<div class="reasoning-step-details">${details}</div>` : ''}
+                </div>
+            `;
+
+            return step;
+        }
+
+        function clearReasoningPane() {
+            const container = document.getElementById('reasoningPaneContent');
+            container.innerHTML = `
+                <div class="reasoning-empty">
+                    <div class="reasoning-empty-icon">🤖</div>
+                    <div class="reasoning-empty-text">Send a message to see how the system thinks</div>
+                </div>
+            `;
+        }
 
         // ============================================
         // TAB NAVIGATION
@@ -1638,6 +2613,9 @@
                 showGlobalSuccess(`Scenario ${scenarioId} loaded successfully`);
                 btn.textContent = 'Loaded';
                 updateHeaderStats();
+
+                // Animate data flow through architecture diagram
+                setTimeout(() => animateDataFlow(), 500);
             } catch (error) {
                 showGlobalError('Load Failed', error.message);
                 btn.disabled = false;
@@ -1645,8 +2623,20 @@
             }
         }
 
+        async function clearMemoriesOnly() {
+            if (!confirm('This will clear all memories (chat history, entities, semantic memories). Domain data will be preserved. Continue?')) return;
+
+            try {
+                await fetch('/api/v1/demo/scenarios/reset-memories', { method: 'POST' });
+                showGlobalSuccess('Memory data cleared successfully');
+                updateHeaderStats();
+            } catch (error) {
+                showGlobalError('Clear Failed', error.message);
+            }
+        }
+
         async function resetAllData() {
-            if (!confirm('This will delete all data. Continue?')) return;
+            if (!confirm('This will delete all data (domain + memories). Continue?')) return;
 
             try {
                 await fetch('/api/v1/demo/scenarios/reset', { method: 'POST' });
@@ -2183,6 +3173,10 @@
                 </div>
             `;
             currentSessionId = null;  // Reset session for fresh conversation
+
+            // Clear reasoning pane and reset auto-open preference
+            clearReasoningPane();
+            localStorage.removeItem('reasoning_pane_dismissed');
         }
 
         function useSuggestion(query) {
@@ -2202,8 +3196,14 @@
             addChatMessage('user', message);
             input.value = '';
 
-            // Show typing indicator
-            const typingId = addTypingIndicator();
+            // Show real-time processing steps if debug mode is on
+            let processingId = null;
+            if (debugMode) {
+                processingId = addProcessingSteps();
+            } else {
+                // Show simple typing indicator
+                processingId = addTypingIndicator();
+            }
 
             try {
                 const requestBody = {
@@ -2225,19 +3225,39 @@
 
                 const data = await response.json();
 
-                // Remove typing indicator
-                removeTypingIndicator(typingId);
+                // Populate processing details with response data
+                if (debugMode && processingId) {
+                    populateProcessingDetails(processingId, data);
+                    // Convert processing message to include reply
+                    removeProcessingSteps(processingId, data.reply, data.debug || data.traces);
+                } else {
+                    removeTypingIndicator(processingId);
+                    // Add reply as new message in non-debug mode
+                    addChatMessage('assistant', data.reply, data.debug || data.traces);
+                }
 
                 // Store session_id from response for next message
                 if (data.session_id) {
                     currentSessionId = data.session_id;
                 }
 
-                addChatMessage('assistant', data.reply, data.debug || data.traces);
+                // Render reasoning steps if reasoning pane is visible and traces available
+                if (data.traces) {
+                    renderReasoningSteps(data.traces);
+
+                    // Auto-open reasoning pane on first message if not already open
+                    if (!reasoningPaneVisible && !localStorage.getItem('reasoning_pane_dismissed')) {
+                        setTimeout(() => toggleReasoningPane(), 500);
+                    }
+                }
 
             } catch (error) {
-                removeTypingIndicator(typingId);
-                addChatMessage('assistant', `Error: ${error.message}`);
+                if (debugMode && processingId) {
+                    removeProcessingSteps(processingId, `Error: ${error.message}`, null);
+                } else if (processingId) {
+                    removeTypingIndicator(processingId);
+                    addChatMessage('assistant', `Error: ${error.message}`);
+                }
             }
         }
 
@@ -2265,6 +3285,337 @@
             const element = document.getElementById(id);
             if (element) {
                 element.remove();
+            }
+        }
+
+        // Processing steps visualization for debug mode
+        function addProcessingSteps() {
+            const container = document.getElementById('chatMessages');
+            const processingId = 'processing-steps-' + Date.now();
+
+            const processingDiv = document.createElement('div');
+            processingDiv.className = 'chat-message assistant';
+            processingDiv.id = processingId;
+            processingDiv.innerHTML = `
+                <div class="chat-message-avatar">A</div>
+                <div class="chat-message-content">
+                    <div class="chat-message-role">Processing Request...</div>
+                    <div class="processing-steps">
+                        <div class="processing-step" data-step="store">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 1: Store chat event</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="resolve">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 2: Resolve entities (Phase 1A)</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="extract">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 3: Extract semantics (Phase 1B)</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="augment">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 4: Augment with domain data (Phase 1C)</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="detect">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 5: Detect conflicts</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="score">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 6: Score memories (Phase 1D)</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                        <div class="processing-step" data-step="generate">
+                            <div class="processing-step-icon">⏳</div>
+                            <div class="processing-step-text">
+                                <div>Step 7: Generate LLM reply</div>
+                                <div class="processing-step-details"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(processingDiv);
+            container.scrollTop = container.scrollHeight;
+            return processingId;
+        }
+
+        function populateProcessingDetails(processingId, data) {
+            const processingElement = document.getElementById(processingId);
+            if (!processingElement) return;
+
+            // Step 1: Store (always completes first)
+            const storeStep = processingElement.querySelector('[data-step="store"]');
+            if (storeStep) {
+                const icon = storeStep.querySelector('.processing-step-icon');
+                const details = storeStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                storeStep.classList.add('completed');
+                if (details) {
+                    details.textContent = `Session: ${data.session_id ? data.session_id.substring(0, 8) + '...' : 'N/A'}`;
+                }
+            }
+
+            // Step 2: Resolve entities (Phase 1A)
+            const resolveStep = processingElement.querySelector('[data-step="resolve"]');
+            if (resolveStep) {
+                const icon = resolveStep.querySelector('.processing-step-icon');
+                const details = resolveStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                resolveStep.classList.add('completed');
+                if (details) {
+                    details.textContent = 'Entity resolution completed';
+                }
+            }
+
+            // Step 3: Extract semantics (Phase 1B)
+            const extractStep = processingElement.querySelector('[data-step="extract"]');
+            if (extractStep) {
+                const icon = extractStep.querySelector('.processing-step-icon');
+                const details = extractStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                extractStep.classList.add('completed');
+                if (details) {
+                    details.textContent = 'Semantic extraction completed';
+                }
+            }
+
+            // Step 4: Augment with domain data (Phase 1C)
+            const augmentStep = processingElement.querySelector('[data-step="augment"]');
+            if (augmentStep) {
+                const icon = augmentStep.querySelector('.processing-step-icon');
+                const details = augmentStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                augmentStep.classList.add('completed');
+
+                if (details) {
+                    if (data.debug && data.debug.domain_facts_used && data.debug.domain_facts_used.length > 0) {
+                        const facts = data.debug.domain_facts_used;
+                        const sources = [...new Set(facts.map(f => f.source))];
+                        details.textContent = `${facts.length} domain fact${facts.length !== 1 ? 's' : ''} from ${sources.join(', ')}`;
+                    } else {
+                        details.textContent = 'No domain facts retrieved';
+                    }
+                }
+            }
+
+            // Step 5: Detect conflicts
+            const detectStep = processingElement.querySelector('[data-step="detect"]');
+            if (detectStep) {
+                const icon = detectStep.querySelector('.processing-step-icon');
+                const details = detectStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                detectStep.classList.add('completed');
+                if (details) {
+                    details.textContent = 'No conflicts detected';
+                }
+            }
+
+            // Step 6: Score memories (Phase 1D)
+            const scoreStep = processingElement.querySelector('[data-step="score"]');
+            if (scoreStep) {
+                const icon = scoreStep.querySelector('.processing-step-icon');
+                const details = scoreStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                scoreStep.classList.add('completed');
+
+                if (details) {
+                    if (data.debug && data.debug.memories_used && data.debug.memories_used.length > 0) {
+                        const memories = data.debug.memories_used;
+                        const avgRelevance = memories.reduce((sum, m) => sum + (m.relevance || 0), 0) / memories.length;
+                        const avgConfidence = memories.reduce((sum, m) => sum + (m.confidence || 0), 0) / memories.length;
+                        details.textContent = `${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'} retrieved (relevance: ${avgRelevance.toFixed(2)}, confidence: ${avgConfidence.toFixed(2)})`;
+                    } else {
+                        details.textContent = 'No memories retrieved';
+                    }
+                }
+            }
+
+            // Step 7: Generate LLM reply
+            const generateStep = processingElement.querySelector('[data-step="generate"]');
+            if (generateStep) {
+                const icon = generateStep.querySelector('.processing-step-icon');
+                const details = generateStep.querySelector('.processing-step-details');
+                if (icon) {
+                    icon.textContent = '✓';
+                    icon.style.color = 'var(--color-success)';
+                }
+                generateStep.classList.add('completed');
+
+                if (details && data.reply) {
+                    const chars = data.reply.length;
+                    const tokens = Math.ceil(chars / 4); // Rough estimate
+                    details.textContent = `Reply generated (${chars} chars, ~${tokens} tokens)`;
+                } else if (details) {
+                    details.textContent = 'Reply generation completed';
+                }
+            }
+        }
+
+        function removeProcessingSteps(id, replyContent, debugData) {
+            const element = document.getElementById(id);
+            if (element) {
+                // Mark all remaining steps as completed
+                const allSteps = element.querySelectorAll('.processing-step');
+                allSteps.forEach(step => {
+                    const icon = step.querySelector('.processing-step-icon');
+                    if (icon && icon.textContent === '⏳') {
+                        icon.textContent = '✓';
+                        icon.style.color = 'var(--color-success)';
+                        step.classList.add('completed');
+                    }
+                });
+
+                // Reorder content: move processing steps to bottom, add reply at top
+                const contentDiv = element.querySelector('.chat-message-content');
+                const roleDiv = element.querySelector('.chat-message-role');
+                const stepsContainer = element.querySelector('.processing-steps');
+
+                if (contentDiv && replyContent) {
+                    // Remove processing steps temporarily to reorder
+                    if (stepsContainer && stepsContainer.parentNode === contentDiv) {
+                        contentDiv.removeChild(stepsContainer);
+                    }
+
+                    // Update role to just show assistant + timestamp
+                    if (roleDiv) {
+                        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        roleDiv.innerHTML = `
+                            assistant
+                            <span class="chat-message-timestamp">${timestamp}</span>
+                        `;
+                    }
+
+                    // Add reply text at the top (after role)
+                    const replyDiv = document.createElement('div');
+                    replyDiv.className = 'chat-message-text';
+                    replyDiv.textContent = replyContent;
+                    contentDiv.appendChild(replyDiv);
+
+                    // Build and add debug HTML if available
+                    if (debugData) {
+                        const debugSections = [];
+
+                        if (debugData.domain_facts_used && debugData.domain_facts_used.length > 0) {
+                            debugSections.push(`
+                                <div class="chat-message-debug">
+                                    <div class="chat-message-debug-title">Domain Facts (${debugData.domain_facts_used.length})</div>
+                                    ${debugData.domain_facts_used.slice(0, 3).map(f => `<div class="chat-message-debug-item">• ${JSON.stringify(f).slice(0, 100)}...</div>`).join('')}
+                                </div>
+                            `);
+                        }
+
+                        if (debugData.memories_used && debugData.memories_used.length > 0) {
+                            debugSections.push(`
+                                <div class="chat-message-debug">
+                                    <div class="chat-message-debug-title">Memories Used (${debugData.memories_used.length})</div>
+                                    ${debugData.memories_used.slice(0, 3).map(m => `<div class="chat-message-debug-item">• ${m.content || JSON.stringify(m).slice(0, 100)}</div>`).join('')}
+                                </div>
+                            `);
+                        }
+
+                        if (debugSections.length > 0) {
+                            try {
+                                const debugContainer = document.createElement('div');
+                                debugContainer.innerHTML = debugSections.join('');
+                                contentDiv.appendChild(debugContainer);
+                            } catch (error) {
+                                console.error('Error adding debug container:', error);
+                            }
+                        }
+                    }
+
+                    // Add processing details toggle button (only if not already added)
+                    if (!element.querySelector('.processing-details-toggle')) {
+                        try {
+                            const toggleDiv = document.createElement('div');
+                            toggleDiv.className = 'processing-details-toggle';
+                            toggleDiv.style.cssText = 'margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--color-border); cursor: pointer;';
+                            toggleDiv.onclick = () => toggleProcessingDetails(id);
+
+                            const toggleContent = document.createElement('span');
+                            toggleContent.style.cssText = 'display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-tertiary);';
+
+                            const checkSpan = document.createElement('span');
+                            checkSpan.style.color = 'var(--color-success)';
+                            checkSpan.textContent = '✓';
+
+                            const textSpan = document.createElement('span');
+                            textSpan.textContent = 'Processing Details';
+
+                            const iconSpan = document.createElement('span');
+                            iconSpan.className = 'toggle-icon';
+                            iconSpan.id = `${id}-toggle`;
+                            iconSpan.textContent = '▼';
+
+                            toggleContent.appendChild(checkSpan);
+                            toggleContent.appendChild(textSpan);
+                            toggleContent.appendChild(iconSpan);
+                            toggleDiv.appendChild(toggleContent);
+
+                            contentDiv.appendChild(toggleDiv);
+                        } catch (error) {
+                            console.error('Error adding toggle button:', error);
+                        }
+                    }
+
+                    // Re-add processing steps at the bottom (collapsed)
+                    if (stepsContainer) {
+                        stepsContainer.classList.add('collapsed');
+                        contentDiv.appendChild(stepsContainer);
+                    }
+                }
+            }
+        }
+
+        function toggleProcessingDetails(id) {
+            const element = document.getElementById(id);
+            if (element) {
+                const stepsContainer = element.querySelector('.processing-steps');
+                const toggleIcon = document.getElementById(`${id}-toggle`);
+
+                if (stepsContainer) {
+                    stepsContainer.classList.toggle('collapsed');
+                    if (toggleIcon) {
+                        toggleIcon.textContent = stepsContainer.classList.contains('collapsed') ? '▼' : '▲';
+                    }
+                }
             }
         }
 
@@ -2348,6 +3699,9 @@
                 databaseStatsData = dbStats;
                 memoryStatsData = memStats;
 
+                // Update architecture diagram counts
+                updateArchitectureCounts();
+
                 if (currentTab === 'database') {
                     renderDatabaseStats();
                 } else if (currentTab === 'memory') {
@@ -2381,6 +3735,7 @@
         async function init() {
             await loadScenarios();
             await updateHeaderStats();
+            startActivityPolling();
         }
 
         init();

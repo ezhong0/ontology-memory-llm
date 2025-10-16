@@ -29,18 +29,23 @@ class LLMReplyGenerator:
     Architecture: Depends on LLMProviderPort (not OpenAI directly).
     """
 
-    # Model configuration
-    MODEL = "gpt-4o-mini"  # Cost-effective for demo (~15x cheaper than gpt-4)
+    # Default configuration (overridable per instance)
     MAX_TOKENS = 500  # Enforce conciseness
     TEMPERATURE = 0.7  # Balanced creativity/accuracy
 
-    def __init__(self, llm_provider: LLMProviderPort | None):
+    def __init__(
+        self,
+        llm_provider: LLMProviderPort | None,
+        model: str = "gpt-4o-mini",
+    ):
         """Initialize LLM reply generator.
 
         Args:
             llm_provider: LLM provider implementation (None = fallback mode)
+            model: Model to use for generation (e.g., 'gpt-4o-mini', 'claude-3-5-haiku-20241022')
         """
         self._provider = llm_provider
+        self._model = model
         self._total_tokens_used = 0
         self._total_cost = 0.0
 
@@ -79,7 +84,7 @@ class LLMReplyGenerator:
             start_time = datetime.now(UTC)
             llm_response = await self._provider.generate_completion(
                 prompt=full_prompt,
-                model=self.MODEL,
+                model=self._model,
                 temperature=self.TEMPERATURE,
                 max_tokens=self.MAX_TOKENS,
             )

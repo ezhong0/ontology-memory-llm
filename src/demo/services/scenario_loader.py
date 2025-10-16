@@ -80,6 +80,10 @@ class ScenarioLoaderService:
         self._validate_scenario(scenario)
 
         try:
+            # Reset all data first (clear everything from DB)
+            logger.info("Clearing all existing demo data before loading scenario")
+            await self.reset()
+
             # Clear tracking dicts
             self._entity_map = {}
             self._canonical_entity_map = {}
@@ -618,4 +622,68 @@ class ScenarioLoaderService:
             await self.session.rollback()
             logger.error("Failed to reset demo data: %s", str(e))
             msg = f"Failed to reset demo data: {e!s}"
+            raise ScenarioLoadError(msg) from e
+
+    async def reset_memories_only(self) -> None:
+        """Delete only memory/chat data (keep domain data intact).
+
+        WARNING: This is destructive and cannot be undone.
+        Clears: chat events, entities, aliases, semantic/episodic memories.
+        """
+        logger.warning("Clearing memory data only (keeping domain data)")
+
+        try:
+            # Delete chat events for demo users
+            from src.infrastructure.database.models import ChatEvent
+
+            await self.session.execute(
+                delete(ChatEvent).where(
+                    ChatEvent.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
+                )
+            )
+
+            # Get all customer canonical entity IDs
+            customer_entities_result = await self.session.execute(
+                select(CanonicalEntity.entity_id).where(
+                    CanonicalEntity.entity_id.like("customer:%")
+                )
+            )
+            customer_entity_ids = [row[0] for row in customer_entities_result]
+
+            if customer_entity_ids:
+                # Delete memories that reference customer entities
+                await self.session.execute(
+                    delete(SemanticMemory).where(
+                        SemanticMemory.subject_entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+                # Delete episodic memories for demo users
+                await self.session.execute(
+                    delete(EpisodicMemory).where(
+                        EpisodicMemory.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
+                    )
+                )
+
+                # Delete aliases that reference customer entities
+                await self.session.execute(
+                    delete(EntityAlias).where(
+                        EntityAlias.canonical_entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+                # Delete canonical entities
+                await self.session.execute(
+                    delete(CanonicalEntity).where(
+                        CanonicalEntity.entity_id.in_(customer_entity_ids)
+                    )
+                )
+
+            await self.session.commit()
+            logger.info("Memory data cleared successfully (domain data preserved)")
+
+        except Exception as e:
+            await self.session.rollback()
+            logger.error("Failed to clear memory data: %s", str(e))
+            msg = f"Failed to clear memory data: {e!s}"
             raise ScenarioLoadError(msg) from e

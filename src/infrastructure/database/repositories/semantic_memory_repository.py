@@ -263,6 +263,8 @@ class SemanticMemoryRepository:
             model.reinforcement_count = memory.reinforcement_count
             model.last_validated_at = memory.last_validated_at
             model.updated_at = memory.updated_at
+            model.object_value = memory.object_value  # Phase 2.1: Can change during conflict resolution
+            model.superseded_by_memory_id = memory.superseded_by_memory_id  # Phase 2.1: Track supersession
 
             # Update confidence_factors to track source events
             model.confidence_factors = {

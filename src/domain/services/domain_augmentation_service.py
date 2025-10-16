@@ -237,7 +237,8 @@ class DomainAugmentationService:
                     if not so_number.startswith("SO-"):
                         so_number = f"SO-{so_number}"
 
-                if intent in ["operational", "financial", "general"]:
+                # Query for sales order status/details for operational, financial, and task-related queries
+                if intent in ["operational", "financial", "general", "tasks"]:
                     queries.append(
                         (
                             "order_chain",

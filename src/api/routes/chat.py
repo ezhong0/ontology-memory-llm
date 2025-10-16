@@ -72,19 +72,11 @@ async def process_chat_simplified(
         disambiguation_selection = request.get("disambiguation_selection")
         if disambiguation_selection:
             # User selected from ambiguous candidates
-            from src.infrastructure.di.container import Container
-            container = Container()
-            entity_resolution_service = container.entity_resolution_service()
-
-            await entity_resolution_service.learn_alias(
-                entity_id=disambiguation_selection["selected_entity_id"],
-                alias_text=disambiguation_selection["original_mention"],
-                user_id=user_id,
-                source="user_stated",
-            )
-
+            # TODO: Create user-specific alias for learning
+            # This requires accessing EntityResolutionService with proper session
+            # For now, log the selection and proceed
             logger.info(
-                "disambiguation_alias_created",
+                "disambiguation_selection_received",
                 entity_id=disambiguation_selection["selected_entity_id"],
                 mention=disambiguation_selection["original_mention"],
                 user_id=user_id,
@@ -185,30 +177,21 @@ async def process_chat_simplified(
             candidates_count=len(e.candidates),
         )
 
-        # Fetch entity details for each candidate
-        from src.infrastructure.di.container import Container
-        container = Container()
-        entity_repo = container.entity_repository()
-
-        candidates_with_details = []
-        for entity_id, similarity_score in e.candidates:
-            entity = await entity_repo.find_by_entity_id(entity_id)
-            if entity:
-                candidates_with_details.append({
-                    "entity_id": entity.entity_id,
-                    "canonical_name": entity.canonical_name,
-                    "properties": {
-                        "entity_type": entity.entity_type,
-                        **entity.properties,
-                    },
-                    "similarity_score": similarity_score,
-                })
+        # Use full entity details from exception (includes canonical_name, properties, etc)
+        # The exception now carries all entity details needed for disambiguation UI
+        candidates_list = e.entities if e.entities else [
+            {
+                "entity_id": entity_id,
+                "similarity_score": similarity_score,
+            }
+            for entity_id, similarity_score in e.candidates
+        ]
 
         # Return 200 with disambiguation_required flag
         return {
             "disambiguation_required": True,
             "original_mention": e.mention_text,
-            "candidates": candidates_with_details,
+            "candidates": candidates_list,
             "message": f"Multiple entities match '{e.mention_text}'. Please select one.",
         }
 

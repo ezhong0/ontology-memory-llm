@@ -14,6 +14,7 @@ from src.domain.entities import ChatMessage, SemanticMemory
 from src.domain.ports import IEmbeddingService, ISemanticMemoryRepository
 from src.domain.services import (
     ConflictDetectionService,
+    ConflictResolutionService,
     MemoryValidationService,
     SemanticExtractionService,
 )
@@ -63,6 +64,7 @@ class ExtractSemanticsUseCase:
         semantic_extraction_service: SemanticExtractionService,
         memory_validation_service: MemoryValidationService,
         conflict_detection_service: ConflictDetectionService,
+        conflict_resolution_service: ConflictResolutionService,
         semantic_memory_repository: ISemanticMemoryRepository,
         embedding_service: IEmbeddingService,
     ):
@@ -72,12 +74,14 @@ class ExtractSemanticsUseCase:
             semantic_extraction_service: Service for extracting semantic triples
             memory_validation_service: Service for memory reinforcement and decay
             conflict_detection_service: Service for detecting memory conflicts
+            conflict_resolution_service: Service for resolving detected conflicts (Phase 2.1)
             semantic_memory_repository: Repository for semantic memory storage
             embedding_service: Service for generating embeddings
         """
         self.semantic_extraction_service = semantic_extraction_service
         self.memory_validation_service = memory_validation_service
         self.conflict_detection_service = conflict_detection_service
+        self.conflict_resolution_service = conflict_resolution_service
         self.semantic_memory_repo = semantic_memory_repository
         self.embedding_service = embedding_service
 
@@ -104,6 +108,19 @@ class ExtractSemanticsUseCase:
 
         if not resolved_entities:
             logger.debug("no_resolved_entities_for_semantic_extraction")
+            return ExtractSemanticsResult(
+                semantic_memory_dtos=[],
+                semantic_memory_entities=[],
+                conflict_count=0,
+                conflicts_detected=[],
+            )
+
+        # Skip semantic extraction for questions (only extract from statements)
+        if self._is_question(message.content):
+            logger.debug(
+                "skipping_semantic_extraction_for_question",
+                content_preview=message.content[:100],
+            )
             return ExtractSemanticsResult(
                 semantic_memory_dtos=[],
                 semantic_memory_entities=[],
@@ -167,14 +184,21 @@ class ExtractSemanticsUseCase:
                             predicate=triple.predicate,
                         )
 
-                        # If conflict can be auto-resolved, handle it
+                        # Phase 2.1: Use ConflictResolutionService for proper resolution
                         if conflict.is_resolvable_automatically:
-                            await self._handle_auto_resolvable_conflict(
-                                conflict, triple, existing_memory, message.event_id
+                            resolution_result = await self.conflict_resolution_service.resolve_conflict(
+                                conflict=conflict,
+                                strategy=None,  # Use recommended strategy
                             )
+                            logger.info(
+                                "conflict_resolved",
+                                action=resolution_result.action,
+                                rationale=resolution_result.rationale,
+                            )
+                            # Don't create new memory after resolution (winner already updated)
                             continue
                         else:
-                            # Mark both as conflicted
+                            # Mark both as conflicted (requires user clarification)
                             existing_memory.mark_as_conflicted()
                             await self.semantic_memory_repo.update(existing_memory)
                             # Don't create new memory if unresolvable conflict
@@ -244,58 +268,57 @@ class ExtractSemanticsUseCase:
             conflicts_detected=conflicts_detected,
         )
 
-    async def _handle_auto_resolvable_conflict(
-        self,
-        conflict: MemoryConflict,
-        new_triple: SemanticTriple,
-        existing_memory: SemanticMemory,
-        event_id: int,
-    ) -> None:
-        """Handle automatically resolvable memory conflicts.
+    # Phase 2.1: Removed _handle_auto_resolvable_conflict()
+    # Now using ConflictResolutionService for proper resolution with status tracking
+
+    def _is_question(self, content: str) -> bool:
+        """Check if message content is a question.
+
+        Questions should create episodic memories (event happened)
+        but NOT semantic memories (no factual assertions).
 
         Args:
-            conflict: Detected conflict
-            new_triple: New semantic triple
-            existing_memory: Existing conflicting memory
-            event_id: Current chat event ID
+            content: Message content
+
+        Returns:
+            True if message is a question, False otherwise
         """
-        if conflict.recommended_resolution == ConflictResolution.KEEP_NEWEST:
-            # Update existing memory with new value
-            existing_memory.object_value = new_triple.object_value
-            existing_memory.confidence = new_triple.confidence
-            existing_memory.source_event_ids.append(event_id)
-            await self.semantic_memory_repo.update(existing_memory)
-            logger.info(
-                "conflict_auto_resolved_keep_newest",
-                memory_id=existing_memory.memory_id,
-            )
+        content_stripped = content.strip()
 
-        elif conflict.recommended_resolution == ConflictResolution.KEEP_HIGHEST_CONFIDENCE:
-            if new_triple.confidence > existing_memory.confidence:
-                # New is more confident - update
-                existing_memory.object_value = new_triple.object_value
-                existing_memory.confidence = new_triple.confidence
-                existing_memory.source_event_ids.append(event_id)
-                await self.semantic_memory_repo.update(existing_memory)
-                logger.info(
-                    "conflict_auto_resolved_keep_highest_conf",
-                    memory_id=existing_memory.memory_id,
-                    kept="new",
-                )
-            else:
-                # Existing is more confident - keep it
-                logger.info(
-                    "conflict_auto_resolved_keep_highest_conf",
-                    memory_id=existing_memory.memory_id,
-                    kept="existing",
-                )
+        # Check for question mark
+        if content_stripped.endswith("?"):
+            return True
 
-        elif conflict.recommended_resolution == ConflictResolution.KEEP_MOST_REINFORCED:
-            # Existing is always more reinforced (new has count=1)
-            logger.info(
-                "conflict_auto_resolved_keep_most_reinforced",
-                memory_id=existing_memory.memory_id,
-            )
+        # Check for question words at start (case-insensitive)
+        question_words = [
+            "what",
+            "when",
+            "where",
+            "who",
+            "why",
+            "how",
+            "which",
+            "can",
+            "could",
+            "would",
+            "should",
+            "is",
+            "are",
+            "was",
+            "were",
+            "do",
+            "does",
+            "did",
+            "has",
+            "have",
+            "will",
+        ]
+
+        first_word = content_stripped.lower().split()[0] if content_stripped else ""
+        if first_word in question_words:
+            return True
+
+        return False
 
     def _memory_to_dto(self, memory: SemanticMemory) -> SemanticMemoryDTO:
         """Convert SemanticMemory entity to DTO.

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.application.use_cases import ProcessChatMessageUseCase
 from src.domain.services import (
     ConflictDetectionService,
+    ConflictResolutionService,
     ConsolidationService,
     ConsolidationTriggerService,
     DomainAugmentationService,
@@ -105,6 +106,11 @@ async def get_process_chat_message_use_case(
     memory_validation_service = MemoryValidationService()
     conflict_detection_service = ConflictDetectionService()
 
+    # Phase 2.1 service
+    conflict_resolution_service = ConflictResolutionService(
+        semantic_memory_repository=semantic_memory_repo,
+    )
+
     # Create Phase 1C services
     domain_db_repo = DomainDatabaseRepository(db)
     domain_augmentation_service = DomainAugmentationService(domain_db_port=domain_db_repo)
@@ -126,6 +132,7 @@ async def get_process_chat_message_use_case(
         semantic_extraction_service=semantic_extraction_service,
         memory_validation_service=memory_validation_service,
         conflict_detection_service=conflict_detection_service,
+        conflict_resolution_service=conflict_resolution_service,  # Phase 2.1
         embedding_service=embedding_service,
     )
 

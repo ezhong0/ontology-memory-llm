@@ -57,6 +57,12 @@ class SimpleMentionExtractor:
         r"\b([A-Z][a-z]*(?:\s+[A-Z][a-z]*){0,4})\b"
     )
 
+    # Pattern for alphanumeric identifiers (SO-1001, INV-1009, WO-123, etc.)
+    # Matches: 2+ uppercase letters, hyphen, 1+ digits
+    IDENTIFIER_PATTERN = re.compile(
+        r"\b([A-Z]{2,}-\d+)\b"
+    )
+
     # Common words to ignore (not entities)
     STOPWORDS = {
         "I",
@@ -127,6 +133,34 @@ class SimpleMentionExtractor:
                     mention=mention.text,
                     position=position,
                 )
+
+        # Extract alphanumeric identifiers (SO-1001, INV-1009, etc.)
+        for match in self.IDENTIFIER_PATTERN.finditer(text):
+            identifier = match.group()
+            position = match.start()
+
+            sentence, sent_start = self._get_sentence_at_position(sentences, position)
+
+            # Get context around mention
+            context_before, context_after = self._get_context(
+                text, position, len(identifier)
+            )
+
+            mention = EntityMention(
+                text=identifier,
+                position=position,
+                context_before=context_before,
+                context_after=context_after,
+                is_pronoun=False,
+                sentence=sentence,
+            )
+            mentions.append(mention)
+
+            logger.debug(
+                "identifier_mention_extracted",
+                mention=mention.text,
+                position=position,
+            )
 
         # Extract capitalized phrases (potential named entities)
         for match in self.CAPITALIZED_PATTERN.finditer(text):

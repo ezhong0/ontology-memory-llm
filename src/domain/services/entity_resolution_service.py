@@ -264,9 +264,21 @@ class EntityResolutionService:
                     candidates = [
                         (entity.entity_id, score) for entity, score in matches[:3]
                     ]
+                    # Include full entity details for disambiguation UI
+                    entities = [
+                        {
+                            "entity_id": entity.entity_id,
+                            "canonical_name": entity.canonical_name,
+                            "entity_type": entity.entity_type,
+                            "properties": entity.properties,
+                            "similarity_score": score,
+                        }
+                        for entity, score in matches[:3]
+                    ]
                     raise AmbiguousEntityError(
                         mention_text=mention.text,
                         candidates=candidates,
+                        entities=entities,
                     )
 
             # Confidence is the similarity score, capped at medium confidence threshold
