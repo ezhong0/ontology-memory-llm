@@ -272,6 +272,90 @@ class DomainDatabaseRepository(DomainDatabasePort):
             )
             return []
 
+    async def get_work_orders_for_customer(
+        self, customer_id: str, status_filter: str | None = None
+    ) -> list[DomainFact]:
+        """Get all work orders for a customer."""
+        query_sql = """
+            SELECT
+                wo.wo_id,
+                wo.description,
+                wo.status,
+                wo.technician,
+                wo.scheduled_for,
+                so.so_number,
+                so.title as so_title,
+                c.name as customer_name
+            FROM domain.work_orders wo
+            JOIN domain.sales_orders so ON wo.so_id = so.so_id
+            JOIN domain.customers c ON so.customer_id = c.customer_id
+            WHERE c.customer_id = :customer_id
+        """
+
+        if status_filter:
+            query_sql += " AND wo.status = :status"
+
+        query_sql += " ORDER BY wo.scheduled_for ASC NULLS LAST"
+
+        query = text(query_sql)
+
+        try:
+            params: dict[str, Any] = {"customer_id": UUID(customer_id)}
+            if status_filter:
+                params["status"] = status_filter
+
+            result = await self.session.execute(query, params)
+            rows = result.fetchall()
+
+            facts = []
+            for row in rows:
+                # Build human-readable content
+                content_parts = [f"Work Order: {row.description}"]
+                content_parts.append(f"Status: {row.status}")
+                if row.technician:
+                    content_parts.append(f"Technician: {row.technician}")
+                if row.scheduled_for:
+                    content_parts.append(f"Scheduled for: {row.scheduled_for}")
+                content_parts.append(f"Sales Order: {row.so_number} ({row.so_title})")
+
+                facts.append(
+                    DomainFact(
+                        fact_type="work_order_status",
+                        entity_id=f"customer:{customer_id}",
+                        content=" | ".join(content_parts),
+                        metadata={
+                            "wo_id": str(row.wo_id),
+                            "description": row.description,
+                            "status": row.status,
+                            "technician": row.technician,
+                            "scheduled_for": row.scheduled_for.isoformat() if row.scheduled_for else None,
+                            "so_number": row.so_number,
+                            "so_title": row.so_title,
+                            "customer_name": row.customer_name,
+                        },
+                        source_table="domain.work_orders",
+                        source_rows=[str(row.wo_id)],
+                        retrieved_at=datetime.now(UTC),
+                    )
+                )
+
+            logger.debug(
+                "work_orders_query_executed",
+                customer_id=customer_id,
+                status_filter=status_filter,
+                facts_retrieved=len(facts),
+            )
+
+            return facts
+
+        except Exception as e:
+            logger.error(
+                "work_orders_query_failed",
+                customer_id=customer_id,
+                error=str(e),
+            )
+            return []
+
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:
@@ -285,7 +369,8 @@ class DomainDatabaseRepository(DomainDatabasePort):
 
         handler = self._custom_queries[query_name]
         try:
-            return await handler(self.session, **params)
+            result: list[DomainFact] = await handler(self.session, **params)
+            return result
         except Exception as e:
             logger.error(
                 "custom_query_failed", query_name=query_name, error=str(e)

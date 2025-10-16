@@ -57,6 +57,20 @@ class DomainDatabasePort(ABC):
         """
 
     @abstractmethod
+    async def get_work_orders_for_customer(
+        self, customer_id: str, status_filter: str | None = None
+    ) -> list[DomainFact]:
+        """Get all work orders for a customer.
+
+        Args:
+            customer_id: Customer UUID
+            status_filter: Optional status filter (e.g., "queued", "in_progress", "done")
+
+        Returns:
+            List of domain facts about work orders
+        """
+
+    @abstractmethod
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:

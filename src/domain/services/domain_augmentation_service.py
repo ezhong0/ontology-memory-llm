@@ -102,6 +102,8 @@ class DomainAugmentationService:
                 tasks.append(self.domain_db.get_order_chain(**params))
             elif query_type == "sla_risk":
                 tasks.append(self.domain_db.get_sla_risks(**params))
+            elif query_type == "work_orders":
+                tasks.append(self.domain_db.get_work_orders_for_customer(**params))
             else:
                 # Extensibility: custom queries
                 tasks.append(self.domain_db.execute_custom_query(query_type, params))
@@ -149,7 +151,12 @@ class DomainAugmentationService:
             return "financial"
         elif any(
             word in query_lower
-            for word in ["order", "status", "work", "delivery", "schedule"]
+            for word in ["work order", "wo", "technician", "schedule", "reschedule", "pick-pack"]
+        ):
+            return "work_orders"
+        elif any(
+            word in query_lower
+            for word in ["order", "status", "delivery"]
         ):
             return "operational"
         elif any(
@@ -194,6 +201,14 @@ class DomainAugmentationService:
                     queries.append(
                         (
                             "sla_risk",
+                            {"customer_id": customer_uuid},
+                        )
+                    )
+
+                if intent in ["work_orders", "operational", "general"]:
+                    queries.append(
+                        (
+                            "work_orders",
                             {"customer_id": customer_uuid},
                         )
                     )
