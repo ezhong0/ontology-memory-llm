@@ -19,16 +19,8 @@ from httpx import AsyncClient
 # Helper Functions
 # ============================================================================
 
-async def seed_domain_db(data: dict):
-    """
-    Seed domain database with test data.
-
-    TODO: Implement when domain DB connector is ready
-    """
-    # Implementation:
-    # - Use DomainDataFactory to create records
-    # - Insert into domain.customers, domain.invoices, etc.
-    pass
+# NOTE: seed_domain_db() is replaced by domain_seeder fixture
+# Use domain_seeder.seed() instead
 
 
 async def create_semantic_memory(
@@ -248,10 +240,10 @@ async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClie
              asks user to select. After selection, creates user-specific alias.
     """
     # ARRANGE: Seed domain database with two "Apple" entities
-    await seed_domain_db({
+    ids = await domain_seeder.seed({
         "customers": [
-            {"customer_id": "apple_tech", "name": "Apple Inc", "industry": "Technology"},
-            {"customer_id": "apple_farm", "name": "Apple Farm Supply", "industry": "Agriculture"}
+            {"id": "apple_tech", "name": "Apple Inc", "industry": "Technology"},
+            {"id": "apple_farm", "name": "Apple Farm Supply", "industry": "Agriculture"}
         ]
     })
 
