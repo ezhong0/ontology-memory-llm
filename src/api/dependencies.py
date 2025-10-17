@@ -17,6 +17,7 @@ from src.domain.services import (
     DomainAugmentationService,
     MemoryValidationService,
     MultiSignalScorer,
+    PIIRedactionService,
     ProceduralMemoryService,
     SemanticExtractionService,
 )
@@ -119,6 +120,9 @@ async def get_process_chat_message_use_case(
     # Create Phase 1D services
     multi_signal_scorer = MultiSignalScorer(validation_service=memory_validation_service)
 
+    # Phase 3.1: PII Redaction Service
+    pii_redaction_service = PIIRedactionService()
+
     # Create individual use cases (refactored architecture)
     resolve_entities_use_case = ResolveEntitiesUseCase(
         entity_repository=entity_repo,
@@ -156,6 +160,7 @@ async def get_process_chat_message_use_case(
         conflict_detection_service=conflict_detection_service,
         conflict_resolution_service=conflict_resolution_service,
         llm_reply_generator=llm_reply_generator,
+        pii_redaction_service=pii_redaction_service,
     )
 
 
@@ -175,6 +180,7 @@ async def get_consolidation_service(
     episodic_repo = EpisodicMemoryRepository(db)
     semantic_repo = SemanticMemoryRepository(db)
     summary_repo = SummaryRepository(db)
+    chat_repo = ChatEventRepository(db)
 
     # Get services from container
     llm_service = container.llm_service()
@@ -185,6 +191,7 @@ async def get_consolidation_service(
         episodic_repo=episodic_repo,
         semantic_repo=semantic_repo,
         summary_repo=summary_repo,
+        chat_repo=chat_repo,
         llm_service=llm_service,
         embedding_service=embedding_service,
     )

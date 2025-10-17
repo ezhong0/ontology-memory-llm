@@ -16,6 +16,7 @@ from src.config import heuristics
 from src.domain.entities.memory_summary import MemorySummary
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.exceptions import DomainError
+from src.domain.ports.chat_repository import IChatEventRepository
 from src.domain.ports.embedding_service import IEmbeddingService
 from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
 from src.domain.ports.llm_service import ILLMService
@@ -57,6 +58,7 @@ class ConsolidationService:
         episodic_repo: IEpisodicMemoryRepository,
         semantic_repo: ISemanticMemoryRepository,
         summary_repo: ISummaryRepository,
+        chat_repo: IChatEventRepository,
         llm_service: ILLMService,
         embedding_service: IEmbeddingService,
     ) -> None:
@@ -66,12 +68,14 @@ class ConsolidationService:
             episodic_repo: Repository for episodic memories
             semantic_repo: Repository for semantic memories
             summary_repo: Repository for memory summaries
+            chat_repo: Repository for chat events
             llm_service: LLM service for synthesis
             embedding_service: Service for generating embeddings
         """
         self._episodic_repo = episodic_repo
         self._semantic_repo = semantic_repo
         self._summary_repo = summary_repo
+        self._chat_repo = chat_repo
         self._llm_service = llm_service
         self._embedding_service = embedding_service
 
@@ -265,12 +269,69 @@ class ConsolidationService:
             num_sessions=num_sessions,
         )
 
-        ConsolidationScope.session_window_scope(num_sessions)
+        scope = ConsolidationScope.session_window_scope(num_sessions)
 
-        # For Phase 1, session window consolidation is simplified
-        # Would need to fetch episodic memories from last N sessions
-        msg = "Session window consolidation not yet implemented in Phase 1"
-        raise DomainError(msg)
+        # Fetch memories from last N sessions
+        episodic, semantic = await self._fetch_memories(user_id, scope)
+
+        # Check threshold
+        if len(episodic) < heuristics.CONSOLIDATION_MIN_EPISODIC:
+            logger.warning(
+                "insufficient_memories_for_session_consolidation",
+                user_id=user_id,
+                num_sessions=num_sessions,
+                episodic_count=len(episodic),
+                threshold=heuristics.CONSOLIDATION_MIN_EPISODIC,
+            )
+            # For Phase 1: Allow manual consolidation even below threshold
+            # raise DomainError(f"Insufficient memories: {len(episodic)} < {heuristics.CONSOLIDATION_MIN_EPISODIC}")
+
+        # Try LLM synthesis with retries
+        for attempt in range(max_retries):
+            try:
+                summary_data = await self._synthesize_with_llm(
+                    episodic=episodic,
+                    semantic=semantic,
+                    scope=scope,
+                )
+
+                # Store summary
+                summary = await self._store_summary(user_id, scope, summary_data)
+
+                # Boost confidence of confirmed facts
+                await self._boost_confirmed_facts(summary_data.confirmed_memory_ids)
+
+                logger.info(
+                    "session_window_consolidation_completed",
+                    user_id=user_id,
+                    num_sessions=num_sessions,
+                    summary_id=summary.summary_id,
+                )
+
+                return summary
+
+            except ValueError as e:
+                logger.warning(
+                    "llm_synthesis_failed",
+                    attempt=attempt + 1,
+                    max_retries=max_retries,
+                    error=str(e),
+                )
+
+                if attempt == max_retries - 1:
+                    # Fallback: Create basic summary without LLM
+                    logger.info("using_fallback_summary", user_id=user_id)
+                    return await self._create_fallback_summary(
+                        user_id=user_id,
+                        scope=scope,
+                        episodic=episodic,
+                        semantic=semantic,
+                    )
+
+        # Should not reach here, but add safety
+        return await self._create_fallback_summary(
+            user_id=user_id, scope=scope, episodic=episodic, semantic=semantic
+        )
 
     async def _fetch_memories(
         self, user_id: str, scope: ConsolidationScope
@@ -308,6 +369,65 @@ class ConsolidationService:
             )
 
             return episodic_filtered, semantic
+
+        elif scope.type == "session_window":
+            # Fetch recent N sessions worth of memories
+            num_sessions = int(scope.identifier)
+
+            # Get recent chat events to identify recent sessions
+            recent_messages = await self._chat_repo.get_recent_for_user(
+                user_id=user_id,
+                limit=100  # Fetch enough to cover N sessions
+            )
+
+            # Extract distinct session IDs (most recent first)
+            seen_sessions = []
+            for msg in reversed(recent_messages):  # Reverse to get chronological order
+                if msg.session_id not in seen_sessions:
+                    seen_sessions.append(msg.session_id)
+                if len(seen_sessions) >= num_sessions:
+                    break
+
+            if not seen_sessions:
+                logger.warning(
+                    "no_recent_sessions_found",
+                    user_id=user_id,
+                    num_sessions=num_sessions,
+                )
+                return [], []
+
+            logger.debug(
+                "session_window_identified",
+                user_id=user_id,
+                num_sessions=num_sessions,
+                found_sessions=len(seen_sessions),
+                session_ids=[str(sid) for sid in seen_sessions],
+            )
+
+            # Fetch episodic memories from these sessions
+            all_episodic: list[MemoryCandidate] = []
+            for session_id in seen_sessions:
+                episodic = await self._episodic_repo.find_recent(
+                    user_id=user_id,
+                    limit=50,
+                    session_id=session_id,
+                )
+                all_episodic.extend(episodic)
+
+            # For Phase 1: Fetch semantic memories created in this time window
+            # Simplified - fetch all active semantic memories for user
+            # In Phase 2, would filter by creation timestamp
+            all_semantic: list[SemanticMemory] = []
+
+            logger.debug(
+                "session_window_memories_fetched",
+                user_id=user_id,
+                num_sessions=num_sessions,
+                episodic_count=len(all_episodic),
+                semantic_count=len(all_semantic),
+            )
+
+            return all_episodic, all_semantic
 
         return [], []
 

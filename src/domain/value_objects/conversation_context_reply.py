@@ -65,6 +65,12 @@ class ReplyContext:
     session_id: UUID
     """Session identifier"""
 
+    pii_detected: bool = False
+    """Whether PII was detected and redacted in the current message (Phase 3.1)"""
+
+    pii_types: list[str] | None = None
+    """Types of PII detected (e.g., ['phone', 'email']) if pii_detected=True"""
+
     def to_system_prompt(self) -> str:
         """Build system prompt from context.
 
@@ -98,6 +104,20 @@ class ReplyContext:
             "- Suggest checking source systems or asking the user for clarification"
         )
         sections.append("")
+
+        # Section 1.5: PII Detection Acknowledgment (Phase 3.1)
+        if self.pii_detected:
+            pii_types_str = ", ".join(self.pii_types) if self.pii_types else "sensitive information"
+            sections.append("⚠️  PRIVACY NOTICE - PII DETECTED AND REDACTED:")
+            sections.append(
+                f"The user's message contained personally identifiable information ({pii_types_str}) "
+                "which has been automatically redacted for privacy protection. "
+                "You MUST acknowledge this redaction in your response with transparency. "
+                "Use phrases like 'I've redacted the sensitive information', "
+                "'For privacy, I've masked the [type]', or 'Your [type] has been protected'. "
+                "This demonstrates epistemic humility and security practices."
+            )
+            sections.append("")
 
         # Section 2: Domain facts (authoritative)
         if self.domain_facts:

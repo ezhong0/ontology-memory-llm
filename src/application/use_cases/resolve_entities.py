@@ -264,6 +264,10 @@ class ResolveEntitiesUseCase:
         When current message has no explicit entity mentions, extract entities from
         recent conversation context to enable confirmations and follow-ups.
 
+        IMPORTANT: Only looks at PRIOR messages, not the current message being processed.
+        This prevents circular dependencies where implicit resolution creates aliases
+        that then get used by explicit resolution in the same turn.
+
         Args:
             context: Conversation context with recent messages
             user_id: User identifier
@@ -276,7 +280,15 @@ class ResolveEntitiesUseCase:
         seen_entity_ids: set[str] = set()
 
         # Look at recent messages (most recent first, up to 3 for focus)
-        for recent_message in context.recent_messages[:3]:
+        # CRITICAL: Filter out the current message to avoid circular dependency
+        # The current message is being processed explicitly, so it shouldn't
+        # also be processed implicitly.
+        prior_messages = [
+            msg for msg in context.recent_messages[:3]
+            if msg.strip() != context.current_message.strip()
+        ]
+
+        for recent_message in prior_messages:
             # Extract mentions from this recent message
             mentions = self.mention_extractor.extract_mentions(recent_message)
 

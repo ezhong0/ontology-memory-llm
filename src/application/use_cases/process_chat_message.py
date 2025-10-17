@@ -25,6 +25,7 @@ from src.domain.services import (
     ConflictDetectionService,
     ConflictResolutionService,
     LLMReplyGenerator,
+    PIIRedactionService,
 )
 from src.domain.value_objects.conversation_context_reply import (
     RecentChatEvent,
@@ -61,6 +62,7 @@ class ProcessChatMessageUseCase:
         conflict_detection_service: ConflictDetectionService,
         conflict_resolution_service: ConflictResolutionService,
         llm_reply_generator: LLMReplyGenerator,
+        pii_redaction_service: PIIRedactionService,
     ):
         """Initialize orchestrator.
 
@@ -73,6 +75,7 @@ class ProcessChatMessageUseCase:
             conflict_detection_service: Service for detecting memory-vs-DB conflicts
             conflict_resolution_service: Service for resolving detected conflicts (Phase 2.1)
             llm_reply_generator: Service for natural language reply generation
+            pii_redaction_service: Service for PII detection and redaction (Phase 3.1)
         """
         self.chat_repo = chat_repository
         self.resolve_entities = resolve_entities_use_case
@@ -82,6 +85,7 @@ class ProcessChatMessageUseCase:
         self.conflict_detection_service = conflict_detection_service
         self.conflict_resolution_service = conflict_resolution_service
         self.llm_reply_generator = llm_reply_generator
+        self.pii_redaction_service = pii_redaction_service
 
     async def execute(
         self, input_dto: ProcessChatMessageInput
@@ -107,12 +111,26 @@ class ProcessChatMessageUseCase:
             content_length=len(input_dto.content),
         )
 
-        # Step 1: Store chat message
+        # Phase 3.1: Detect and redact PII before storing (privacy-by-design)
+        redaction_result = self.pii_redaction_service.redact_with_metadata(input_dto.content)
+
+        content_to_store = redaction_result.redacted_text
+        pii_was_detected = redaction_result.was_redacted
+
+        if pii_was_detected:
+            logger.warning(
+                "pii_detected_in_message",
+                user_id=input_dto.user_id,
+                redaction_count=len(redaction_result.redactions),
+                types=[r["type"] for r in redaction_result.redactions],
+            )
+
+        # Step 1: Store chat message (with redacted content if PII was found)
         message = ChatMessage(
             session_id=input_dto.session_id,
             user_id=input_dto.user_id,
             role=input_dto.role,
-            content=input_dto.content,
+            content=content_to_store,
             event_metadata=input_dto.metadata or {},
         )
 
@@ -156,7 +174,11 @@ class ProcessChatMessageUseCase:
         # are resolved automatically, so this early exit is safe
         if not entities_result.resolved_entities:
             logger.debug("no_entities_resolved_generating_reply_without_context")
-            reply = await self._generate_reply_without_entities(input_dto)
+            reply = await self._generate_reply_without_entities(
+                input_dto,
+                pii_detected=pii_was_detected,
+                pii_types=[r["type"] for r in redaction_result.redactions] if pii_was_detected else None,
+            )
 
             return ProcessChatMessageOutput(
                 event_id=stored_message.event_id,
@@ -178,6 +200,47 @@ class ProcessChatMessageUseCase:
             resolved_entities=entities_result.resolved_entities,
             user_id=input_dto.user_id,
         )
+
+        # Phase 3.1: Create policy memory when PII was detected
+        # This enables transparency and audit trail for privacy compliance
+        if pii_was_detected:
+            from datetime import UTC, datetime
+            from src.domain.entities import SemanticMemory
+            from src.domain.value_objects import PredicateType
+
+            pii_types = [r["type"] for r in redaction_result.redactions]
+
+            # Create policy memory indicating PII was redacted
+            # Generate embedding for the policy memory
+            embedding_text = f"PII redaction policy: never store sensitive information ({', '.join(pii_types)})"
+            pii_embedding = await self.extract_semantics.embedding_service.generate_embedding(
+                embedding_text
+            )
+
+            pii_policy_memory = SemanticMemory(
+                user_id=input_dto.user_id,
+                subject_entity_id="system",
+                predicate="pii_policy",
+                predicate_type=PredicateType.ATTRIBUTE,  # System policy as attribute
+                object_value={
+                    "policy": "never_store_pii",
+                    "detected_types": pii_types,
+                    "redacted_at": datetime.now(UTC).isoformat(),
+                    "redaction_count": len(redaction_result.redactions),
+                },
+                confidence=0.95,
+                source_event_ids=[stored_message.event_id],
+                embedding=pii_embedding,
+            )
+
+            # Store the policy memory
+            await self.extract_semantics.semantic_memory_repo.create(pii_policy_memory)
+
+            logger.info(
+                "pii_policy_memory_created",
+                event_id=stored_message.event_id,
+                pii_types=pii_types,
+            )
 
         # Step 4: Augment with domain facts (Phase 1C)
         domain_fact_dtos = await self.augment_with_domain.execute(
@@ -293,6 +356,8 @@ class ProcessChatMessageUseCase:
             input_dto=input_dto,
             domain_fact_dtos=domain_fact_dtos,
             retrieved_memories=retrieved_memories,
+            pii_detected=pii_was_detected,
+            pii_types=[r["type"] for r in redaction_result.redactions] if pii_was_detected else None,
         )
 
         # Step 7: Assemble final response
@@ -372,11 +437,15 @@ class ProcessChatMessageUseCase:
     async def _generate_reply_without_entities(
         self,
         input_dto: ProcessChatMessageInput,
+        pii_detected: bool = False,
+        pii_types: list[str] | None = None,
     ) -> str:
         """Generate reply when no entities were resolved.
 
         Args:
             input_dto: Input data with message content
+            pii_detected: Whether PII was detected in the message
+            pii_types: Types of PII detected
 
         Returns:
             Generated reply string
@@ -388,6 +457,8 @@ class ProcessChatMessageUseCase:
             recent_chat_events=[],
             user_id=input_dto.user_id,
             session_id=input_dto.session_id,
+            pii_detected=pii_detected,
+            pii_types=pii_types,
         )
         return await self.llm_reply_generator.generate(reply_context)
 
@@ -396,6 +467,8 @@ class ProcessChatMessageUseCase:
         input_dto: ProcessChatMessageInput,
         domain_fact_dtos: list[DomainFactDTO],
         retrieved_memories: list[Any],
+        pii_detected: bool = False,
+        pii_types: list[str] | None = None,
     ) -> str:
         """Generate natural language reply with full context.
 
@@ -443,6 +516,8 @@ class ProcessChatMessageUseCase:
             recent_chat_events=recent_chat_events,
             user_id=input_dto.user_id,
             session_id=input_dto.session_id,
+            pii_detected=pii_detected,
+            pii_types=pii_types,
         )
 
         # Generate natural language reply
