@@ -1,80 +1,77 @@
 """Semantic memory domain entity.
 
-Represents a stored piece of semantic knowledge (SPO triple with metadata).
+Represents entity-tagged natural language memory with importance scoring.
 """
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from src.domain.value_objects import PredicateType
-
-
 @dataclass
 class SemanticMemory:
     """Domain entity representing a semantic memory.
 
-    A semantic memory is a stored SPO (subject-predicate-object) triple
-    extracted from conversation. It includes confidence tracking, validation
-    history, and vector embeddings for similarity search.
+    A semantic memory is entity-tagged natural language extracted from conversation.
+    Uses importance scoring (not reinforcement count) and relies on semantic search
+    rather than structured predicate queries.
 
     Attributes:
         memory_id: Database primary key (None if not yet persisted)
         user_id: User who owns this memory
-        subject_entity_id: Subject entity (from Phase 1A resolution)
-        predicate: Normalized predicate name
-        predicate_type: Type of predicate (attribute, preference, relationship, action)
-        object_value: Structured object value (always dict)
-        confidence: Current confidence [0.0, 1.0]
+        content: The memory text (e.g., "Gai Media prefers Friday deliveries")
+        entities: All entity IDs mentioned in this memory
+        confidence: Confidence in this memory [0.0, 1.0]
+        importance: Dynamic importance score [0.0, 1.0] (replaces reinforcement_count)
         status: Memory status (active, inactive, conflicted)
-        reinforcement_count: Number of times this memory was reinforced
         source_event_ids: Chat event IDs that contributed to this memory
         embedding: Vector embedding for similarity search (1536 dimensions)
+        source_text: Original chat message that created this memory
+        metadata: Optional structured data (confirmations, tags, etc.)
         created_at: When this memory was first created
         updated_at: When this memory was last updated
-        last_validated_at: When this memory was last validated/reinforced
+        last_accessed_at: When this memory was last accessed (for decay)
     """
 
     user_id: str
-    subject_entity_id: str
-    predicate: str
-    predicate_type: PredicateType
-    object_value: dict[str, Any]
-    confidence: float
+    content: str  # The actual memory text
+    entities: list[str]  # All entity IDs mentioned
+    confidence: float  # Confidence in accuracy [0.0, 1.0]
+    importance: float  # Dynamic importance [0.0, 1.0]
     status: str = "active"
-    reinforcement_count: int = 1
     source_event_ids: list[int] = field(default_factory=list)
     embedding: list[float] | None = None
+    source_text: str | None = None  # Original chat message for explainability
+    metadata: dict[str, Any] = field(default_factory=dict)  # Flexible metadata storage
     memory_id: int | None = None
     superseded_by_memory_id: int | None = None  # Phase 2: Track supersession chain
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_validated_at: datetime | None = None
+    last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         """Validate semantic memory invariants."""
         if not self.user_id:
             msg = "user_id cannot be empty"
             raise ValueError(msg)
-        if not self.subject_entity_id:
-            msg = "subject_entity_id cannot be empty"
+        if not self.content:
+            msg = "content cannot be empty"
             raise ValueError(msg)
-        if not self.predicate:
-            msg = "predicate cannot be empty"
+        if not isinstance(self.entities, list):
+            msg = f"entities must be list, got: {type(self.entities)}"
             raise ValueError(msg)
-        if not isinstance(self.predicate_type, PredicateType):
-            msg = f"predicate_type must be PredicateType, got: {type(self.predicate_type)}"
-            raise ValueError(msg)
-        if not isinstance(self.object_value, dict):
-            msg = f"object_value must be dict, got: {type(self.object_value)}"
+        if not self.entities:
+            msg = "entities list cannot be empty"
             raise ValueError(msg)
         if not (0.0 <= self.confidence <= 1.0):
             msg = f"confidence must be in [0.0, 1.0], got: {self.confidence}"
             raise ValueError(msg)
+        if not (0.0 <= self.importance <= 1.0):
+            msg = f"importance must be in [0.0, 1.0], got: {self.importance}"
+            raise ValueError(msg)
         if self.status not in ["active", "inactive", "conflicted", "superseded", "invalidated", "aging"]:
             msg = f"status must be active/inactive/conflicted/superseded/invalidated/aging, got: {self.status}"
             raise ValueError(msg)
-        if self.reinforcement_count < 1:
-            msg = f"reinforcement_count must be >= 1, got: {self.reinforcement_count}"
+        if not isinstance(self.metadata, dict):
+            msg = f"metadata must be dict, got: {type(self.metadata)}"
             raise ValueError(msg)
 
     @property
@@ -93,45 +90,77 @@ class SemanticMemory:
         return self.confidence >= 0.8
 
     @property
-    def is_well_reinforced(self) -> bool:
-        """Check if memory is well-reinforced (>= 3 observations)."""
-        return self.reinforcement_count >= 3
+    def is_high_importance(self) -> bool:
+        """Check if memory has high importance (>= 0.7)."""
+        return self.importance >= 0.7
 
     @property
-    def days_since_last_validation(self) -> int | None:
-        """Calculate days since last validation.
+    def days_since_last_access(self) -> int:
+        """Calculate days since last access (for decay calculation).
 
         Returns:
-            Number of days, or None if never validated
+            Number of days since last_accessed_at
         """
-        if self.last_validated_at is None:
-            return None
-        delta = datetime.now(UTC) - self.last_validated_at
+        delta = datetime.now(UTC) - self.last_accessed_at
         return delta.days
 
-    def reinforce(self, new_event_id: int, confidence_boost: float = 0.05) -> None:
-        """Reinforce memory with new observation.
+    @property
+    def confirmation_count(self) -> int:
+        """Get confirmation count from metadata.
+
+        Returns:
+            Number of confirmations (0 if never confirmed)
+        """
+        return self.metadata.get("confirmation_count", 0)
+
+    def confirm(self, new_event_id: int, importance_boost: float = 0.05) -> None:
+        """Confirm memory with new observation (replaces reinforce).
 
         Args:
             new_event_id: Event ID of new observation
-            confidence_boost: Confidence increase per reinforcement (default: 0.05)
+            importance_boost: Importance increase per confirmation (default: 0.05)
         """
-        self.reinforcement_count += 1
-        self.confidence = min(0.95, self.confidence + confidence_boost)
+        # Increment confirmation count in metadata
+        self.metadata["confirmation_count"] = self.confirmation_count + 1
+
+        # Track confirmation source
+        if "confirmation_sources" not in self.metadata:
+            self.metadata["confirmation_sources"] = []
+        self.metadata["confirmation_sources"].append(new_event_id)
+        self.metadata["last_confirmed_at"] = datetime.now(UTC).isoformat()
+
+        # Boost importance (capped at 1.0)
+        self.importance = min(1.0, self.importance + importance_boost)
+
+        # Boost confidence slightly
+        self.confidence = min(0.95, self.confidence + 0.02)
+
+        # Add to source events if not already present
         if new_event_id not in self.source_event_ids:
             self.source_event_ids.append(new_event_id)
-        self.last_validated_at = datetime.now(UTC)
+
+        # Update timestamps
+        self.last_accessed_at = datetime.now(UTC)
         self.updated_at = datetime.now(UTC)
 
-    def apply_decay(self, decayed_confidence: float) -> None:
-        """Apply temporal confidence decay.
+    def apply_decay(self, decay_rate: float = 0.01) -> None:
+        """Apply temporal importance decay based on days since last access.
 
         Args:
-            decayed_confidence: New confidence after decay calculation
+            decay_rate: Decay rate (default: 0.01, ~69 day half-life)
         """
-        if decayed_confidence < self.confidence:
-            self.confidence = max(0.0, decayed_confidence)
+        import math
+        days = self.days_since_last_access
+        decay_factor = max(0.5, math.exp(-decay_rate * days))
+        new_importance = self.importance * decay_factor
+
+        if new_importance < self.importance:
+            self.importance = max(0.0, new_importance)
             self.updated_at = datetime.now(UTC)
+
+    def mark_accessed(self) -> None:
+        """Mark memory as accessed (updates last_accessed_at)."""
+        self.last_accessed_at = datetime.now(UTC)
 
     def mark_as_conflicted(self) -> None:
         """Mark memory as conflicted."""
@@ -167,25 +196,30 @@ class SemanticMemory:
         return {
             "memory_id": self.memory_id,
             "user_id": self.user_id,
-            "subject_entity_id": self.subject_entity_id,
-            "predicate": self.predicate,
-            "predicate_type": self.predicate_type.value,
-            "object_value": self.object_value,
+            "content": self.content,
+            "entities": self.entities,
             "confidence": self.confidence,
+            "importance": self.importance,
             "status": self.status,
-            "reinforcement_count": self.reinforcement_count,
             "source_event_ids": self.source_event_ids,
+            "source_text": self.source_text,
+            "metadata": self.metadata,
+            "confirmation_count": self.confirmation_count,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
-            "last_validated_at": self.last_validated_at.isoformat() if self.last_validated_at else None,
+            "last_accessed_at": self.last_accessed_at.isoformat(),
         }
 
     def __str__(self) -> str:
         """String representation for logging."""
-        obj_str = str(self.object_value.get("value", self.object_value))[:30]
+        content_preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
+        entity_str = ", ".join(self.entities[:2])
+        if len(self.entities) > 2:
+            entity_str += f", +{len(self.entities) - 2} more"
         return (
-            f"Memory({self.memory_id}): {self.subject_entity_id}.{self.predicate} = {obj_str} "
-            f"(conf={self.confidence:.2f}, reinf={self.reinforcement_count})"
+            f"Memory({self.memory_id}): \"{content_preview}\" "
+            f"[{entity_str}] "
+            f"(imp={self.importance:.2f}, conf={self.confidence:.2f}, confirmations={self.confirmation_count})"
         )
 
     def __eq__(self, other: object) -> bool:

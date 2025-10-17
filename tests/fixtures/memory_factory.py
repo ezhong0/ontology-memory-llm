@@ -43,6 +43,9 @@ class MemoryFactory:
         status: str = "active",
         reinforcement_count: int = 1,
         source_event_ids: Optional[List[int]] = None,
+        original_text: Optional[str] = None,
+        source_text: Optional[str] = None,
+        related_entities: Optional[List[str]] = None,
     ) -> SemanticMemory:
         """
         Create semantic memory directly (bypass chat pipeline).
@@ -58,6 +61,9 @@ class MemoryFactory:
             status: Memory status (active, inactive, conflicted)
             reinforcement_count: Number of times reinforced (default 1)
             source_event_ids: Chat event IDs that contributed to this memory
+            original_text: Natural language representation (e.g., "Gai Media prefers Friday")
+            source_text: Original chat message
+            related_entities: All entity IDs mentioned
 
         Returns:
             Created SemanticMemory entity
@@ -69,10 +75,15 @@ class MemoryFactory:
         # Convert string predicate_type to enum
         predicate_type_enum = PredicateType(predicate_type)
 
-        # Generate embedding
-        text_for_embedding = f"{subject_entity_id} {predicate}: {object_value}"
+        # Generate natural language representation if not provided
+        if not original_text:
+            value_str = object_value.get("value", str(object_value))
+            predicate_natural = predicate.replace("_", " ")
+            original_text = f"{subject_entity_id} {predicate_natural}: {value_str}"
+
+        # Generate embedding from natural language
         embedding = await self.embedding_service.generate_embedding(
-            text_for_embedding
+            original_text
         )
 
         # Create memory entity
@@ -87,6 +98,9 @@ class MemoryFactory:
             reinforcement_count=reinforcement_count,
             source_event_ids=source_event_ids or [],
             embedding=embedding,
+            original_text=original_text,
+            source_text=source_text,
+            related_entities=related_entities or [subject_entity_id],
             last_validated_at=last_validated_at or datetime.now(timezone.utc),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),

@@ -272,21 +272,23 @@ class ExtractSemanticsUseCase:
                     semantic_memory_entities.append(existing_memory)
                 elif should_create_new:
                     # Create new memory (first observation OR conflict resolved with new value)
-                    # Generate embedding from natural language representation
-                    embedding_text = self._triple_to_natural_language(
+                    # Generate natural language representation (original_text)
+                    original_text = self._triple_to_natural_language(
                         triple, entity_name_map
                     )
+
+                    # Generate embedding from natural language (better semantic matching)
                     embedding = await self.embedding_service.generate_embedding(
-                        embedding_text
+                        original_text
                     )
 
                     logger.debug(
                         "generating_memory_embedding",
                         memory_predicate=triple.predicate,
-                        embedding_text=embedding_text,
+                        embedding_text=original_text,
                     )
 
-                    # Create semantic memory entity
+                    # Create semantic memory entity with hybrid structured + natural language
                     memory = SemanticMemory(
                         user_id=user_id,
                         subject_entity_id=triple.subject_entity_id,
@@ -296,6 +298,9 @@ class ExtractSemanticsUseCase:
                         confidence=triple.confidence,
                         source_event_ids=[message.event_id],
                         embedding=embedding,
+                        original_text=original_text,  # Natural language representation
+                        source_text=message.content,  # Original chat message
+                        related_entities=[e.entity_id for e in resolved_entities],  # All entities mentioned
                     )
 
                     # Store in database
@@ -474,6 +479,9 @@ class ExtractSemanticsUseCase:
             confidence=0.95,  # Explicit statement = high confidence
             source_event_ids=[message.event_id],
             embedding=embedding,
+            original_text=embedding_text,  # Natural language policy description
+            source_text=message.content,  # Original chat message
+            related_entities=[],  # System policies don't reference specific entities
         )
 
         # Ensure "system" canonical entity exists

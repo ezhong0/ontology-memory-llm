@@ -199,7 +199,7 @@ class EntityRepository(IEntityRepository):
             )
 
             matches: list[tuple[CanonicalEntity, float]] = []
-            for row in result:
+            for row in result.mappings():
                 # Convert row to domain entity using from_dict to handle JSONB properly
                 # Use dict-like access for raw SQL results
                 try:

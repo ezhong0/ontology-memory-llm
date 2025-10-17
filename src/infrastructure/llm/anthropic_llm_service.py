@@ -565,6 +565,7 @@ Instructions:
    - is_first_person: true only for I/me/my/mine/myself, false otherwise
 3. Skip common stopwords UNLESS they're clearly part of an entity name
 4. Skip action verbs at the start of sentences (e.g., "Reschedule" in "Reschedule Kai Media")
+5. IMPORTANT: For meta-statements like "remember that X" or "note that X", extract entities from the X part
 
 Output Format (JSON):
 {{

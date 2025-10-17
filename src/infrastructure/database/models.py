@@ -148,6 +148,11 @@ class SemanticMemory(Base):
     source_memory_id = Column(BigInteger)
     extracted_from_event_id = Column(BigInteger, ForeignKey("app.chat_events.event_id"))
 
+    # Context (hybrid structured + natural language)
+    original_text = Column(Text)  # Normalized triple text: "Gai Media prefers Friday deliveries"
+    source_text = Column(Text)  # Original chat message that created this memory
+    related_entities = Column(ARRAY(Text))  # All entity IDs mentioned (for multi-entity retrieval)
+
     # Lifecycle
     status = Column(Text, nullable=False, default="active")
     superseded_by_memory_id = Column(BigInteger, ForeignKey("app.semantic_memories.memory_id"))

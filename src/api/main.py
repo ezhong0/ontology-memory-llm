@@ -4,13 +4,18 @@ This module sets up the FastAPI application with all routes, middleware,
 and lifecycle event handlers.
 """
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.dependencies import get_db
+from src.api.middleware.logging import RequestLoggingMiddleware
 from src.config.settings import Settings
 from src.infrastructure.database.session import close_db, init_db
 
@@ -57,24 +62,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request/response logging middleware
+# Logs all HTTP requests and responses with timing and tracing
+app.add_middleware(RequestLoggingMiddleware, log_bodies=False)
+
 
 # Health check endpoint
 @app.get("/api/v1/health", tags=["System"])
-async def health_check():
-    """Health check endpoint.
+async def health_check(db: AsyncSession = Depends(get_db)) -> JSONResponse:
+    """Health check endpoint with actual database connectivity verification.
+
+    Checks:
+    - API responsiveness (implicit - endpoint responding)
+    - Database connectivity (via SELECT 1 query)
 
     Returns:
-        dict: System health status
+        dict: System health status with component details
+        HTTP 200: All components healthy
+        HTTP 503: One or more components unhealthy
     """
-    return {
-        "status": "healthy",
+    components = {"api": {"status": "up", "timestamp": datetime.now(UTC).isoformat()}}
+    overall_status = "healthy"
+    http_status = 200
+
+    # Check database connectivity
+    try:
+        # Execute simple query to verify DB connection
+        result = await db.execute(text("SELECT 1"))
+        result.scalar()
+        components["database"] = {
+            "status": "up",
+            "message": "Database connection successful",
+        }
+    except Exception as e:
+        overall_status = "unhealthy"
+        http_status = 503
+        components["database"] = {
+            "status": "down",
+            "error": str(e),
+        }
+
+    response_data = {
+        "status": overall_status,
         "version": "1.0.0",
         "environment": settings.environment,
-        "components": {
-            "database": "up",  # Phase 2: Actual DB ping pending - requires session.execute(text("SELECT 1"))
-            "api": "up",
-        },
+        "timestamp": datetime.now(UTC).isoformat(),
+        "components": components,
     }
+
+    return JSONResponse(content=response_data, status_code=http_status)
 
 
 # Root endpoint
