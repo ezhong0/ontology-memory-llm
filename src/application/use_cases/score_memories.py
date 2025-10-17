@@ -130,8 +130,8 @@ class ScoreMemoriesUseCase:
         for mem in existing_memories:
             # Check if memory is older than threshold and not already marked as aging
             if (
-                mem.last_validated_at
-                and mem.last_validated_at < aged_threshold
+                mem.last_accessed_at
+                and mem.last_accessed_at < aged_threshold
                 and mem.status == "active"
             ):
                 # Mark as aging (requires validation)
@@ -141,8 +141,8 @@ class ScoreMemoriesUseCase:
                 logger.info(
                     "memory_marked_as_aging",
                     memory_id=mem.memory_id,
-                    subject=mem.subject_entity_id,
-                    days_since_validation=(datetime.now(timezone.utc) - mem.last_validated_at).days,
+                    entities=mem.entities,
+                    days_since_access=(datetime.now(timezone.utc) - mem.last_accessed_at).days,
                 )
 
         # Combine current-turn memories with existing memories
@@ -181,7 +181,7 @@ class ScoreMemoriesUseCase:
                 logger.warning(
                     "memory_missing_embedding",
                     memory_id=mem.memory_id,
-                    subject=mem.subject_entity_id,
+                    entities=mem.entities,
                 )
                 continue
 
@@ -210,14 +210,14 @@ class ScoreMemoriesUseCase:
                 MemoryCandidate(
                     memory_id=mem.memory_id or 0,
                     memory_type="semantic",
-                    content=f"{mem.subject_entity_id} {mem.predicate}: {mem.object_value}",
-                    entities=[mem.subject_entity_id],
+                    content=mem.content,
+                    entities=mem.entities,
                     embedding=embedding_array,
                     created_at=mem.created_at,
-                    importance=0.7,  # Default importance for semantic memories
+                    importance=mem.importance,
                     confidence=mem.confidence,
-                    reinforcement_count=mem.reinforcement_count,
-                    last_validated_at=mem.last_validated_at,
+                    confirmation_count=mem.confirmation_count,
+                    last_accessed_at=mem.last_accessed_at,
                 )
             )
 
@@ -250,7 +250,7 @@ class ScoreMemoriesUseCase:
         # Convert ScoredMemory to RetrievedMemory
         retrieved_memories = []
         for scored in scored_memories:
-            # Get the full memory entity to access last_validated_at and status
+            # Get the full memory entity to access last_accessed_at and status
             memory_entity = all_memories_dict.get(scored.candidate.memory_id)
 
             retrieved_memories.append(
@@ -260,7 +260,7 @@ class ScoreMemoriesUseCase:
                     content=scored.candidate.content,
                     relevance_score=scored.relevance_score,
                     confidence=scored.candidate.confidence or 1.0,
-                    last_validated_at=memory_entity.last_validated_at if memory_entity else None,
+                    last_accessed_at=memory_entity.last_accessed_at if memory_entity else None,
                     status=memory_entity.status if memory_entity else "active",
                 )
             )

@@ -12,6 +12,8 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from src.api.metrics import http_request_duration_seconds, http_requests_total
+
 logger = structlog.get_logger(__name__)
 
 
@@ -71,6 +73,20 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
             # Calculate request duration
             duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = duration_ms / 1000.0
+
+            # Record Prometheus metrics
+            http_request_duration_seconds.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=response.status_code,
+            ).observe(duration_seconds)
+
+            http_requests_total.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=response.status_code,
+            ).inc()
 
             # Log successful response
             logger.info(
@@ -91,6 +107,20 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # Calculate request duration
             duration_ms = (time.time() - start_time) * 1000
+            duration_seconds = duration_ms / 1000.0
+
+            # Record Prometheus metrics for failed request (500 status code)
+            http_request_duration_seconds.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=500,
+            ).observe(duration_seconds)
+
+            http_requests_total.labels(
+                method=request.method,
+                endpoint=request.url.path,
+                status_code=500,
+            ).inc()
 
             # Log failed request
             logger.error(

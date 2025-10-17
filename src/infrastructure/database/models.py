@@ -116,14 +116,16 @@ class EpisodicMemory(Base):
 
 # Layer 4: Semantic Memory
 class SemanticMemory(Base):
-    """Semantic memories (abstracted facts with lifecycle)."""
+    """Semantic memories (entity-tagged natural language with importance)."""
 
     __tablename__ = "semantic_memories"
     __table_args__ = (
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="valid_confidence"),
+        CheckConstraint("importance >= 0 AND importance <= 1", name="valid_importance"),
         CheckConstraint("status IN ('active', 'aging', 'superseded', 'invalidated')", name="valid_status"),
         Index("idx_semantic_user_status", "user_id", "status"),
-        Index("idx_semantic_entity_pred", "subject_entity_id", "predicate"),
+        Index("idx_semantic_entities_gin", "entities", postgresql_using="gin"),
+        Index("idx_semantic_user_importance", "user_id", "importance", postgresql_ops={"importance": "DESC"}),
         Index("idx_semantic_embedding", "embedding", postgresql_using="ivfflat", postgresql_ops={"embedding": "vector_cosine_ops"}, postgresql_with={"lists": 100}),
         {"schema": "app"},
     )
@@ -131,35 +133,28 @@ class SemanticMemory(Base):
     memory_id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id = Column(Text, nullable=False)
 
-    # Subject-Predicate-Object triple
-    subject_entity_id = Column(Text, ForeignKey("app.canonical_entities.entity_id"))
-    predicate = Column(Text, nullable=False)
-    predicate_type = Column(Text, nullable=False)  # preference|requirement|observation|policy|attribute
-    object_value = Column(JSONB, nullable=False)
+    # Entity-tagged natural language (replaces SPO triple)
+    content = Column(Text, nullable=False)  # The memory text
+    entities = Column(ARRAY(Text), nullable=False)  # All entity IDs mentioned
+    memory_metadata = Column(JSONB)  # Renamed from metadata (reserved by SQLAlchemy)
 
-    # Confidence & evolution
+    # Confidence & importance
     confidence = Column(Float, nullable=False, default=0.7)
-    confidence_factors = Column(JSONB)  # {base, reinforcement, recency, source}
-    reinforcement_count = Column(Integer, nullable=False, default=1)
-    last_validated_at = Column(DateTime(timezone=True))
+    importance = Column(Float, nullable=False, default=0.5)  # Dynamic importance score
 
     # Provenance
     source_type = Column(Text, nullable=False)  # episodic|consolidation|inference|correction
     source_memory_id = Column(BigInteger)
     extracted_from_event_id = Column(BigInteger, ForeignKey("app.chat_events.event_id"))
-
-    # Context (hybrid structured + natural language)
-    original_text = Column(Text)  # Normalized triple text: "Gai Media prefers Friday deliveries"
-    source_text = Column(Text)  # Original chat message that created this memory
-    related_entities = Column(ARRAY(Text))  # All entity IDs mentioned (for multi-entity retrieval)
+    source_text = Column(Text)  # Original chat message for explainability
 
     # Lifecycle
     status = Column(Text, nullable=False, default="active")
     superseded_by_memory_id = Column(BigInteger, ForeignKey("app.semantic_memories.memory_id"))
 
-    # Retrieval
+    # Retrieval & access tracking
     embedding = Column(Vector(1536))
-    importance = Column(Float, nullable=False, default=0.5)
+    last_accessed_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

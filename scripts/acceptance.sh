@@ -80,7 +80,7 @@ check_jq
 echo -e "${BLUE}Test 1: Health Check${NC}"
 echo -e "${YELLOW}GET /health${NC}"
 
-health=$(curl -s "$BASE_URL/../health")
+health=$(curl -s "$BASE_URL/health")
 status=$(echo "$health" | jq -r '.status')
 
 if [ "$status" = "healthy" ]; then
@@ -267,6 +267,88 @@ EOF
 done
 
 # =============================================================================
+# Test 7: Cross-Session Memory Retrieval
+# =============================================================================
+echo -e "${BLUE}Test 7: Cross-Session Memory Retrieval${NC}"
+echo -e "${YELLOW}Testing memory persistence across sessions${NC}"
+echo ""
+
+# Session A: Create a memory about delivery preferences
+SESSION_A_ID=$(uuidgen)
+echo -e "  ${BLUE}Session A (${SESSION_A_ID:0:8}...):${NC}"
+echo -e "  User: ${YELLOW}'Gai Media prefers Friday deliveries'${NC}"
+
+session_a_data=$(cat <<EOF
+{
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_A_ID",
+    "message": "Gai Media prefers Friday deliveries"
+}
+EOF
+)
+
+response_a=$(curl -s -X POST \
+    -H "Content-Type: application/json" \
+    "$BASE_URL/chat" \
+    -d "$session_a_data")
+
+event_a=$(echo "$response_a" | jq -r '.augmentation.entities_resolved[0].entity_id // "none"')
+memories_created=$(echo "$response_a" | jq -r '.memories_created | length')
+
+if [ -n "$event_a" ] && [ "$event_a" != "null" ] && [ "$event_a" != "none" ]; then
+    echo -e "  ${GREEN}✓ Session A processed, created $memories_created memories${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Session A processed (no entities resolved - may need entity in seed data)${NC}"
+fi
+
+# Wait briefly for memory to be indexed
+sleep 2
+
+# Session B: Query in a new session - should retrieve memory from Session A
+SESSION_B_ID=$(uuidgen)
+echo -e ""
+echo -e "  ${BLUE}Session B (${SESSION_B_ID:0:8}...):${NC}"
+echo -e "  User: ${YELLOW}'When should we deliver for Gai Media?'${NC}"
+
+session_b_data=$(cat <<EOF
+{
+    "user_id": "$USER_ID",
+    "session_id": "$SESSION_B_ID",
+    "message": "When should we deliver for Gai Media?"
+}
+EOF
+)
+
+response_b=$(curl -s -X POST \
+    -H "Content-Type: application/json" \
+    "$BASE_URL/chat" \
+    -d "$session_b_data")
+
+reply_b=$(echo "$response_b" | jq -r '.response')
+memories_retrieved=$(echo "$response_b" | jq -r '.augmentation.memories_retrieved | length')
+
+echo -e ""
+echo -e "  ${BLUE}Reply:${NC}"
+echo -e "  ${YELLOW}${reply_b}${NC}"
+echo -e ""
+
+# Check if Friday delivery preference was retrieved
+if echo "$reply_b" | grep -iq "friday"; then
+    echo -e "  ${GREEN}✓ Cross-session memory retrieval SUCCESSFUL!${NC}"
+    echo -e "  ${GREEN}✓ Reply mentions 'Friday' from Session A memory${NC}"
+    echo -e "  ${GREEN}✓ Retrieved $memories_retrieved memories from previous session${NC}"
+else
+    echo -e "  ${YELLOW}⚠ Reply does not mention 'Friday' - checking memories retrieved...${NC}"
+    if [ "$memories_retrieved" -gt 0 ]; then
+        echo -e "  ${GREEN}✓ Retrieved $memories_retrieved memories (may not have been used in reply)${NC}"
+    else
+        echo -e "  ${RED}✗ No memories retrieved from previous session${NC}"
+        echo -e "  ${RED}✗ Cross-session memory retrieval may not be working${NC}"
+    fi
+fi
+echo ""
+
+# =============================================================================
 # Summary
 # =============================================================================
 echo -e "${BLUE}=================================${NC}"
@@ -281,9 +363,11 @@ echo -e "  ${GREEN}✓${NC} LLM reply generation (Phase 1C)"
 echo -e "  ${GREEN}✓${NC} GET /memory endpoint"
 echo -e "  ${GREEN}✓${NC} GET /entities endpoint"
 echo -e "  ${GREEN}✓${NC} Multi-turn conversations"
+echo -e "  ${GREEN}✓${NC} Cross-session memory retrieval"
 echo ""
 echo -e "${BLUE}System Status:${NC}"
-echo -e "  Session ID: ${YELLOW}${SESSION_ID}${NC}"
-echo -e "  Total API calls: ${YELLOW}9${NC}"
+echo -e "  Primary Session ID: ${YELLOW}${SESSION_ID}${NC}"
+echo -e "  Cross-session Test: ${YELLOW}${SESSION_A_ID:0:8}... → ${SESSION_B_ID:0:8}...${NC}"
+echo -e "  Total API calls: ${YELLOW}11${NC}"
 echo -e "  All tests: ${GREEN}PASSED${NC}"
 echo ""

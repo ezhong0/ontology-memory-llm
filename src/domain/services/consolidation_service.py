@@ -454,7 +454,7 @@ class ConsolidationService:
         episodic_text = self._format_episodic_memories(episodic)
         semantic_text = self._format_semantic_memories(semantic)
 
-        f"""Synthesize a consolidated summary from these memories.
+        prompt = f"""Synthesize a consolidated summary from these memories.
 
 **Scope**: {scope.type} - {scope.identifier}
 
@@ -487,19 +487,29 @@ class ConsolidationService:
 }}
 """
 
-        # Call LLM (using placeholder for Phase 1)
-        # In production, would use ILLMService
-        logger.debug("calling_llm_for_synthesis", scope=scope.to_dict())
+        # Call LLM for synthesis
+        logger.debug("calling_llm_for_synthesis", scope=scope.to_dict(), prompt_length=len(prompt))
 
-        # Placeholder response for Phase 1
-        # In integration, this would call actual LLM
-        response_text = json.dumps({
-            "summary_text": f"Summary for {scope.identifier}: {len(episodic)} episodes analyzed",
-            "key_facts": {},
-            "interaction_patterns": [],
-            "needs_validation": [],
-            "confirmed_memory_ids": [],
-        })
+        try:
+            # Use LLM service to synthesize summary
+            response_text = await self._llm_service.generate_structured_output(
+                prompt=prompt,
+                response_format="json",
+                temperature=0.3,  # Lower temperature for consistent structured output
+            )
+
+            logger.debug("llm_synthesis_response", response_length=len(response_text))
+
+        except Exception as e:
+            logger.error("llm_synthesis_call_failed", error=str(e))
+            # Fallback to simple summary if LLM call fails
+            response_text = json.dumps({
+                "summary_text": f"Summary for {scope.identifier}: {len(episodic)} episodes analyzed",
+                "key_facts": {},
+                "interaction_patterns": [],
+                "needs_validation": [],
+                "confirmed_memory_ids": [],
+            })
 
         # Parse LLM response
         try:
@@ -530,9 +540,11 @@ class ConsolidationService:
 
         lines = []
         for i, memory in enumerate(semantic[:20], 1):  # Limit to 20
+            entities_str = ", ".join(memory.entities[:3])
+            confirmations = memory.confirmation_count
             lines.append(
-                f"{i}. {memory.predicate}: {memory.object_value} "
-                f"(confidence: {memory.confidence:.2f}, reinforced: {memory.reinforcement_count}x)"
+                f"{i}. [{entities_str}] {memory.content} "
+                f"(confidence: {memory.confidence:.2f}, importance: {memory.importance:.2f}, confirmations: {confirmations}x)"
             )
 
         return "\n".join(lines)
@@ -603,7 +615,10 @@ class ConsolidationService:
                 # Boost confidence
                 new_confidence = min(heuristics.MAX_CONFIDENCE, memory.confidence + boost_amount)
                 memory.confidence = new_confidence
-                memory.last_validated_at = datetime.now(UTC)
+
+                # Mark as validated in metadata
+                memory.metadata["last_validated_at"] = datetime.now(UTC).isoformat()
+                memory.updated_at = datetime.now(UTC)
 
                 # Update
                 await self._semantic_repo.update(memory)
@@ -651,10 +666,11 @@ class ConsolidationService:
         key_facts = {}
         for memory in semantic:
             if memory.confidence > heuristics.CONFIDENCE_FUZZY_LOW:
-                key_facts[memory.predicate] = {
-                    "value": memory.object_value,
+                fact_name = f"fact_{memory.memory_id}"
+                key_facts[fact_name] = {
+                    "value": memory.content,
                     "confidence": memory.confidence,
-                    "reinforced": memory.reinforcement_count,
+                    "reinforced": memory.confirmation_count,
                     "source_memory_ids": memory.source_event_ids,
                 }
 

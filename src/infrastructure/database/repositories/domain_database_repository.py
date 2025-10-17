@@ -532,6 +532,50 @@ class DomainDatabaseRepository(DomainDatabasePort):
             )
             return []
 
+    async def find_customer_by_name(self, name: str) -> dict[str, Any] | None:
+        """Find a customer by name (case-insensitive).
+
+        Used by Stage 5 of entity resolution for lazy entity creation.
+
+        Args:
+            name: Customer name to search for
+
+        Returns:
+            Dict with customer_id, name, and other properties, or None if not found
+        """
+        query = text("""
+            SELECT
+                customer_id,
+                name,
+                industry,
+                notes
+            FROM domain.customers
+            WHERE LOWER(name) = LOWER(:name)
+            LIMIT 1
+        """)
+
+        try:
+            result = await self.session.execute(query, {"name": name})
+            row = result.fetchone()
+
+            if not row:
+                logger.debug("customer_not_found_by_name", name=name)
+                return None
+
+            customer = {
+                "customer_id": str(row.customer_id),
+                "name": row.name,
+                "industry": row.industry,
+                "notes": row.notes,
+            }
+
+            logger.debug("customer_found_by_name", name=name, customer_id=customer["customer_id"])
+            return customer
+
+        except Exception as e:
+            logger.error("find_customer_by_name_failed", name=name, error=str(e))
+            return None
+
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:

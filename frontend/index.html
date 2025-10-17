@@ -1837,12 +1837,12 @@
             </div>
         </div>
 
-        <!-- Tab: Architecture (REVAMPED - Updated 2025-10-16) -->
+        <!-- Tab: Architecture (COMPREHENSIVE REVAMP - Updated 2025-10-17) -->
         <div id="tab-architecture" class="tab-content">
             <!-- High-Level Overview Card -->
             <div class="card mb-5" style="border-left: 4px solid var(--color-primary);">
                 <div class="card-title">🏗️ System Architecture Overview</div>
-                <div class="card-subtitle">Production-grade memory system with hexagonal architecture • 99/100 assessment score</div>
+                <div class="card-subtitle">Production-grade memory system with hexagonal architecture • 99/100 assessment score • Refactored from 683-line god object to lean orchestrator</div>
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-4); margin-top: var(--space-5);">
                     <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05)); padding: var(--space-4); border-radius: var(--radius-md); border: 1px solid rgba(59, 130, 246, 0.3);">
@@ -1875,10 +1875,245 @@
                 </div>
             </div>
 
+            <!-- REQUEST FLOW DIAGRAM -->
+            <div class="card mb-5" style="border-left: 4px solid var(--color-primary);">
+                <div class="card-title">🔄 Complete Request Flow</div>
+                <div class="card-subtitle">End-to-end processing pipeline: Client → API → Orchestrator → Domain Services → Infrastructure</div>
+
+                <div style="margin-top: var(--space-5); font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.8;">
+                    <!-- CLIENT REQUEST -->
+                    <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent); border: 2px solid var(--color-primary); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                        <div style="font-weight: 700; color: var(--color-primary); margin-bottom: var(--space-2);">┌─────────────────────────────────────────────┐</div>
+                        <div style="font-weight: 700; color: var(--color-primary); margin-bottom: var(--space-2);">│         CLIENT REQUEST (HTTP POST)          │</div>
+                        <div style="font-weight: 700; color: var(--color-primary); margin-bottom: var(--space-3);">└─────────────────────────────────────────────┘</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary);">
+                            POST /api/v1/chat<br>
+                            {<br>
+                            &nbsp;&nbsp;"user_id": "demo_user",<br>
+                            &nbsp;&nbsp;"message": "What did Kai Media order last month?"<br>
+                            }
+                        </div>
+                    </div>
+                    <div style="text-align: center; color: var(--color-text-secondary); margin: var(--space-2) 0;">▼</div>
+
+                    <!-- FASTAPI ROUTER -->
+                    <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent); border: 2px solid var(--color-success); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                        <div style="font-weight: 700; color: var(--color-success); margin-bottom: var(--space-2);">FASTAPI ROUTER (src/api/routes/chat.py)</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>process_chat_simplified() endpoint</strong><br><br>
+                            <strong>Actions:</strong><br>
+                            1. Extract request parameters (user_id, message, session_id)<br>
+                            2. Create ProcessChatMessageInput DTO<br>
+                            3. Call use_case.execute(input_dto)<br>
+                            4. Handle AmbiguousEntityError → return disambiguation UI<br>
+                            5. Build simplified response with provenance
+                        </div>
+                    </div>
+                    <div style="text-align: center; color: var(--color-text-secondary); margin: var(--space-2) 0;">▼</div>
+
+                    <!-- ORCHESTRATOR -->
+                    <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), transparent); border: 2px solid var(--color-warning); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                        <div style="font-weight: 700; color: var(--color-warning); margin-bottom: var(--space-2);">ORCHESTRATOR: ProcessChatMessageUseCase</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>(src/application/use_cases/process_chat_message.py)</strong><br><br>
+                            <strong>Design Pattern:</strong> Orchestrator (coordinates specialized use cases)<br>
+                            <strong>Total Lines:</strong> 371 (down from 683-line god object – refactored!)<br><br>
+
+                            <strong>Execution Flow:</strong><br>
+                            Step 0: PII Detection & Redaction (Phase 3.1)<br>
+                            &nbsp;&nbsp;→ PIIRedactionService.redact_with_metadata()<br>
+                            &nbsp;&nbsp;→ Store redacted content, create policy memory<br><br>
+
+                            Step 1: Store Chat Message<br>
+                            &nbsp;&nbsp;→ IChatEventRepository.create(ChatMessage)<br><br>
+
+                            Step 2: Phase 1A - Resolve Entities<br>
+                            &nbsp;&nbsp;→ ResolveEntitiesUseCase.execute()<br>
+                            &nbsp;&nbsp;→ Returns resolved entities + ambiguities<br><br>
+
+                            Step 3: Phase 1B - Extract Semantics<br>
+                            &nbsp;&nbsp;→ ExtractSemanticsUseCase.execute()<br>
+                            &nbsp;&nbsp;→ LLM extracts semantic memories + detects conflicts<br><br>
+
+                            Step 4: Phase 1C - Augment with Domain<br>
+                            &nbsp;&nbsp;→ AugmentWithDomainUseCase.execute()<br>
+                            &nbsp;&nbsp;→ LLM tool calling → query domain database<br>
+                            &nbsp;&nbsp;→ Detect memory-vs-DB conflicts<br>
+                            &nbsp;&nbsp;→ Evaluate reminder triggers (procedural memory)<br><br>
+
+                            Step 5: Phase 1D - Score & Retrieve Memories<br>
+                            &nbsp;&nbsp;→ ScoreMemoriesUseCase.execute()<br>
+                            &nbsp;&nbsp;→ Multi-signal scoring (5 signals)<br>
+                            &nbsp;&nbsp;→ Handle memory validation (Phase 2.2)<br><br>
+
+                            Step 6: Resolve Conflicts (Phase 2.1)<br>
+                            &nbsp;&nbsp;→ ConflictResolutionService.resolve_conflict()<br>
+                            &nbsp;&nbsp;→ Trust DB, decay memory confidence<br><br>
+
+                            Step 7: Generate Reply<br>
+                            &nbsp;&nbsp;→ LLMReplyGenerator.generate()<br>
+                            &nbsp;&nbsp;→ Natural language response with context
+                        </div>
+                    </div>
+                    <div style="text-align: center; color: var(--color-text-secondary); margin: var(--space-2) 0;">▼ Delegates to specialized use cases ▼</div>
+
+                    <!-- PHASE 1A: ENTITY RESOLUTION -->
+                    <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent); border-left: 4px solid var(--color-purple); border-radius: var(--radius-md); margin-bottom: var(--space-2);">
+                        <div style="font-weight: 700; color: var(--color-purple); margin-bottom: var(--space-2);">PHASE 1A: Entity Resolution</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>Use Case:</strong> ResolveEntitiesUseCase<br>
+                            <strong>Domain Service:</strong> EntityResolutionService (5-stage hybrid)<br><br>
+
+                            <strong>Stages:</strong><br>
+                            Stage 1: Exact match on canonical name (70%) → 20ms, $0, confidence=1.0<br>
+                            Stage 2: User alias lookup (15%) → 25ms, $0, confidence=0.95<br>
+                            Stage 3: Fuzzy match with pg_trgm (10%) → 50ms, $0, confidence=0.85<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• Auto-create alias on success (learning loop!)<br>
+                            Stage 4: LLM coreference resolution (5%) → 300ms, $0.03, confidence=0.75<br>
+                            Stage 5: Domain DB lookup (lazy creation) (<1%) → 40ms, $0, confidence=0.90<br><br>
+
+                            <strong>Output:</strong> List[ResolvedEntityDTO] with entity_id, confidence, method
+                        </div>
+                    </div>
+
+                    <!-- PHASE 1B: SEMANTIC EXTRACTION -->
+                    <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent); border-left: 4px solid var(--color-purple); border-radius: var(--radius-md); margin-bottom: var(--space-2);">
+                        <div style="font-weight: 700; color: var(--color-purple); margin-bottom: var(--space-2);">PHASE 1B: Semantic Extraction</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>Use Case:</strong> ExtractSemanticsUseCase<br>
+                            <strong>Domain Service:</strong> SemanticExtractionService<br><br>
+
+                            <strong>Process:</strong><br>
+                            1. LLM extracts semantic memories (entity-tagged natural language)<br>
+                            &nbsp;&nbsp;&nbsp;Example: "Kai Media prefers Friday deliveries"<br>
+                            &nbsp;&nbsp;&nbsp;→ SemanticMemory(content=..., entities=["customer:kai_123"], confidence=0.85)<br><br>
+
+                            2. Conflict detection (memory-vs-memory)<br>
+                            &nbsp;&nbsp;&nbsp;• Consolidation: Merge similar memories → higher confidence<br>
+                            &nbsp;&nbsp;&nbsp;• Contradiction: Flag conflicting memories → both preserved<br><br>
+
+                            3. Generate embeddings (1536-dim via OpenAI)<br><br>
+
+                            4. Store in SemanticMemoryRepository<br><br>
+
+                            <strong>Output:</strong> List[SemanticMemoryDTO] + conflicts detected
+                        </div>
+                    </div>
+
+                    <!-- PHASE 1C: DOMAIN AUGMENTATION -->
+                    <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent); border-left: 4px solid var(--color-purple); border-radius: var(--radius-md); margin-bottom: var(--space-2);">
+                        <div style="font-weight: 700; color: var(--color-purple); margin-bottom: var(--space-2);">PHASE 1C: Domain Augmentation (LLM Tool Calling)</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>Use Case:</strong> AugmentWithDomainUseCase<br>
+                            <strong>Application Service:</strong> AdaptiveQueryOrchestrator<br><br>
+
+                            <strong>Vision Principle:</strong> Emergent intelligence (no hardcoded keywords)<br><br>
+
+                            <strong>Flow:</strong><br>
+                            1. LLM analyzes query context + resolved entities<br>
+                            2. LLM decides which tools to call (query_customers, query_invoices, etc.)<br>
+                            3. Execute SQL queries via DomainDatabasePort (repository pattern)<br>
+                            4. LLM iterates if needed (up to 5 rounds)<br>
+                            5. Track tool usage → ToolUsageLog (learning for Phase 2)<br><br>
+
+                            <strong>Example Tools:</strong><br>
+                            • query_customers(name_filter) → domain.customers table<br>
+                            • query_invoices(customer_id, status) → domain.invoices table<br>
+                            • query_sales_orders(customer_id) → domain.sales_orders table<br>
+                            • analyze_order_chain(customer_id) → multi-table join<br><br>
+
+                            <strong>Conflict Detection:</strong> Compare domain facts vs semantic memories<br>
+                            &nbsp;&nbsp;• If memory says "status=in_fulfillment" but DB says "shipped" → CONFLICT<br><br>
+
+                            <strong>Output:</strong> List[DomainFactDTO] with full provenance
+                        </div>
+                    </div>
+
+                    <!-- PHASE 1D: MEMORY SCORING -->
+                    <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent); border-left: 4px solid var(--color-purple); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                        <div style="font-weight: 700; color: var(--color-purple); margin-bottom: var(--space-2);">PHASE 1D: Memory Scoring & Retrieval</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>Use Case:</strong> ScoreMemoriesUseCase<br>
+                            <strong>Domain Service:</strong> MultiSignalScorer<br><br>
+
+                            <strong>Multi-Signal Scoring (5 signals, 100% deterministic):</strong><br>
+                            relevance_score = 0.40 × semantic_similarity  (pgvector cosine)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 0.25 × entity_overlap      (Jaccard index)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 0.20 × recency             (exponential decay)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 0.10 × temporal_coherence  (session context)<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 0.05 × importance          (user-marked)<br><br>
+
+                            <strong>Retrieval Flow:</strong><br>
+                            1. pgvector similarity search (IVFFlat index, lists=100)<br>
+                            2. Apply multi-signal scoring to each candidate<br>
+                            3. Rank by final score (0.0-1.0)<br>
+                            4. Return top-k memories (default k=5)<br><br>
+
+                            <strong>Output:</strong> List[RetrievedMemoryDTO] sorted by relevance
+                        </div>
+                    </div>
+
+                    <div style="text-align: center; color: var(--color-text-secondary); margin: var(--space-2) 0;">▼ Domain services call infrastructure adapters ▼</div>
+
+                    <!-- INFRASTRUCTURE LAYER -->
+                    <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), transparent); border: 2px solid #6366f1; border-radius: var(--radius-md);">
+                        <div style="font-weight: 700; color: #6366f1; margin-bottom: var(--space-2);">INFRASTRUCTURE ADAPTERS (Ports & Adapters Pattern)</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            <strong>Repository Adapters (PostgreSQL + pgvector):</strong><br>
+                            • CanonicalEntityRepository implements IEntityRepository<br>
+                            &nbsp;&nbsp;→ find_by_canonical_name(), fuzzy_search() via pg_trgm<br>
+                            • SemanticMemoryRepository implements ISemanticMemoryRepository<br>
+                            &nbsp;&nbsp;→ vector_search() via pgvector (IVFFlat index)<br>
+                            • DomainDatabaseRepository implements DomainDatabasePort<br>
+                            &nbsp;&nbsp;→ query_customers(), query_invoices() via domain schema<br><br>
+
+                            <strong>LLM Service Adapters:</strong><br>
+                            • AnthropicLLMService implements ILLMService<br>
+                            &nbsp;&nbsp;→ resolve_coreference(), extract_semantics(), tool_calling()<br>
+                            • OpenAIEmbeddingService implements IEmbeddingService<br>
+                            &nbsp;&nbsp;→ generate_embedding() via text-embedding-3-small<br><br>
+
+                            <strong>Database Schemas:</strong><br>
+                            • app.canonical_entities (Layer 2: Entity resolution)<br>
+                            • app.semantic_memories (Layer 4: Semantic facts)<br>
+                            • app.chat_events (Layer 1: Immutable audit trail)<br>
+                            • domain.customers, domain.invoices, domain.sales_orders (authoritative data)
+                        </div>
+                    </div>
+
+                    <div style="text-align: center; color: var(--color-text-secondary); margin: var(--space-3) 0;">▼</div>
+
+                    <!-- RESPONSE -->
+                    <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent); border: 2px solid var(--color-success); border-radius: var(--radius-md);">
+                        <div style="font-weight: 700; color: var(--color-success); margin-bottom: var(--space-2);">RESPONSE (JSON)</div>
+                        <div style="margin-left: var(--space-4); color: var(--color-text-secondary); font-size: 13px;">
+                            {<br>
+                            &nbsp;&nbsp;"response": "Kai Media ordered 2 items last month: SO-1001 (shipped) and SO-1003 (in_fulfillment).",<br>
+                            &nbsp;&nbsp;"augmentation": {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"domain_facts": [<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{"fact_type": "sales_order", "entity_id": "customer:kai_123", ...}<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;],<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"memories_retrieved": [...],<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"entities_resolved": [<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{"entity_id": "customer:kai_123", "method": "fuzzy", "confidence": 0.85}<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;]<br>
+                            &nbsp;&nbsp;},<br>
+                            &nbsp;&nbsp;"provenance": {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"memory_ids": [1, 2, 3],<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"similarity_scores": [0.85, 0.80, 0.75],<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;"source_types": ["semantic", "semantic", "episodic"]<br>
+                            &nbsp;&nbsp;},<br>
+                            &nbsp;&nbsp;"conflicts_detected": [] // Epistemic humility: explicit conflict exposure<br>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Hexagonal Architecture Card -->
             <div class="card mb-5">
                 <div class="card-title">🔷 Hexagonal Architecture (Ports & Adapters)</div>
-                <div class="card-subtitle">Clean separation: Domain = pure Python, Infrastructure = swappable adapters</div>
+                <div class="card-subtitle">Clean separation: Domain = pure Python, Infrastructure = swappable adapters • ZERO infrastructure imports in domain layer</div>
 
                 <div style="margin-top: var(--space-5); font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
                     <div style="text-align: center; padding: var(--space-4); background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
@@ -1918,13 +2153,222 @@
                     </div>
                 </div>
 
+                <!-- Concrete Example of Ports & Adapters -->
+                <div style="margin-top: var(--space-5); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
+                    <strong style="color: var(--color-primary); font-size: var(--text-lg);">📝 Concrete Example: Entity Resolution</strong><br><br>
+
+                    <div style="margin-left: var(--space-3); font-size: 14px; line-height: 1.8;">
+                        <strong>Port (Interface)</strong> - <code>src/domain/ports/entity_repository.py</code>:<br>
+                        <pre style="background: #1a1a1a; padding: var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; overflow-x: auto; font-size: 13px;">from abc import ABC, abstractmethod
+
+class IEntityRepository(ABC):
+    @abstractmethod
+    async def find_by_canonical_name(self, name: str) -> CanonicalEntity | None:
+        pass
+
+    @abstractmethod
+    async def fuzzy_search(self, text: str, threshold: float) -> list[tuple[CanonicalEntity, float]]:
+        pass</pre>
+
+                        <strong>Adapter (PostgreSQL Implementation)</strong> - <code>src/infrastructure/database/repositories/...</code>:<br>
+                        <pre style="background: #1a1a1a; padding: var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; overflow-x: auto; font-size: 13px;">class CanonicalEntityRepository(IEntityRepository):
+    async def find_by_canonical_name(self, name: str) -> CanonicalEntity | None:
+        query = select(EntityModel).where(EntityModel.canonical_name == name)
+        result = await self.session.execute(query)
+        return self._to_domain_entity(result.scalar_one_or_none())
+
+    async def fuzzy_search(self, text: str, threshold: float) -> list[tuple[CanonicalEntity, float]]:
+        # Uses pg_trgm extension for fuzzy matching
+        query = select(
+            EntityModel,
+            func.similarity(EntityModel.canonical_name, text).label("score")
+        ).where(
+            func.similarity(EntityModel.canonical_name, text) > threshold
+        ).order_by(desc("score"))
+
+        results = await self.session.execute(query)
+        return [(self._to_domain_entity(row[0]), row[1]) for row in results]</pre>
+
+                        <strong>Domain Service (Pure Business Logic)</strong> - <code>src/domain/services/entity_resolution_service.py</code>:<br>
+                        <pre style="background: #1a1a1a; padding: var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; overflow-x: auto; font-size: 13px;">class EntityResolutionService:
+    def __init__(self, entity_repo: IEntityRepository):  # ← Depends on PORT
+        self.entity_repo = entity_repo
+
+    async def resolve_entity(self, mention: EntityMention) -> ResolutionResult:
+        # Stage 1: Exact match (deterministic)
+        entity = await self.entity_repo.find_by_canonical_name(mention.text)
+        if entity:
+            return ResolutionResult(entity.id, confidence=1.0, method="exact")
+
+        # Stage 3: Fuzzy match (deterministic)
+        matches = await self.entity_repo.fuzzy_search(mention.text, threshold=0.7)
+        if len(matches) == 1:
+            return ResolutionResult(matches[0][0].id, confidence=0.85, method="fuzzy")
+
+        # ... other stages</pre>
+
+                        <strong>Test (No Database Required!)</strong>:<br>
+                        <pre style="background: #1a1a1a; padding: var(--space-3); border-radius: var(--radius-sm); margin: var(--space-2) 0; overflow-x: auto; font-size: 13px;">@pytest.mark.asyncio
+async def test_exact_match():
+    # Mock repository (no DB needed!)
+    mock_repo = Mock(spec=IEntityRepository)
+    mock_repo.find_by_canonical_name.return_value = CanonicalEntity(
+        entity_id="customer:123",
+        canonical_name="Kai Media"
+    )
+
+    service = EntityResolutionService(entity_repo=mock_repo)
+    result = await service.resolve_entity(EntityMention(text="Kai Media"))
+
+    assert result.entity_id == "customer:123"
+    assert result.confidence == 1.0  # Test runs in <10ms!</pre>
+                    </div>
+                </div>
+
                 <div style="margin-top: var(--space-5); padding: var(--space-4); background: var(--color-bg); border-radius: var(--radius-md); border: 1px solid var(--color-border);">
                     <strong>✨ Benefits:</strong><br><br>
                     <div style="margin-left: var(--space-4);">
                         ✅ <strong>Testable:</strong> Domain tests run in &lt;10ms (no DB needed, use mocks)<br>
                         ✅ <strong>Flexible:</strong> Swap PostgreSQL → MongoDB without changing business logic<br>
                         ✅ <strong>Maintainable:</strong> Business rules in pure Python (no SQL/HTTP)<br>
-                        ✅ <strong>Type-Safe:</strong> 100% type coverage (mypy --strict enforced)
+                        ✅ <strong>Type-Safe:</strong> 100% type coverage (mypy --strict enforced)<br>
+                        ✅ <strong>Independent:</strong> Domain layer has ZERO imports from infrastructure
+                    </div>
+                </div>
+            </div>
+
+            <!-- DATABASE SCHEMA VISUALIZATION -->
+            <div class="card mb-5">
+                <div class="card-title">🗄️ Database Schema (10 Core Tables)</div>
+                <div class="card-subtitle">PostgreSQL + pgvector • Dual schema: app (memory system) + domain (business data)</div>
+
+                <div style="margin-top: var(--space-5);">
+                    <!-- Schema Overview -->
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); margin-bottom: var(--space-5);">
+                        <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent); border-left: 4px solid var(--color-primary); border-radius: var(--radius-md);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">app schema (Memory System)</div>
+                            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.6;">
+                                • chat_events (Layer 1: Audit trail)<br>
+                                • canonical_entities (Layer 2: Entity resolution)<br>
+                                • entity_aliases (Layer 2: User-specific aliases)<br>
+                                • episodic_memories (Layer 3: Event memories)<br>
+                                • semantic_memories (Layer 4: Semantic facts)<br>
+                                • procedural_memories (Layer 5: Learned heuristics)<br>
+                                • memory_summaries (Layer 6: Consolidations)<br>
+                                • memory_conflicts (Conflict tracking)<br>
+                                • domain_ontology (Relationship semantics)<br>
+                                • tool_usage_log (LLM tool calling patterns)
+                            </div>
+                        </div>
+
+                        <div style="padding: var(--space-4); background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), transparent); border-left: 4px solid var(--color-success); border-radius: var(--radius-md);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">domain schema (Business Data)</div>
+                            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.6;">
+                                • customers (Authoritative customer records)<br>
+                                • sales_orders (Sales order lifecycle)<br>
+                                • invoices (Billing & payment tracking)<br>
+                                • products (Product catalog)<br><br>
+                                <strong>Dual Truth Architecture:</strong><br>
+                                Database = source of truth (correspondence)<br>
+                                Memory = contextual understanding (preferences)
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Table Schemas -->
+                    <div style="font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6;">
+                        <!-- Layer 1: Chat Events -->
+                        <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(107, 114, 128, 0.05), transparent); border-left: 3px solid var(--color-text-secondary); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">Layer 1: chat_events (Immutable Audit Trail)</div>
+                            <div style="color: var(--color-text-secondary);">
+                                event_id (BIGINT PK, autoincrement)<br>
+                                session_id (UUID, indexed)<br>
+                                user_id (TEXT, indexed with created_at)<br>
+                                role (TEXT: user|assistant|system)<br>
+                                content (TEXT) -- PII redacted before storage<br>
+                                content_hash (TEXT) -- Deduplication<br>
+                                event_metadata (JSONB)<br>
+                                created_at (TIMESTAMPTZ)<br><br>
+                                <strong>Constraints:</strong> UNIQUE(session_id, content_hash)<br>
+                                <strong>Purpose:</strong> Never-deleting conversation log (GDPR: right to erasure handled via redaction)
+                            </div>
+                        </div>
+
+                        <!-- Layer 2: Entities -->
+                        <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), transparent); border-left: 3px solid #6366f1; border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">Layer 2: canonical_entities (Entity Resolution)</div>
+                            <div style="color: var(--color-text-secondary);">
+                                entity_id (TEXT PK) -- Format: {type}:{external_id} (e.g., "customer:123")<br>
+                                entity_type (TEXT, indexed) -- customer|sales_order|invoice|product|user<br>
+                                canonical_name (TEXT, indexed) -- Display name<br>
+                                external_ref (JSONB) -- {table, primary_key, primary_value, display_name}<br>
+                                properties (JSONB) -- Type-specific metadata<br>
+                                created_at (TIMESTAMPTZ)<br>
+                                updated_at (TIMESTAMPTZ)<br><br>
+                                <strong>Purpose:</strong> Resolve mentions → canonical IDs (e.g., "Kai" → "customer:kai_123")
+                            </div>
+                        </div>
+
+                        <!-- Layer 2: Aliases -->
+                        <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), transparent); border-left: 3px solid #6366f1; border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">Layer 2: entity_aliases (User-Specific Aliases)</div>
+                            <div style="color: var(--color-text-secondary);">
+                                alias_id (BIGINT PK)<br>
+                                canonical_entity_id (TEXT FK → canonical_entities)<br>
+                                alias_text (TEXT, indexed) -- Variant mention (e.g., "Kai" for "Kai Media")<br>
+                                alias_source (TEXT: exact|fuzzy|learned|user_stated)<br>
+                                user_id (TEXT, indexed) -- NULL = global, not-null = user-specific<br>
+                                confidence (FLOAT, 0.0-1.0)<br>
+                                use_count (INT) -- Reinforcement learning<br>
+                                created_at (TIMESTAMPTZ)<br><br>
+                                <strong>Constraints:</strong> UNIQUE(alias_text, user_id, canonical_entity_id)<br>
+                                <strong>Purpose:</strong> Auto-learning from fuzzy match (Stage 3 → creates alias for Stage 2)
+                            </div>
+                        </div>
+
+                        <!-- Layer 4: Semantic Memories -->
+                        <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), transparent); border-left: 3px solid var(--color-success); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">Layer 4: semantic_memories (Entity-Tagged Facts)</div>
+                            <div style="color: var(--color-text-secondary);">
+                                memory_id (BIGINT PK)<br>
+                                user_id (TEXT, indexed with status + importance)<br>
+                                content (TEXT) -- Entity-tagged natural language (e.g., "Kai Media prefers Friday deliveries")<br>
+                                entities (TEXT[], GIN indexed) -- All entity IDs mentioned (e.g., ["customer:kai_123"])<br>
+                                confidence (FLOAT, 0.0-1.0) -- Decays over time via e^(-0.01 × days)<br>
+                                importance (FLOAT, 0.0-1.0) -- User-marked or system-inferred<br>
+                                status (TEXT: active|aging|superseded|invalidated)<br>
+                                source_type (TEXT: episodic|consolidation|inference|correction)<br>
+                                source_memory_id (BIGINT) -- Traceability<br>
+                                extracted_from_event_id (BIGINT FK → chat_events)<br>
+                                source_text (TEXT) -- Original message for explainability<br>
+                                superseded_by_memory_id (BIGINT FK self-reference)<br>
+                                embedding (VECTOR(1536), IVFFlat indexed) -- pgvector cosine similarity<br>
+                                last_accessed_at (TIMESTAMPTZ) -- Recency signal<br>
+                                created_at (TIMESTAMPTZ)<br>
+                                updated_at (TIMESTAMPTZ)<br><br>
+                                <strong>Index Strategy:</strong><br>
+                                • IVFFlat on embedding (lists=100) for vector search<br>
+                                • GIN on entities for fast entity-based retrieval<br>
+                                • Composite (user_id, status, importance DESC) for scoring<br><br>
+                                <strong>Purpose:</strong> Structured facts with entity tags + vector search
+                            </div>
+                        </div>
+
+                        <!-- Memory Conflicts -->
+                        <div style="padding: var(--space-3); background: linear-gradient(135deg, rgba(245, 158, 11, 0.05), transparent); border-left: 3px solid var(--color-warning); border-radius: var(--radius-md);">
+                            <div style="font-weight: 700; margin-bottom: var(--space-2);">memory_conflicts (Epistemic Humility)</div>
+                            <div style="color: var(--color-text-secondary);">
+                                conflict_id (BIGINT PK)<br>
+                                detected_at_event_id (BIGINT FK → chat_events)<br>
+                                conflict_type (TEXT: memory_vs_memory|memory_vs_db|temporal)<br>
+                                conflict_data (JSONB) -- {memory_ids, values, confidences, db_source}<br>
+                                resolution_strategy (TEXT: trust_db|trust_recent|ask_user|both)<br>
+                                resolution_outcome (JSONB) -- {action, rationale, updated_memory_ids}<br>
+                                resolved_at (TIMESTAMPTZ)<br>
+                                created_at (TIMESTAMPTZ)<br><br>
+                                <strong>Vision Principle:</strong> Explicit conflict exposure (never silently prefer one source)
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2167,6 +2611,7 @@
                 <div class="chat-input-container">
                     <input type="text" class="chat-input" id="chatInput" placeholder="Type your message...">
                     <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+                    <button class="btn btn-success" onclick="consolidateMemories()" style="margin-left: 8px;">📦 Consolidate</button>
                     <button class="btn btn-danger" onclick="clearMemory()" style="margin-left: 8px;">Clear Memory</button>
                 </div>
             </div>
@@ -2850,7 +3295,7 @@
                     number: 4,
                     name: 'Semantic Memories',
                     key: 'semantic',
-                    description: 'Fact triples with confidence',
+                    description: 'Entity-tagged facts with importance',
                     count: memoryStatsData.semantic_memories || 0,
                     endpoint: '/api/v1/demo/memories/semantic'
                 },
@@ -2990,212 +3435,121 @@
                 const response = await fetch(endpoint);
                 const data = await response.json();
 
+                // Helper function to format cell value based on field name and type
+                const formatCellValue = (field, value, row) => {
+                    if (value === null || value === undefined) return '-';
+
+                    // UUID truncation for readability
+                    if (field.includes('_id') && typeof value === 'string' && value.length > 30) {
+                        return `<span class="text-mono text-truncate" style="max-width: 100px;">${value.slice(0, 8)}...</span>`;
+                    }
+
+                    // Status badges
+                    if (field === 'status') {
+                        const statusColors = {
+                            'active': 'success', 'inactive': 'warning', 'superseded': 'danger',
+                            'open': 'warning', 'closed': 'success', 'paid': 'success',
+                            'pending': 'warning', 'overdue': 'danger', 'completed': 'success',
+                            'in_progress': 'primary', 'draft': 'secondary', 'approved': 'success',
+                            'in_fulfillment': 'primary', 'fulfilled': 'success', 'cancelled': 'danger',
+                            'queued': 'secondary', 'blocked': 'danger', 'done': 'success',
+                            'todo': 'secondary', 'doing': 'primary', 'void': 'danger'
+                        };
+                        return `<span class="badge badge-${statusColors[value] || 'primary'}">${value}</span>`;
+                    }
+
+                    // Role badges
+                    if (field === 'role') {
+                        return `<span class="badge badge-${value === 'user' ? 'primary' : 'success'}">${value}</span>`;
+                    }
+
+                    // Type/category badges
+                    if (field.includes('_type') || field === 'scope_type' || field === 'event_type') {
+                        return `<span class="badge badge-primary">${value}</span>`;
+                    }
+
+                    // Confidence as percentage
+                    if (field === 'confidence' && typeof value === 'number') {
+                        return `<span class="badge badge-success">${(value * 100).toFixed(0)}%</span>`;
+                    }
+
+                    // Importance scores
+                    if (field === 'importance' && typeof value === 'number') {
+                        return `<span class="badge badge-warning">${value.toFixed(2)}</span>`;
+                    }
+
+                    // Count badges
+                    if ((field.includes('_count') || field === 'observed') && typeof value === 'number') {
+                        return `<span class="badge badge-primary">${value}</span>`;
+                    }
+
+                    // Date/timestamp formatting
+                    if ((field.includes('_at') || field.includes('date')) && value) {
+                        try {
+                            return new Date(value).toLocaleString();
+                        } catch {
+                            return value;
+                        }
+                    }
+
+                    // JSON objects/arrays - pretty print and truncate
+                    if (typeof value === 'object') {
+                        const jsonStr = JSON.stringify(value);
+                        return `<span class="text-truncate" style="max-width: 150px;">${jsonStr}</span>`;
+                    }
+
+                    // Long text fields - truncate
+                    if (typeof value === 'string' && value.length > 50) {
+                        return `<span class="text-truncate" style="max-width: 250px;">${value}</span>`;
+                    }
+
+                    return value;
+                };
+
                 let html = `<div class="card"><div class="card-title mb-5">Layer ${layerNumber} Data (${data.length} records)</div>`;
 
-                if (key === 'chat_events') {
-                    html += `
-                        <div class="table-container">
-                            <table>
-                                <thead>
+                // Define expected fields for each layer type (for consistent display even when empty)
+                const layerFieldDefinitions = {
+                    'chat_events': ['event_id', 'session_id', 'user_id', 'role', 'content', 'created_at'],
+                    'entities': ['entity_id', 'canonical_name', 'entity_type', 'created_at'],
+                    'episodic': ['memory_id', 'user_id', 'session_id', 'summary', 'event_type', 'entities', 'importance', 'created_at'],
+                    'semantic': ['memory_id', 'user_id', 'content', 'entities', 'confidence', 'importance', 'source_type', 'status', 'created_at', 'last_accessed_at'],
+                    'procedural': ['memory_id', 'user_id', 'trigger_pattern', 'action_heuristic', 'observed_count', 'confidence', 'created_at'],
+                    'summaries': ['summary_id', 'user_id', 'scope_type', 'scope_identifier', 'summary_text', 'key_facts', 'confidence', 'created_at'],
+                    'conflicts': ['conflict_id', 'conflict_type', 'conflict_data', 'resolution_strategy', 'resolved_at', 'created_at']
+                };
+
+                // Dynamically extract fields from first row (if data exists), or use predefined fields
+                const fields = data.length > 0
+                    ? Object.keys(data[0]).filter(f => f !== 'embedding')
+                    : (layerFieldDefinitions[key] || []);
+
+                html += `
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    ${fields.map(field => `<th>${field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.length === 0 && fields.length > 0 ? `
                                     <tr>
-                                        <th>Event ID</th>
-                                        <th>User ID</th>
-                                        <th>Role</th>
-                                        <th>Content</th>
-                                        <th>Content Hash</th>
-                                        <th>Session ID</th>
-                                        <th>Metadata</th>
-                                        <th>Created At</th>
+                                        <td colspan="${fields.length}" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.length === 0 ? `
-                                        <tr>
-                                            <td colspan="8" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
-                                        </tr>
-                                    ` : data.map(e => `
-                                        <tr>
-                                            <td class="text-mono">${e.event_id}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${e.user_id}</td>
-                                            <td><span class="badge badge-${e.role === 'user' ? 'primary' : 'success'}">${e.role}</span></td>
-                                            <td class="text-truncate" style="max-width: 250px;">${e.content}</td>
-                                            <td class="text-mono text-truncate" style="max-width: 100px;">${e.content_hash.slice(0, 8)}...</td>
-                                            <td class="text-mono">${e.session_id.slice(0, 8)}...</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${e.event_metadata ? JSON.stringify(e.event_metadata) : '-'}</td>
-                                            <td>${new Date(e.created_at).toLocaleString()}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else if (key === 'semantic') {
-                    html += `
-                        <div class="table-container">
-                            <table>
-                                <thead>
+                                ` : data.length === 0 ? `
                                     <tr>
-                                        <th>ID</th>
-                                        <th>User ID</th>
-                                        <th>Subject</th>
-                                        <th>Predicate</th>
-                                        <th>Predicate Type</th>
-                                        <th>Object Value</th>
-                                        <th>Confidence</th>
-                                        <th>Reinforced</th>
-                                        <th>Source Type</th>
-                                        <th>Status</th>
-                                        <th>Importance</th>
-                                        <th>Created At</th>
+                                        <td style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.length === 0 ? `
-                                        <tr>
-                                            <td colspan="12" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
-                                        </tr>
-                                    ` : data.map(m => `
-                                        <tr>
-                                            <td class="text-mono">${m.memory_id}</td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.user_id}</td>
-                                            <td class="text-mono text-truncate" style="max-width: 130px;">${m.subject_entity_id}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${m.predicate}</td>
-                                            <td><span class="badge badge-primary">${m.predicate_type}</span></td>
-                                            <td class="text-truncate" style="max-width: 180px;">${JSON.stringify(m.object_value)}</td>
-                                            <td><span class="badge badge-success">${(m.confidence * 100).toFixed(0)}%</span></td>
-                                            <td class="text-center">${m.reinforcement_count || 1}</td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.source_type || '-'}</td>
-                                            <td><span class="badge badge-${m.status === 'active' ? 'success' : 'warning'}">${m.status}</span></td>
-                                            <td>${m.importance ? m.importance.toFixed(2) : '-'}</td>
-                                            <td>${new Date(m.created_at).toLocaleString()}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else if (key === 'episodic') {
-                    html += `
-                        <div class="table-container">
-                            <table>
-                                <thead>
+                                ` : data.map(row => `
                                     <tr>
-                                        <th>ID</th>
-                                        <th>User ID</th>
-                                        <th>Summary</th>
-                                        <th>Event Type</th>
-                                        <th>Source Events</th>
-                                        <th>Entities</th>
-                                        <th>Domain Facts</th>
-                                        <th>Importance</th>
-                                        <th>Session</th>
-                                        <th>Created At</th>
+                                        ${fields.map(field => `<td>${formatCellValue(field, row[field], row)}</td>`).join('')}
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.length === 0 ? `
-                                        <tr>
-                                            <td colspan="10" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
-                                        </tr>
-                                    ` : data.map(m => `
-                                        <tr>
-                                            <td class="text-mono">${m.memory_id}</td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.user_id}</td>
-                                            <td class="text-truncate" style="max-width: 250px;">${m.summary}</td>
-                                            <td><span class="badge badge-primary">${m.event_type}</span></td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.source_event_ids ? JSON.stringify(m.source_event_ids) : '-'}</td>
-                                            <td class="text-truncate" style="max-width: 150px;">${m.entities ? JSON.stringify(m.entities) : '-'}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${m.domain_facts_referenced ? JSON.stringify(m.domain_facts_referenced) : '-'}</td>
-                                            <td><span class="badge badge-warning">${m.importance.toFixed(2)}</span></td>
-                                            <td class="text-mono">${m.session_id.slice(0, 8)}...</td>
-                                            <td>${new Date(m.created_at).toLocaleString()}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else if (key === 'procedural') {
-                    html += `
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>User ID</th>
-                                        <th>Trigger Pattern</th>
-                                        <th>Trigger Features</th>
-                                        <th>Action Heuristic</th>
-                                        <th>Action Structure</th>
-                                        <th>Observed</th>
-                                        <th>Confidence</th>
-                                        <th>Created At</th>
-                                        <th>Updated At</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.length === 0 ? `
-                                        <tr>
-                                            <td colspan="10" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
-                                        </tr>
-                                    ` : data.map(m => `
-                                        <tr>
-                                            <td class="text-mono">${m.memory_id}</td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.user_id}</td>
-                                            <td class="text-truncate" style="max-width: 150px;">${m.trigger_pattern}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${m.trigger_features ? JSON.stringify(m.trigger_features) : '-'}</td>
-                                            <td class="text-truncate" style="max-width: 150px;">${m.action_heuristic}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${m.action_structure ? JSON.stringify(m.action_structure) : '-'}</td>
-                                            <td><span class="badge badge-primary">${m.observed_count}</span></td>
-                                            <td><span class="badge badge-success">${(m.confidence * 100).toFixed(0)}%</span></td>
-                                            <td>${new Date(m.created_at).toLocaleString()}</td>
-                                            <td>${new Date(m.updated_at).toLocaleString()}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else if (key === 'summaries') {
-                    html += `
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>User ID</th>
-                                        <th>Scope Type</th>
-                                        <th>Scope ID</th>
-                                        <th>Summary</th>
-                                        <th>Key Facts</th>
-                                        <th>Source Data</th>
-                                        <th>Confidence</th>
-                                        <th>Created At</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.length === 0 ? `
-                                        <tr>
-                                            <td colspan="9" style="text-align: center; color: var(--color-text-tertiary); padding: var(--space-10);">No records</td>
-                                        </tr>
-                                    ` : data.map(m => `
-                                        <tr>
-                                            <td class="text-mono">${m.summary_id}</td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.user_id}</td>
-                                            <td><span class="badge badge-primary">${m.scope_type}</span></td>
-                                            <td class="text-truncate" style="max-width: 100px;">${m.scope_identifier || '-'}</td>
-                                            <td class="text-truncate" style="max-width: 300px;">${m.summary_text}</td>
-                                            <td class="text-truncate" style="max-width: 150px;">${m.key_facts ? JSON.stringify(m.key_facts) : '-'}</td>
-                                            <td class="text-truncate" style="max-width: 120px;">${m.source_data ? JSON.stringify(m.source_data) : '-'}</td>
-                                            <td><span class="badge badge-success">${(m.confidence * 100).toFixed(0)}%</span></td>
-                                            <td>${new Date(m.created_at).toLocaleString()}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
 
                 html += `</div>`;
                 detailContainer.innerHTML = html;
@@ -3381,6 +3735,66 @@
             } catch (error) {
                 console.error('Error clearing memory:', error);
                 addChatMessage('system', `Error clearing memory: ${error.message}`);
+            }
+        }
+
+        async function consolidateMemories() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Consolidating...';
+
+            try {
+                addChatMessage('system', '📦 Starting memory consolidation for last 3 sessions...');
+
+                const response = await fetch('/api/v1/consolidate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-ID': 'demo-user'
+                    },
+                    body: JSON.stringify({
+                        scope_type: 'session_window',
+                        scope_identifier: '3',
+                        force: false
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Consolidation failed');
+                }
+
+                const data = await response.json();
+
+                // Display consolidation results
+                let message = `✅ Consolidation complete!\n\n`;
+                message += `**Summary**: ${data.summary_text}\n\n`;
+
+                if (Object.keys(data.key_facts).length > 0) {
+                    message += `**Key Facts** (${Object.keys(data.key_facts).length}):\n`;
+                    for (const [name, fact] of Object.entries(data.key_facts)) {
+                        message += `• ${name}: ${JSON.stringify(fact.value)} (confidence: ${fact.confidence.toFixed(2)})\n`;
+                    }
+                }
+
+                if (data.interaction_patterns && data.interaction_patterns.length > 0) {
+                    message += `\n**Patterns**: ${data.interaction_patterns.join(', ')}`;
+                }
+
+                addChatMessage('system', message);
+
+                // Refresh stats if available
+                if (typeof refreshData === 'function') {
+                    refreshData();
+                }
+
+            } catch (error) {
+                console.error('Error consolidating memories:', error);
+                addChatMessage('system', `❌ Consolidation error: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
 

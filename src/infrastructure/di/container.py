@@ -20,7 +20,6 @@ from src.domain.services import (
     MemoryValidationService,
     MultiSignalScorer,
     PIIRedactionService,
-    SemanticExtractionService,
 )
 from src.domain.services.llm_mention_extractor import LLMMentionExtractor
 from src.application.services.adaptive_query_orchestrator import (
@@ -166,11 +165,6 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Phase 1B Services
-    semantic_extraction_service = providers.Singleton(
-        SemanticExtractionService,
-        llm_service=llm_service,
-    )
-
     memory_validation_service = providers.Singleton(
         MemoryValidationService,
     )
@@ -222,15 +216,15 @@ class Container(containers.DeclarativeContainer):
         mention_extractor=mention_extractor,
     )
 
-    # Phase 1B: Semantic Extraction (updated for Phase 2.1 conflict resolution)
+    # Phase 1B: Semantic Extraction (entity-tagged natural language with importance)
     extract_semantics_use_case_factory = providers.Factory(
         ExtractSemanticsUseCase,
-        # Repository provided per-request
-        semantic_extraction_service=semantic_extraction_service,
+        llm_service=llm_service,
         memory_validation_service=memory_validation_service,
         conflict_detection_service=conflict_detection_service,
         conflict_resolution_service=conflict_resolution_service_factory,
         embedding_service=embedding_service,
+        # semantic_memory_repository and canonical_entity_repository provided per-request
     )
 
     # Phase 1C: Domain Augmentation - LLM Tool Calling

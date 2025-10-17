@@ -33,39 +33,48 @@ class MemoryConflict:
 
     Represents a detected conflict between a new observation and existing memory.
 
+    Entity-tagged natural language approach: Conflicts detected via semantic
+    similarity + entity overlap + LLM-detected contradiction.
+
     Attributes:
         conflict_type: Type of conflict detected
         new_memory_id: ID of new conflicting memory (if stored)
         existing_memory_id: ID of existing conflicting memory
-        subject_entity_id: Entity that both memories are about
-        predicate: The predicate where conflict occurs
-        new_value: New observed value
-        existing_value: Existing memory value
+        entities: Entity IDs that both memories are about
+        existing_content: Content of existing memory (natural language)
+        new_content: Content of new observation (natural language)
         recommended_resolution: Recommended resolution strategy
         confidence_diff: Confidence difference (new - existing)
         temporal_diff_days: Time difference in days (new - existing)
+        semantic_similarity: Cosine similarity between embeddings [0.0, 1.0]
         metadata: Additional conflict details
     """
 
     conflict_type: ConflictType
     new_memory_id: int | None
     existing_memory_id: int
-    subject_entity_id: str
-    predicate: str
-    new_value: dict[str, Any]
-    existing_value: dict[str, Any]
+    entities: list[str]
+    existing_content: str
+    new_content: str
     recommended_resolution: ConflictResolution
     confidence_diff: float
     temporal_diff_days: int | None
+    semantic_similarity: float
     metadata: dict[str, Any]
 
     def __post_init__(self) -> None:
         """Validate conflict invariants."""
-        if not self.subject_entity_id:
-            msg = "subject_entity_id cannot be empty"
+        if not self.entities:
+            msg = "entities cannot be empty"
             raise ValueError(msg)
-        if not self.predicate:
-            msg = "predicate cannot be empty"
+        if not self.existing_content:
+            msg = "existing_content cannot be empty"
+            raise ValueError(msg)
+        if not self.new_content:
+            msg = "new_content cannot be empty"
+            raise ValueError(msg)
+        if not 0.0 <= self.semantic_similarity <= 1.0:
+            msg = f"semantic_similarity must be [0.0, 1.0], got {self.semantic_similarity}"
             raise ValueError(msg)
 
     @property
@@ -89,20 +98,29 @@ class MemoryConflict:
             "conflict_type": self.conflict_type.value,
             "new_memory_id": self.new_memory_id,
             "existing_memory_id": self.existing_memory_id,
-            "subject_entity_id": self.subject_entity_id,
-            "predicate": self.predicate,
-            "new_value": self.new_value,
-            "existing_value": self.existing_value,
+            "entities": self.entities,
+            "existing_content": self.existing_content,
+            "new_content": self.new_content,
             "recommended_resolution": self.recommended_resolution.value,
             "confidence_diff": self.confidence_diff,
             "temporal_diff_days": self.temporal_diff_days,
+            "semantic_similarity": self.semantic_similarity,
             "metadata": self.metadata,
         }
 
     def __str__(self) -> str:
         """String representation for logging."""
+        entities_str = ", ".join(self.entities[:2])  # Show first 2 entities
+        if len(self.entities) > 2:
+            entities_str += f", +{len(self.entities) - 2} more"
+
+        # Show first 50 chars of each content
+        existing_preview = self.existing_content[:50] + "..." if len(self.existing_content) > 50 else self.existing_content
+        new_preview = self.new_content[:50] + "..." if len(self.new_content) > 50 else self.new_content
+
         return (
-            f"Conflict({self.conflict_type.value}): {self.subject_entity_id}.{self.predicate} "
-            f"[{self.existing_value.get('value')} -> {self.new_value.get('value')}] "
+            f"Conflict({self.conflict_type.value}): entities=[{entities_str}] "
+            f"sim={self.semantic_similarity:.2f} "
+            f"[{existing_preview} → {new_preview}] "
             f"→ {self.recommended_resolution.value}"
         )

@@ -19,6 +19,7 @@ from src.domain.services import (
     ProceduralMemoryService,
 )
 from src.infrastructure.database.repositories import (
+    ChatEventRepository,
     EpisodicMemoryRepository,
     ProceduralMemoryRepository,
     SemanticMemoryRepository,
@@ -95,6 +96,7 @@ async def get_process_chat_message_use_case(
     # Create entity resolution service factory (needs per-request repository)
     entity_resolution_service = container.entity_resolution_service_factory(
         entity_repository=entity_repo,
+        domain_db_port=domain_db_repo,
     )
 
     # Create conflict resolution service (needs per-request repository)

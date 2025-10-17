@@ -35,22 +35,22 @@ class ResolvedEntityDTO:
 class SemanticMemoryDTO:
     """DTO for semantic memory (Phase 1B).
 
+    Entity-tagged natural language with importance scoring.
+
     Attributes:
         memory_id: Database primary key
-        subject_entity_id: Subject entity ID
-        predicate: Normalized predicate name
-        predicate_type: Type (attribute, preference, relationship, action)
-        object_value: Structured object value
-        confidence: Current confidence [0.0, 1.0]
+        content: The memory text (natural language)
+        entities: Entity IDs mentioned in this memory
+        confidence: Confidence in accuracy [0.0, 1.0]
+        importance: Dynamic importance score [0.0, 1.0]
         status: Memory status (active, inactive, conflicted)
     """
 
     memory_id: int
-    subject_entity_id: str
-    predicate: str
-    predicate_type: str
-    object_value: dict[str, Any]
+    content: str
+    entities: list[str]
     confidence: float
+    importance: float
     status: str
 
 
@@ -87,8 +87,8 @@ class RetrievedMemoryDTO:
         content: Human-readable content
         relevance_score: Multi-signal relevance score [0.0, 1.0]
         confidence: Memory confidence [0.0, 0.95]
-        predicate: Predicate name (semantic memories only)
-        object_value: Object value dict (semantic memories only)
+        importance: Importance score [0.0, 1.0] (semantic memories only)
+        entities: Entity IDs mentioned (semantic memories only)
     """
 
     memory_id: int
@@ -96,8 +96,8 @@ class RetrievedMemoryDTO:
     content: str
     relevance_score: float
     confidence: float
-    predicate: str | None = None
-    object_value: dict[str, Any] | None = None
+    importance: float | None = None
+    entities: list[str] | None = None
 
 
 @dataclass
@@ -106,20 +106,18 @@ class MemoryConflictDTO:
 
     Attributes:
         conflict_type: Type of conflict (memory_vs_memory, memory_vs_db)
-        subject_entity_id: Entity the conflict is about
-        predicate: Property that conflicts
-        existing_value: Value in existing memory
-        new_value: New value from observation
+        entities: Entities the conflict is about
+        existing_content: Content of existing memory
+        new_content: Content of new observation
         existing_confidence: Confidence of existing memory
         new_confidence: Confidence of new observation
         resolution_strategy: How conflict was resolved
     """
 
     conflict_type: str
-    subject_entity_id: str
-    predicate: str
-    existing_value: dict[str, Any]
-    new_value: dict[str, Any]
+    entities: list[str]
+    existing_content: str
+    new_content: str
     existing_confidence: float
     new_confidence: float
     resolution_strategy: str

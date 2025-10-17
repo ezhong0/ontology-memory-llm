@@ -1,7 +1,12 @@
 """Memory validation domain service.
 
-Responsible for managing semantic memory lifecycle: confidence decay,
-reinforcement from repeated observations, and validation tracking.
+Responsible for managing semantic memory lifecycle: importance decay,
+confirmation from repeated observations, and access tracking.
+
+Entity-Tagged Natural Language Approach:
+- Uses importance score (0-1) instead of reinforcement_count
+- Tracks last_accessed_at instead of last_validated_at
+- Confirms memories with importance boost instead of confidence boost
 """
 
 import math
@@ -11,7 +16,6 @@ import structlog
 
 from src.config import heuristics
 from src.domain.entities.semantic_memory import SemanticMemory
-from src.domain.value_objects import SemanticTriple
 
 logger = structlog.get_logger(__name__)
 
@@ -20,132 +24,123 @@ class MemoryValidationService:
     """Domain service for semantic memory validation and lifecycle management.
 
     This service handles:
-    - Temporal confidence decay (memories fade over time)
-    - Reinforcement from repeated observations
-    - Validation tracking
+    - Temporal importance decay (memories fade over time)
+    - Confirmation from repeated observations (importance boost)
+    - Access tracking
 
     Design:
     - Decay rate: Loaded from heuristics (calibrated in Phase 2)
     - Max confidence: 0.95 (never 100% certain - epistemic humility)
-    - Reinforcement boost: Loaded from heuristics with diminishing returns
+    - Importance boost: Fixed per confirmation (diminishing returns handled in entity)
     """
 
     def __init__(
         self,
         decay_rate: float | None = None,
-        reinforcement_boost: float | None = None,
+        importance_boost: float | None = None,
     ) -> None:
         """Initialize validation service.
 
         Args:
-            decay_rate: Confidence decay rate per day (defaults to heuristics)
-            reinforcement_boost: Confidence boost per reinforcement (defaults to heuristics)
+            decay_rate: Importance decay rate per day (defaults to heuristics)
+            importance_boost: Importance boost per confirmation (default: 0.05)
         """
         self._decay_rate = decay_rate or heuristics.DECAY_RATE_PER_DAY
-        self._reinforcement_boost = reinforcement_boost or heuristics.REINFORCEMENT_BOOSTS[0]
+        self._importance_boost = importance_boost or 0.05  # Fixed boost per confirmation
         self._max_confidence = heuristics.MAX_CONFIDENCE
-        self._min_confidence = 0.0  # Conceptual floor
+        self._min_importance = 0.0  # Conceptual floor
 
-    def calculate_confidence_decay(
+    def calculate_importance_decay(
         self,
         memory: SemanticMemory,
         current_date: datetime | None = None,
     ) -> float:
-        """Calculate decayed confidence based on time since last validation.
+        """Calculate decayed importance based on time since last access.
 
-        Uses exponential decay formula:
-            confidence(t) = initial_confidence * exp(-decay_rate * days)
+        Uses exponential decay formula with floor at 0.5:
+            importance(t) = max(0.5, initial_importance * exp(-decay_rate * days))
+
+        This ensures memories don't completely fade but become less prominent.
 
         Args:
             memory: Semantic memory to calculate decay for
             current_date: Current datetime (defaults to now)
 
         Returns:
-            Decayed confidence value [0.0, 1.0]
+            Decayed importance value [0.5, 1.0]
         """
         if current_date is None:
             current_date = datetime.now(UTC)
 
-        # If never validated, use creation date
-        last_validation = memory.last_validated_at or memory.created_at
+        # Use last_accessed_at (replaces last_validated_at)
+        last_access = memory.last_accessed_at or memory.created_at
 
-        # Calculate days since last validation
-        time_delta = current_date - last_validation
+        # Calculate days since last access
+        time_delta = current_date - last_access
         days_elapsed = time_delta.total_seconds() / 86400  # seconds per day
 
         if days_elapsed <= 0:
-            return memory.confidence
+            return memory.importance
 
-        # Apply exponential decay
+        # Apply exponential decay with floor at 0.5
         decay_factor = math.exp(-self._decay_rate * days_elapsed)
-        decayed_confidence = memory.confidence * decay_factor
+        decayed_importance = memory.importance * decay_factor
 
-        # Apply floor
-        decayed_confidence = max(self._min_confidence, decayed_confidence)
+        # Apply floor (memories don't completely fade)
+        decayed_importance = max(0.5, decayed_importance)
 
         logger.debug(
-            "calculated_confidence_decay",
+            "calculated_importance_decay",
             memory_id=memory.memory_id,
             days_elapsed=days_elapsed,
-            original_confidence=memory.confidence,
-            decayed_confidence=decayed_confidence,
+            original_importance=memory.importance,
+            decayed_importance=decayed_importance,
         )
 
-        return decayed_confidence
+        return decayed_importance
 
-    def reinforce_memory(
+    def confirm_memory(
         self,
         memory: SemanticMemory,
-        new_observation: SemanticTriple,
+        new_observation_content: str,
         event_id: int,
+        importance_boost: float | None = None,
     ) -> None:
-        """Reinforce existing memory with new observation.
+        """Confirm existing memory with new observation.
 
-        Applies confidence boost and updates reinforcement count.
+        Applies importance boost and updates confirmation count.
         Modifies the memory entity in-place.
 
         Args:
-            memory: Existing memory to reinforce
-            new_observation: New triple observation (same subject + predicate)
+            memory: Existing memory to confirm
+            new_observation_content: New observation content (for logging)
             event_id: Chat event ID of new observation
+            importance_boost: Custom importance boost (uses default if None)
 
-        Raises:
-            ValueError: If observation doesn't match memory subject/predicate
+        Note:
+            No validation of content similarity - caller should verify the
+            observation is actually confirming the memory before calling this.
         """
-        # Validate observation matches memory
-        if new_observation.subject_entity_id != memory.subject_entity_id:
-            msg = (
-                f"Subject mismatch: {new_observation.subject_entity_id} "
-                f"!= {memory.subject_entity_id}"
-            )
-            raise ValueError(
-                msg
-            )
+        boost = importance_boost or self._importance_boost
 
-        if new_observation.predicate != memory.predicate:
-            msg = (
-                f"Predicate mismatch: {new_observation.predicate} "
-                f"!= {memory.predicate}"
-            )
-            raise ValueError(
-                msg
-            )
+        # Apply confirmation (uses entity method)
+        old_importance = memory.importance
+        old_confirmation_count = memory.confirmation_count
 
-        # Apply reinforcement (uses entity method)
-        old_confidence = memory.confidence
-        memory.reinforce(
+        memory.confirm(
             new_event_id=event_id,
-            confidence_boost=self._reinforcement_boost,
+            importance_boost=boost,
         )
 
         logger.info(
-            "memory_reinforced",
+            "memory_confirmed",
             memory_id=memory.memory_id,
-            subject=memory.subject_entity_id,
-            predicate=memory.predicate,
-            old_confidence=old_confidence,
-            new_confidence=memory.confidence,
-            reinforcement_count=memory.reinforcement_count,
+            entities=memory.entities,
+            content_preview=memory.content[:50],
+            old_importance=old_importance,
+            new_importance=memory.importance,
+            old_confirmation_count=old_confirmation_count,
+            new_confirmation_count=memory.confirmation_count,
         )
 
     def apply_decay_if_needed(
@@ -153,7 +148,7 @@ class MemoryValidationService:
         memory: SemanticMemory,
         current_date: datetime | None = None,
     ) -> bool:
-        """Apply confidence decay if memory is stale.
+        """Apply importance decay if memory is stale.
 
         Args:
             memory: Memory to check and potentially decay
@@ -165,22 +160,22 @@ class MemoryValidationService:
         if current_date is None:
             current_date = datetime.now(UTC)
 
-        # Calculate what confidence should be
-        decayed_confidence = self.calculate_confidence_decay(
+        # Calculate what importance should be
+        decayed_importance = self.calculate_importance_decay(
             memory=memory,
             current_date=current_date,
         )
 
-        # Only apply if confidence actually decreased
-        if decayed_confidence < memory.confidence:
-            old_confidence = memory.confidence
-            memory.apply_decay(decayed_confidence)
+        # Only apply if importance actually decreased
+        if decayed_importance < memory.importance:
+            old_importance = memory.importance
+            memory.apply_decay(decayed_importance)
 
             logger.info(
-                "confidence_decay_applied",
+                "importance_decay_applied",
                 memory_id=memory.memory_id,
-                old_confidence=old_confidence,
-                new_confidence=memory.confidence,
+                old_importance=old_importance,
+                new_importance=memory.importance,
             )
             return True
 
@@ -192,6 +187,9 @@ class MemoryValidationService:
         min_confidence_threshold: float | None = None,
     ) -> bool:
         """Check if memory should be deactivated due to low confidence.
+
+        Note: This checks confidence, not importance. Importance affects
+        retrieval priority but doesn't trigger deactivation.
 
         Args:
             memory: Memory to check

@@ -27,9 +27,10 @@ class MemoryCandidate:
         embedding: 1536-dimensional embedding vector
         created_at: When the memory was created
         importance: Stored importance score [0.0, 1.0]
+        similarity_score: Raw cosine similarity from vector search [0.0, 1.0]
         confidence: For semantic memories, confidence score
-        reinforcement_count: For semantic memories, validation count
-        last_validated_at: For semantic memories, last validation timestamp
+        confirmation_count: For semantic memories, confirmation count
+        last_accessed_at: For semantic memories, last access timestamp
         metadata: Additional type-specific metadata
     """
 
@@ -40,11 +41,12 @@ class MemoryCandidate:
     embedding: npt.NDArray[np.float64]
     created_at: datetime
     importance: float
+    similarity_score: float = 0.0  # Raw similarity from vector search
 
     # Type-specific fields
     confidence: float | None = None
-    reinforcement_count: int | None = None
-    last_validated_at: datetime | None = None
+    confirmation_count: int | None = None
+    last_accessed_at: datetime | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -55,6 +57,10 @@ class MemoryCandidate:
 
         if not 0.0 <= self.importance <= 1.0:
             msg = f"importance must be in [0, 1], got {self.importance}"
+            raise ValueError(msg)
+
+        if not 0.0 <= self.similarity_score <= 1.0:
+            msg = f"similarity_score must be in [0, 1], got {self.similarity_score}"
             raise ValueError(msg)
 
         if len(self.embedding.shape) != 1:
@@ -69,11 +75,9 @@ class MemoryCandidate:
             msg = f"confidence must be in [0, 1], got {self.confidence}"
             raise ValueError(msg)
 
-        if self.reinforcement_count is not None and self.reinforcement_count < 0:
-            msg = f"reinforcement_count must be >= 0, got {self.reinforcement_count}"
-            raise ValueError(
-                msg
-            )
+        if self.confirmation_count is not None and self.confirmation_count < 0:
+            msg = f"confirmation_count must be >= 0, got {self.confirmation_count}"
+            raise ValueError(msg)
 
     @property
     def is_semantic(self) -> bool:
@@ -177,9 +181,10 @@ class ScoredMemory:
             "memory_type": self.candidate.memory_type,
             "content": self.candidate.content,
             "relevance_score": self.relevance_score,
+            "similarity_score": self.candidate.similarity_score,  # Raw vector similarity
             "signal_breakdown": self.signal_breakdown.to_dict(),
             "created_at": self.candidate.created_at.isoformat(),
             "importance": self.candidate.importance,
             "confidence": self.candidate.confidence,
-            "reinforcement_count": self.candidate.reinforcement_count,
+            "confirmation_count": self.candidate.confirmation_count,
         }

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from src.api.dependencies import get_current_user_id, get_process_chat_message_use_case
 from src.api.models import (
@@ -26,6 +26,13 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
+# Import limiter for rate limiting (will be added to app.state in main.py)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+# Create limiter instance for this router
+limiter = Limiter(key_func=get_remote_address)
+
 
 @router.post(
     "",
@@ -39,8 +46,10 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
     including response, augmentation data, and created memories.
     """,
 )
+@limiter.limit("20/minute")  # Stricter limit for LLM-heavy operations
 async def process_chat_simplified(
-    request: dict[str, Any],
+    request: Request,
+    payload: dict[str, Any] = Body(...),
     use_case: ProcessChatMessageUseCase = Depends(get_process_chat_message_use_case),
 ) -> dict[str, Any]:
     """Process a chat message with simplified request/response format.
@@ -48,7 +57,8 @@ async def process_chat_simplified(
     This endpoint is designed for E2E tests and provides a simple interface.
 
     Args:
-        request: Dict with user_id and message
+        request: FastAPI Request object (for rate limiting)
+        payload: Dict with user_id and message
         use_case: Chat processing use case
 
     Returns:
@@ -57,9 +67,9 @@ async def process_chat_simplified(
     try:
         import uuid
 
-        user_id = request.get("user_id", "default_user")
-        message = request.get("message", "")
-        session_id = request.get("session_id", str(uuid.uuid4()))
+        user_id = payload.get("user_id", "default_user")
+        message = payload.get("message", "")
+        session_id = payload.get("session_id", str(uuid.uuid4()))
 
         logger.info(
             "simplified_chat_request",
@@ -69,7 +79,7 @@ async def process_chat_simplified(
         )
 
         # Task 1.2.1: Handle disambiguation selection from prior ambiguity
-        disambiguation_selection = request.get("disambiguation_selection")
+        disambiguation_selection = payload.get("disambiguation_selection")
         if disambiguation_selection:
             # User selected from ambiguous candidates
             # TODO: Create user-specific alias for learning
@@ -117,9 +127,9 @@ async def process_chat_simplified(
                         "content": mem.content,
                         "relevance_score": mem.relevance_score,
                         "confidence": mem.confidence,
-                        # Include predicate/object_value for semantic memories
-                        **({"predicate": mem.predicate} if mem.predicate else {}),
-                        **({"object_value": mem.object_value} if mem.object_value else {}),
+                        # Include entity-tagged fields for semantic memories
+                        **({"importance": mem.importance} if mem.importance is not None else {}),
+                        **({"entities": mem.entities} if mem.entities else {}),
                     }
                     for mem in output.retrieved_memories
                 ],
@@ -141,11 +151,10 @@ async def process_chat_simplified(
                     {
                         "memory_id": mem.memory_id,
                         "memory_type": "semantic",
-                        "subject_entity_id": mem.subject_entity_id,
-                        "predicate": mem.predicate,
-                        "predicate_type": mem.predicate_type,
-                        "object_value": mem.object_value,
+                        "content": mem.content,
+                        "entities": mem.entities,
                         "confidence": mem.confidence,
+                        "importance": mem.importance,
                         "status": mem.status,
                     }
                     for mem in output.semantic_memories
@@ -175,10 +184,9 @@ async def process_chat_simplified(
             response_dict["conflicts_detected"] = [
                 {
                     "conflict_type": conflict.conflict_type,
-                    "subject": conflict.subject_entity_id,
-                    "predicate": conflict.predicate,
-                    "existing_value": conflict.existing_value,
-                    "new_value": conflict.new_value,
+                    "entities": conflict.entities,
+                    "existing_content": conflict.existing_content,
+                    "new_content": conflict.new_content,
                     "existing_confidence": conflict.existing_confidence,
                     "new_confidence": conflict.new_confidence,
                     "resolution_strategy": conflict.resolution_strategy,
@@ -253,15 +261,18 @@ async def process_chat_simplified(
     - Stage 5: Domain database lookup (lazy entity creation)
     """,
 )
+@limiter.limit("30/minute")  # Standard rate limit for authenticated chat
 async def process_message(
-    request: ChatMessageRequest,
+    request: Request,
+    payload: ChatMessageRequest = Body(...),
     user_id: str = Depends(get_current_user_id),
     use_case: ProcessChatMessageUseCase = Depends(get_process_chat_message_use_case),
 ) -> ChatMessageResponse:
     """Process a chat message and resolve entities.
 
     Args:
-        request: Chat message request
+        request: FastAPI Request object (for rate limiting)
+        payload: Chat message request
         user_id: Current user ID (from auth)
 
     Returns:
@@ -274,17 +285,17 @@ async def process_message(
         logger.info(
             "api_process_message_request",
             user_id=user_id,
-            session_id=str(request.session_id),
-            content_length=len(request.content),
+            session_id=str(payload.session_id),
+            content_length=len(payload.content),
         )
 
         # Create input DTO
         input_dto = ProcessChatMessageInput(
             user_id=user_id,
-            session_id=request.session_id,
-            content=request.content,
-            role=request.role,
-            metadata=request.metadata,
+            session_id=payload.session_id,
+            content=payload.content,
+            role=payload.role,
+            metadata=payload.metadata,
         )
 
         # Execute use case
@@ -375,15 +386,18 @@ async def process_message(
     - Explains reasoning (provenance tracking)
     """,
 )
+@limiter.limit("20/minute")  # Most expensive endpoint - strictest limit
 async def process_message_enhanced(
-    request: ChatMessageRequest,
+    request: Request,
+    payload: ChatMessageRequest = Body(...),
     user_id: str = Depends(get_current_user_id),
     use_case: ProcessChatMessageUseCase = Depends(get_process_chat_message_use_case),
 ) -> EnhancedChatResponse:
     """Process a chat message with memory retrieval.
 
     Args:
-        request: Chat message request
+        request: FastAPI Request object (for rate limiting)
+        payload: Chat message request
         user_id: Current user ID (from auth)
 
     Returns:
@@ -396,17 +410,17 @@ async def process_message_enhanced(
         logger.info(
             "api_process_message_enhanced_request",
             user_id=user_id,
-            session_id=str(request.session_id),
-            content_length=len(request.content),
+            session_id=str(payload.session_id),
+            content_length=len(payload.content),
         )
 
         # Step 1: Process message (entity resolution + semantic extraction)
         input_dto = ProcessChatMessageInput(
             user_id=user_id,
-            session_id=request.session_id,
-            content=request.content,
-            role=request.role,
-            metadata=request.metadata,
+            session_id=payload.session_id,
+            content=payload.content,
+            role=payload.role,
+            metadata=payload.metadata,
         )
 
         output = await use_case.execute(input_dto)
@@ -422,7 +436,7 @@ async def process_message_enhanced(
                     RetrievedMemoryResponse(
                         memory_id=sem_mem.memory_id,
                         memory_type="semantic",
-                        content=f"{sem_mem.predicate}: {sem_mem.object_value}",
+                        content=sem_mem.content,
                         relevance_score=0.85,  # Phase 1C: Placeholder, Phase 1D adds scoring
                         confidence=sem_mem.confidence,
                     )

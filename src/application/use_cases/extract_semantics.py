@@ -1,7 +1,7 @@
 """Extract semantics use case - Phase 1B extraction.
 
-Extracts semantic extraction logic from ProcessChatMessageUseCase god object.
-Handles triple extraction, conflict detection, and memory storage.
+Extracts semantic facts from conversation as entity-tagged natural language.
+Handles fact extraction, conflict detection, and memory storage with importance scoring.
 """
 
 from typing import Any
@@ -18,11 +18,30 @@ from src.domain.services import (
     ConflictDetectionService,
     ConflictResolutionService,
     MemoryValidationService,
-    SemanticExtractionService,
 )
-from src.domain.value_objects import ConflictResolution, MemoryConflict, PredicateType, SemanticTriple
+from src.domain.value_objects import MemoryConflict
 
 logger = structlog.get_logger(__name__)
+
+
+def calculate_importance(confidence: float, confirmation_count: int = 0) -> float:
+    """Calculate importance from confidence and confirmation count.
+
+    Formula: base_importance × confirmation_factor
+    - Base: 0.3 + (confidence × 0.6) maps confidence [0..1] → importance [0.3..0.9]
+    - Confirmation factor: 1.0 + (0.1 × confirmations), capped at 1.5
+
+    Args:
+        confidence: Memory confidence [0.0, 1.0]
+        confirmation_count: Number of confirmations (default: 0)
+
+    Returns:
+        Importance score [0.0, 1.0]
+    """
+    base_importance = 0.3 + (confidence * 0.6)
+    confirmation_factor = min(1.5, 1.0 + (0.1 * confirmation_count))
+    importance = min(1.0, base_importance * confirmation_factor)
+    return importance
 
 
 class ExtractSemanticsResult:
@@ -52,18 +71,18 @@ class ExtractSemanticsUseCase:
     """Use case for extracting semantic memories from chat messages.
 
     Extracted from ProcessChatMessageUseCase to follow Single Responsibility Principle.
-    Handles Phase 1B: Semantic Extraction.
+    Handles Phase 1B: Semantic Extraction (entity-tagged natural language).
 
     Responsibilities:
-    - Extract semantic triples using LLM
-    - Detect conflicts with existing memories
-    - Create or reinforce memories
+    - Extract semantic facts as natural language using LLM
+    - Detect conflicts with existing memories (semantic similarity-based)
+    - Create or confirm memories with importance scoring
     - Handle automatic conflict resolution
     """
 
     def __init__(
         self,
-        semantic_extraction_service: SemanticExtractionService,
+        llm_service: Any,  # LLM service with extract_facts method
         memory_validation_service: MemoryValidationService,
         conflict_detection_service: ConflictDetectionService,
         conflict_resolution_service: ConflictResolutionService,
@@ -74,15 +93,15 @@ class ExtractSemanticsUseCase:
         """Initialize use case.
 
         Args:
-            semantic_extraction_service: Service for extracting semantic triples
-            memory_validation_service: Service for memory reinforcement and decay
+            llm_service: LLM service for extracting natural language facts
+            memory_validation_service: Service for memory confirmation and decay
             conflict_detection_service: Service for detecting memory conflicts
-            conflict_resolution_service: Service for resolving detected conflicts (Phase 2.1)
+            conflict_resolution_service: Service for resolving detected conflicts
             semantic_memory_repository: Repository for semantic memory storage
             embedding_service: Service for generating embeddings
-            canonical_entity_repository: Repository for canonical entities (optional, Phase 3.3)
+            canonical_entity_repository: Repository for canonical entities (optional)
         """
-        self.semantic_extraction_service = semantic_extraction_service
+        self.llm_service = llm_service
         self.memory_validation_service = memory_validation_service
         self.conflict_detection_service = conflict_detection_service
         self.conflict_resolution_service = conflict_resolution_service
@@ -116,19 +135,6 @@ class ExtractSemanticsUseCase:
         conflict_count = 0
         conflicts_detected: list[MemoryConflict] = []
 
-        # Phase 3.3: Check for policy statements (e.g., reminder policies)
-        # Policy detection happens BEFORE entity check because policies are system-level
-        # and don't require specific entities (subject_entity_id="system")
-        policy_memory = await self._detect_and_create_policy(message, user_id)
-        if policy_memory:
-            logger.info("policy_detected_and_stored", policy_type="reminder")
-            return ExtractSemanticsResult(
-                semantic_memory_dtos=[self._memory_to_dto(policy_memory)],
-                semantic_memory_entities=[policy_memory],
-                conflict_count=0,
-                conflicts_detected=[],
-            )
-
         # Check for resolved entities (needed for semantic extraction)
         if not resolved_entities:
             logger.debug("no_resolved_entities_for_semantic_extraction")
@@ -139,168 +145,139 @@ class ExtractSemanticsUseCase:
                 conflicts_detected=[],
             )
 
-        # Note: We don't filter questions here. The LLM-based semantic extraction is smart enough to:
-        # - Extract factual statements from preference statements: "I like chocolate"
-        # - Extract factual statements from remember requests: "Can you remember I like butter?"
-        # - NOT extract from pure information-seeking questions: "What invoices are outstanding?"
-        # This aligns with the vision: "Memory is the transformation of experience into understanding."
-        # The LLM's semantic understanding > brittle pattern matching.
-
         logger.info(
             "starting_semantic_extraction",
             event_id=message.event_id,
             entity_count=len(resolved_entities),
         )
 
-        # Build entity_id -> canonical_name mapping for natural language embeddings
+        # Build entity_id -> canonical_name mapping
         entity_name_map = {
             e.entity_id: e.canonical_name
             for e in resolved_entities
         }
 
-        # Step 1: Extract semantic triples
-        triples = await self.semantic_extraction_service.extract_triples(
-            message=message,
-            resolved_entities=[
-                {
-                    "entity_id": e.entity_id,
-                    "canonical_name": e.canonical_name,
-                    "entity_type": e.entity_type,
-                }
-                for e in resolved_entities
-            ],
-        )
+        # Step 1: Extract semantic facts (natural language)
+        # LLM returns: [{"content": "...", "entities": [...], "confidence": 0.9}]
+        try:
+            facts = await self.llm_service.extract_semantic_facts(
+                message=message.content,
+                resolved_entities=[
+                    {
+                        "entity_id": e.entity_id,
+                        "canonical_name": e.canonical_name,
+                        "entity_type": e.entity_type,
+                    }
+                    for e in resolved_entities
+                ],
+            )
+        except Exception as e:
+            logger.error("fact_extraction_failed", error=str(e))
+            return ExtractSemanticsResult(
+                semantic_memory_dtos=[],
+                semantic_memory_entities=[],
+                conflict_count=0,
+                conflicts_detected=[],
+            )
 
         logger.info(
-            "semantic_triples_extracted",
-            triple_count=len(triples),
+            "semantic_facts_extracted",
+            fact_count=len(facts),
         )
 
-        # Step 2: Process each triple (conflict detection + storage)
-        for triple in triples:
+        # Step 2: Process each fact (conflict detection + storage)
+        for fact in facts:
             try:
-                # Check for conflicts with existing memories
-                existing_memories = (
-                    await self.semantic_memory_repo.find_by_subject_predicate(
-                        subject_entity_id=triple.subject_entity_id,
-                        predicate=triple.predicate,
-                        user_id=user_id,
-                        status_filter="active",
-                    )
+                content = fact["content"]
+                fact_entities = fact["entities"]
+                confidence = fact["confidence"]
+
+                # Calculate importance from confidence
+                importance = calculate_importance(confidence)
+
+                # Check for conflicts with existing memories about same entities
+                existing_memories = await self.semantic_memory_repo.find_by_entities(
+                    entity_ids=fact_entities,
+                    user_id=user_id,
+                    status_filter="active",
+                    match_all=False,  # Match ANY entity
                 )
 
                 conflict = None
                 if existing_memories:
-                    # Check first memory for conflict
-                    existing_memory = existing_memories[0]
-                    conflict = self.conflict_detection_service.detect_conflict(
-                        new_triple=triple,
-                        existing_memory=existing_memory,
-                    )
-
-                    if conflict:
-                        conflict_count += 1
-                        conflicts_detected.append(conflict)  # Track for transparency
-                        logger.warning(
-                            "memory_conflict_detected",
-                            conflict_type=conflict.conflict_type.value,
-                            subject=triple.subject_entity_id,
-                            predicate=triple.predicate,
+                    # Check for semantic conflicts (similar topic but contradictory content)
+                    for existing_memory in existing_memories:
+                        conflict = await self.conflict_detection_service.detect_semantic_conflict(
+                            new_content=content,
+                            new_entities=fact_entities,
+                            existing_memory=existing_memory,
+                            embedding_service=self.embedding_service,
                         )
 
-                        # Phase 2.1: Use ConflictResolutionService for proper resolution
-                        if conflict.is_resolvable_automatically:
-                            resolution_result = await self.conflict_resolution_service.resolve_conflict(
-                                conflict=conflict,
-                                strategy=None,  # Use recommended strategy
-                            )
-                            logger.info(
-                                "conflict_resolved",
-                                action=resolution_result.action,
-                                rationale=resolution_result.rationale,
+                        if conflict:
+                            conflict_count += 1
+                            conflicts_detected.append(conflict)
+                            logger.warning(
+                                "memory_conflict_detected",
+                                conflict_type=conflict.conflict_type.value,
+                                entities=fact_entities,
                             )
 
-                            # After resolution, create new memory if the new observation should persist
-                            # (i.e., if it won or if we need both perspectives tracked)
-                            # For supersede actions, we should create the new memory
-                            # For invalidate actions (DB conflicts), we don't create new memory
-                            if resolution_result.action == "supersede":
-                                # Old memory was superseded, create new memory with the new value
-                                # Fall through to memory creation logic below
-                                pass
+                            # Handle conflict resolution
+                            if conflict.is_resolvable_automatically:
+                                resolution_result = await self.conflict_resolution_service.resolve_conflict(
+                                    conflict=conflict,
+                                    strategy=None,  # Use recommended strategy
+                                )
+                                logger.info(
+                                    "conflict_resolved",
+                                    action=resolution_result.action,
+                                    rationale=resolution_result.rationale,
+                                )
+
+                                if resolution_result.action == "supersede":
+                                    # Old memory superseded, create new one
+                                    break  # Exit conflict check loop, create new memory below
+                                else:
+                                    # Invalidate or ask_user - skip creating new memory
+                                    break  # Exit processing this fact
                             else:
-                                # Invalidate or ask_user - don't create new memory
-                                continue
-                        else:
-                            # Mark both as conflicted (requires user clarification)
-                            existing_memory.mark_as_conflicted()
+                                # Mark as conflicted, skip creating new memory
+                                existing_memory.mark_as_conflicted()
+                                await self.semantic_memory_repo.update(existing_memory)
+                                break
+
+                        # If similar content (no contradiction), confirm existing memory
+                        elif await self._is_confirmation(content, existing_memory.content):
+                            logger.info("confirming_existing_memory", memory_id=existing_memory.memory_id)
+                            existing_memory.confirm(message.event_id)
                             await self.semantic_memory_repo.update(existing_memory)
-                            # Don't create new memory if unresolvable conflict
-                            continue
 
-                # No conflict or conflict was resolved - create/reinforce memory
-                # Reinforce if: existing memories AND no conflict detected
-                # Create new if: no existing memories OR conflict was resolved (old memory superseded)
-                should_reinforce = existing_memories and not conflict
-                should_create_new = not existing_memories or (conflict and conflict.is_resolvable_automatically)
+                            semantic_memory_dtos.append(self._memory_to_dto(existing_memory))
+                            semantic_memory_entities.append(existing_memory)
+                            break  # Don't create new memory, confirmed existing one
 
-                logger.debug(
-                    "memory_creation_decision",
-                    subject=triple.subject_entity_id,
-                    predicate=triple.predicate,
-                    has_existing_memories=bool(existing_memories),
-                    has_conflict=bool(conflict),
-                    conflict_resolvable=conflict.is_resolvable_automatically if conflict else None,
-                    should_reinforce=should_reinforce,
-                    should_create_new=should_create_new,
-                )
-
-                if should_reinforce:
-                    # Reinforce existing memory (values match, increase confidence)
-                    existing_memory = existing_memories[0]
-                    self.memory_validation_service.reinforce_memory(
-                        memory=existing_memory,
-                        new_observation=triple,
-                        event_id=message.event_id,
-                    )
-                    await self.semantic_memory_repo.update(existing_memory)
-
-                    # Add to response
-                    semantic_memory_dtos.append(
-                        self._memory_to_dto(existing_memory)
-                    )
-                    semantic_memory_entities.append(existing_memory)
-                elif should_create_new:
-                    # Create new memory (first observation OR conflict resolved with new value)
-                    # Generate natural language representation (original_text)
-                    original_text = self._triple_to_natural_language(
-                        triple, entity_name_map
-                    )
-
-                    # Generate embedding from natural language (better semantic matching)
-                    embedding = await self.embedding_service.generate_embedding(
-                        original_text
-                    )
+                # If we got here without confirming/conflicting, create new memory
+                if not conflict or (conflict and conflict.is_resolvable_automatically):
+                    # Generate embedding from natural language content
+                    embedding = await self.embedding_service.generate_embedding(content)
 
                     logger.debug(
                         "generating_memory_embedding",
-                        memory_predicate=triple.predicate,
-                        embedding_text=original_text,
+                        content_preview=content[:50],
                     )
 
-                    # Create semantic memory entity with hybrid structured + natural language
+                    # Create semantic memory entity
                     memory = SemanticMemory(
                         user_id=user_id,
-                        subject_entity_id=triple.subject_entity_id,
-                        predicate=triple.predicate,
-                        predicate_type=triple.predicate_type,
-                        object_value=triple.object_value,
-                        confidence=triple.confidence,
+                        content=content,
+                        entities=fact_entities,
+                        confidence=confidence,
+                        importance=importance,
                         source_event_ids=[message.event_id],
                         embedding=embedding,
-                        original_text=original_text,  # Natural language representation
-                        source_text=message.content,  # Original chat message
-                        related_entities=[e.entity_id for e in resolved_entities],  # All entities mentioned
+                        source_text=message.content,
+                        metadata={"confirmation_count": 1},  # Initial creation is first confirmation
                     )
 
                     # Store in database
@@ -313,10 +290,10 @@ class ExtractSemanticsUseCase:
             except Exception as e:
                 logger.error(
                     "semantic_memory_processing_error",
-                    triple=str(triple),
+                    fact=str(fact),
                     error=str(e),
                 )
-                # Continue processing other triples
+                # Continue processing other facts
 
         logger.info(
             "semantic_extraction_complete",
@@ -331,68 +308,30 @@ class ExtractSemanticsUseCase:
             conflicts_detected=conflicts_detected,
         )
 
-    # Phase 2.1: Removed _handle_auto_resolvable_conflict()
-    # Now using ConflictResolutionService for proper resolution with status tracking
+    async def _is_confirmation(self, new_content: str, existing_content: str) -> bool:
+        """Check if new content confirms existing memory (not contradicts).
 
-    # Note: Removed _is_question() method
-    # Vision-aligned approach: Let the LLM-based semantic extraction determine what's extractable.
-    # The extraction prompt instructs: "Analyze the message for factual statements about entities."
-    # The LLM handles this intelligently without brittle pattern matching.
-
-    def _triple_to_natural_language(
-        self,
-        triple: SemanticTriple,
-        entity_name_map: dict[str, str],
-    ) -> str:
-        """Convert structured triple to natural language for embedding.
-
-        Creates semantically meaningful text that will match user queries better
-        than structured representations.
+        Uses simple heuristic: high semantic similarity without contradiction.
 
         Args:
-            triple: Semantic triple to convert
-            entity_name_map: Mapping of entity_id to canonical_name
+            new_content: New fact content
+            existing_content: Existing memory content
 
         Returns:
-            Natural language representation for embedding
-
-        Examples:
-            - "Kai Media prefers Friday deliveries"
-            - "Kai Media's payment terms: NET15"
-            - "TC Boiler prefers ACH payment method"
+            True if new content confirms existing memory
         """
-        # Get canonical name (fallback to entity_id if not found)
-        entity_name = entity_name_map.get(
-            triple.subject_entity_id,
-            triple.subject_entity_id
+        # Generate embeddings
+        new_embedding = await self.embedding_service.generate_embedding(new_content)
+        existing_embedding = await self.embedding_service.generate_embedding(existing_content)
+
+        # Calculate cosine similarity
+        import numpy as np
+        similarity = np.dot(new_embedding, existing_embedding) / (
+            np.linalg.norm(new_embedding) * np.linalg.norm(existing_embedding)
         )
 
-        # Extract value from structured object_value
-        if isinstance(triple.object_value, dict):
-            value = triple.object_value.get("value", str(triple.object_value))
-        else:
-            value = str(triple.object_value)
-
-        # Convert predicate to natural language
-        # Remove underscores and convert to more natural phrasing
-        predicate_natural = triple.predicate.replace("_", " ")
-
-        # Build natural language based on predicate type
-        if triple.predicate_type == PredicateType.PREFERENCE:
-            # "Kai Media prefers Friday deliveries"
-            return f"{entity_name} prefers {value} {predicate_natural}"
-        elif triple.predicate_type == PredicateType.ATTRIBUTE:
-            # "Kai Media payment terms: NET15"
-            return f"{entity_name} {predicate_natural}: {value}"
-        elif triple.predicate_type == PredicateType.RELATIONSHIP:
-            # "Kai Media works with Supplier Co"
-            return f"{entity_name} {predicate_natural}: {value}"
-        elif triple.predicate_type == PredicateType.ACTION:
-            # "Kai Media requested delivery on Friday"
-            return f"{entity_name} {predicate_natural}: {value}"
-        else:
-            # Fallback for unknown types
-            return f"{entity_name} {predicate_natural}: {value}"
+        # High similarity (>0.85) = confirmation
+        return similarity > 0.85
 
     def _memory_to_dto(self, memory: SemanticMemory) -> SemanticMemoryDTO:
         """Convert SemanticMemory entity to DTO.
@@ -405,123 +344,9 @@ class ExtractSemanticsUseCase:
         """
         return SemanticMemoryDTO(
             memory_id=memory.memory_id or 0,
-            subject_entity_id=memory.subject_entity_id,
-            predicate=memory.predicate,
-            predicate_type=memory.predicate_type.value,
-            object_value=memory.object_value,
+            content=memory.content,
+            entities=memory.entities,
             confidence=memory.confidence,
+            importance=memory.importance,
             status=memory.status,
         )
-
-    async def _detect_and_create_policy(
-        self, message: ChatMessage, user_id: str
-    ) -> SemanticMemory | None:
-        """Detect policy statements and create policy memories.
-
-        Phase 3.3: Simple pattern matching for reminder policies.
-        Pattern: "If [entity_type] is [condition] [threshold], remind me"
-
-        Args:
-            message: Chat message to analyze
-            user_id: User identifier
-
-        Returns:
-            SemanticMemory if policy detected, None otherwise
-        """
-        import re
-        from datetime import UTC, datetime
-
-        content_lower = message.content.lower()
-
-        # Pattern: "if [an] invoice is [still] open X days before due, remind me"
-        # Capture: threshold (number of days)
-        pattern = r"if.*invoice.*(?:still\s+)?open\s+(\d+)\s+days?\s+before\s+due.*remind"
-
-        match = re.search(pattern, content_lower)
-        if not match:
-            return None
-
-        # Extract threshold
-        threshold_days = int(match.group(1))
-
-        logger.info(
-            "reminder_policy_detected",
-            entity_type="invoice",
-            condition="open",
-            threshold_days=threshold_days,
-        )
-
-        # Create policy memory
-        # Subject: system (user-specific policy)
-        # Predicate: reminder_policy
-        # Object: structured policy data
-        policy_data = {
-            "trigger_type": "time_based",
-            "entity_type": "invoice",
-            "condition": "status_open",
-            "threshold_days": threshold_days,
-            "threshold_type": "days_before_due",
-            "action": "remind_user",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-
-        # Generate embedding for policy (for future retrieval)
-        embedding_text = f"Reminder policy: notify user when invoices are open {threshold_days} days before due date"
-        embedding = await self.embedding_service.generate_embedding(embedding_text)
-
-        # Create semantic memory
-        policy_memory = SemanticMemory(
-            user_id=user_id,
-            subject_entity_id="system_policy",  # System-level policy (matches canonical entity_id)
-            predicate="reminder_policy",
-            predicate_type=PredicateType.ACTION,
-            object_value=policy_data,
-            confidence=0.95,  # Explicit statement = high confidence
-            source_event_ids=[message.event_id],
-            embedding=embedding,
-            original_text=embedding_text,  # Natural language policy description
-            source_text=message.content,  # Original chat message
-            related_entities=[],  # System policies don't reference specific entities
-        )
-
-        # Ensure "system" canonical entity exists
-        # Policy memories use subject_entity_id="system" which requires a canonical entity
-        if self.canonical_entity_repo:
-            from src.domain.entities import CanonicalEntity
-            from src.domain.value_objects import EntityReference
-
-            # Check if system entity exists, create if not
-            try:
-                system_entity = await self.canonical_entity_repo.find_by_entity_id("system_policy")
-            except Exception:
-                system_entity = None
-
-            if not system_entity:
-                # Create system entity
-                # System entity doesn't map to external database, use placeholder EntityReference
-                system_ref = EntityReference(
-                    table="system",
-                    primary_key="id",
-                    primary_value="policy",
-                    display_name="System",
-                )
-                system_entity = CanonicalEntity(
-                    entity_id="system_policy",
-                    entity_type="system",
-                    canonical_name="System",
-                    external_ref=system_ref,
-                    properties={"type": "system_policies"},
-                )
-                await self.canonical_entity_repo.create(system_entity)
-                logger.info("system_entity_created_for_policies")
-
-        # Store policy memory in database
-        stored_memory = await self.semantic_memory_repo.create(policy_memory)
-
-        logger.info(
-            "policy_memory_created",
-            memory_id=stored_memory.memory_id,
-            threshold_days=threshold_days,
-        )
-
-        return stored_memory

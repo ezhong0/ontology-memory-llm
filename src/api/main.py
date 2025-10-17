@@ -7,10 +7,13 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,9 +25,17 @@ from src.infrastructure.database.session import close_db, init_db
 # Load settings
 settings = Settings()
 
+# Initialize rate limiter
+# Uses in-memory storage by default (suitable for single-instance deployments)
+# For production with multiple instances, configure Redis backend:
+#   limiter = Limiter(key_func=get_remote_address, storage_uri="redis://localhost:6379")
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+
+
+from collections.abc import AsyncGenerator
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager.
 
     Handles startup and shutdown events for database connections
@@ -53,6 +64,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Attach rate limiter state to app for slowapi
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -69,7 +84,8 @@ app.add_middleware(RequestLoggingMiddleware, log_bodies=False)
 
 # Health check endpoint
 @app.get("/api/v1/health", tags=["System"])
-async def health_check(db: AsyncSession = Depends(get_db)) -> JSONResponse:
+@limiter.limit("30/minute")  # Allow frequent health checks for monitoring
+async def health_check(request: Request, db: AsyncSession = Depends(get_db)) -> JSONResponse:
     """Health check endpoint with actual database connectivity verification.
 
     Checks:
@@ -113,9 +129,31 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> JSONResponse:
     return JSONResponse(content=response_data, status_code=http_status)
 
 
+# Metrics endpoint for Prometheus
+@app.get("/metrics", tags=["System"])
+async def metrics() -> Response:
+    """Prometheus metrics endpoint.
+
+    Exposes application metrics in Prometheus exposition format for scraping.
+    Includes:
+    - HTTP request latency histograms (P95/P99)
+    - Memory retrieval performance
+    - LLM call duration and token usage
+    - Business metrics (PII redactions, conflicts)
+
+    Returns:
+        Prometheus metrics in text exposition format
+    """
+    from src.api.metrics import get_metrics
+
+    metrics_output, content_type = get_metrics()
+    return Response(content=metrics_output, media_type=content_type)
+
+
 # Root endpoint
-@app.get("/", tags=["System"])
-async def root():
+@app.get("/", tags=["System"], response_model=None)
+@limiter.limit("60/minute")  # Basic rate limit for root endpoint
+async def root(request: Request) -> dict[str, str] | RedirectResponse:
     """Root endpoint with API information.
 
     Returns:
@@ -136,7 +174,7 @@ async def root():
 
 # Error handlers
 @app.exception_handler(404)
-async def not_found_handler(request, exc):
+async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 404 errors."""
     return JSONResponse(
         status_code=404,
@@ -151,7 +189,7 @@ async def not_found_handler(request, exc):
 
 
 @app.exception_handler(500)
-async def internal_error_handler(request, exc):
+async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle 500 errors."""
     return JSONResponse(
         status_code=500,

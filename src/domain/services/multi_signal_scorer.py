@@ -248,7 +248,7 @@ class MultiSignalScorer:
         return max(0.0, min(1.0, recency_score))
 
     def _calculate_reinforcement_score(self, candidate: MemoryCandidate) -> float:
-        """Calculate reinforcement score from validation count.
+        """Calculate reinforcement score from confirmation count.
 
         Args:
             candidate: Memory candidate
@@ -257,12 +257,12 @@ class MultiSignalScorer:
             Reinforcement score [0.0, 1.0]
 
         Formula:
-            - For semantic memories: min(1.0, reinforcement_count / 5)
+            - For semantic memories: min(1.0, confirmation_count / 5)
             - For others: 0.5 (neutral)
         """
-        if candidate.is_semantic and candidate.reinforcement_count is not None:
-            # Scale to [0, 1] with saturation at 5 reinforcements
-            return min(1.0, candidate.reinforcement_count / 5.0)
+        if candidate.is_semantic and candidate.confirmation_count is not None:
+            # Scale to [0, 1] with saturation at 5 confirmations
+            return min(1.0, candidate.confirmation_count / 5.0)
         else:
             # Neutral score for non-semantic memories
             return 0.5
@@ -284,18 +284,18 @@ class MultiSignalScorer:
         if not candidate.is_semantic or candidate.confidence is None:
             return 1.0  # Full confidence for non-semantic memories
 
-        if candidate.last_validated_at is None:
-            # No validation yet, use base confidence
+        if candidate.last_accessed_at is None:
+            # No access yet, use base confidence
             return candidate.confidence
 
-        # Calculate days since last validation
-        now = datetime.now(candidate.last_validated_at.tzinfo)
-        days_since_validation = (now - candidate.last_validated_at).total_seconds() / 86400.0
+        # Calculate days since last access
+        now = datetime.now(candidate.last_accessed_at.tzinfo)
+        days_since_access = (now - candidate.last_accessed_at).total_seconds() / 86400.0
 
         # Apply exponential decay (same formula as MemoryValidationService)
         # confidence(t) = initial_confidence * exp(-decay_rate * days)
         decay_rate = heuristics.DECAY_RATE_PER_DAY
-        decay_factor = math.exp(-decay_rate * days_since_validation)
+        decay_factor = math.exp(-decay_rate * days_since_access)
         effective_confidence = candidate.confidence * decay_factor
 
         return max(0.0, min(1.0, effective_confidence))

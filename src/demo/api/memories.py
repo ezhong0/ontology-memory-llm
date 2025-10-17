@@ -1,5 +1,7 @@
 """API endpoints for memory data exploration."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -26,18 +28,19 @@ router = APIRouter(prefix="/memories", tags=["demo-memories"])
 
 
 class SemanticMemoryResponse(BaseModel):
-    """Semantic memory with entity name resolved."""
+    """Semantic memory with entity-tagged natural language."""
 
     memory_id: str
-    subject_entity_id: str
-    subject_entity_name: str
-    predicate: str
-    predicate_type: str
-    object_value: dict
+    user_id: str
+    content: str
+    entities: list[str]
     confidence: float
-    reinforcement_count: int
+    importance: float
+    source_type: str
+    source_text: str | None = None
+    status: str
     created_at: str
-    last_validated_at: str | None = None
+    last_accessed_at: str | None = None
 
     class Config:
         from_attributes = True
@@ -49,8 +52,8 @@ class CanonicalEntityResponse(BaseModel):
     entity_id: str
     entity_type: str
     canonical_name: str
-    external_ref: dict | None = None
-    properties: dict | None = None
+    external_ref: dict[str, Any] | None = None
+    properties: dict[str, Any] | None = None
     alias_count: int
     created_at: str
 
@@ -96,7 +99,7 @@ class EpisodicMemoryResponse(BaseModel):
     session_id: str
     summary: str
     event_type: str
-    entities: dict
+    entities: dict[str, Any]
     importance: float
     created_at: str
 
@@ -127,7 +130,7 @@ class MemorySummaryResponse(BaseModel):
     scope_type: str
     scope_identifier: str | None
     summary_text: str
-    key_facts: dict
+    key_facts: dict[str, Any]
     confidence: float
     created_at: str
 
@@ -140,7 +143,7 @@ class MemoryConflictResponse(BaseModel):
 
     conflict_id: int
     conflict_type: str
-    conflict_data: dict
+    conflict_data: dict[str, Any]
     resolution_strategy: str | None
     resolved_at: str | None
     created_at: str
@@ -158,43 +161,42 @@ class MemoryConflictResponse(BaseModel):
 async def list_semantic_memories(
     user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
 ) -> list[SemanticMemoryResponse]:
-    """Get all semantic memories for a user with entity names resolved.
+    """Get all semantic memories for a user.
 
     Args:
         user_id: User ID to filter memories (default: demo-user)
         session: Database session (injected)
 
     Returns:
-        List of semantic memories with subject entity names
+        List of semantic memories with entity-tagged content
     """
-    # Join with canonical_entities to get entity names
     query = (
-        select(SemanticMemory, CanonicalEntity.canonical_name)
-        .join(CanonicalEntity, SemanticMemory.subject_entity_id == CanonicalEntity.entity_id)
+        select(SemanticMemory)
         .where(SemanticMemory.user_id == user_id)
         .where(SemanticMemory.status == "active")
         .order_by(SemanticMemory.created_at.desc())
     )
 
     result = await session.execute(query)
-    rows = result.all()
+    memories = result.scalars().all()
 
     return [
         SemanticMemoryResponse(
             memory_id=str(memory.memory_id),
-            subject_entity_id=memory.subject_entity_id,
-            subject_entity_name=entity_name,
-            predicate=memory.predicate,
-            predicate_type=memory.predicate_type,
-            object_value=memory.object_value,
+            user_id=memory.user_id,
+            content=memory.content,
+            entities=list(memory.entities),
             confidence=memory.confidence,
-            reinforcement_count=memory.reinforcement_count,
+            importance=memory.importance,
+            source_type=memory.source_type,
+            source_text=memory.source_text,
+            status=memory.status,
             created_at=memory.created_at.isoformat(),
-            last_validated_at=memory.last_validated_at.isoformat()
-            if memory.last_validated_at
+            last_accessed_at=memory.last_accessed_at.isoformat()
+            if memory.last_accessed_at
             else None,
         )
-        for memory, entity_name in rows
+        for memory in memories
     ]
 
 
@@ -473,7 +475,7 @@ async def list_memory_conflicts(
 @router.get("/stats")
 async def get_memory_stats(
     user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
-) -> dict:
+) -> dict[str, int]:
     """Get summary statistics for memory data.
 
     Args:
@@ -545,7 +547,7 @@ async def get_memory_stats(
 @router.delete("/clear")
 async def clear_memories(
     user_id: str = "demo-user", session: AsyncSession = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     """Clear all memories for a user (demo/development only).
 
     CAUTION: This is a destructive operation that deletes:

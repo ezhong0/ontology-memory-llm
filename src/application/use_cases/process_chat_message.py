@@ -199,7 +199,6 @@ class ProcessChatMessageUseCase:
         if pii_was_detected:
             from datetime import UTC, datetime
             from src.domain.entities import SemanticMemory
-            from src.domain.value_objects import PredicateType
 
             pii_types = [r["type"] for r in redaction_result.redactions]
 
@@ -236,18 +235,22 @@ class ProcessChatMessageUseCase:
 
             pii_policy_memory = SemanticMemory(
                 user_id=input_dto.user_id,
-                subject_entity_id="system_policy",
-                predicate="pii_policy",
-                predicate_type=PredicateType.ATTRIBUTE,  # System policy as attribute
-                object_value={
-                    "policy": "never_store_pii",
-                    "detected_types": pii_types,
-                    "redacted_at": datetime.now(UTC).isoformat(),
-                    "redaction_count": len(redaction_result.redactions),
-                },
+                content=f"PII redaction policy: never store sensitive information ({', '.join(pii_types)})",
+                entities=["system_policy"],
                 confidence=0.95,
+                importance=0.9,  # High importance for system policies
+                status="active",
                 source_event_ids=[stored_message.event_id],
                 embedding=pii_embedding,
+                metadata={
+                    "policy_type": "pii_policy",
+                    "policy_data": {
+                        "policy": "never_store_pii",
+                        "detected_types": pii_types,
+                        "redacted_at": datetime.now(UTC).isoformat(),
+                        "redaction_count": len(redaction_result.redactions),
+                    },
+                },
             )
 
             # Store the policy memory
@@ -300,16 +303,17 @@ class ProcessChatMessageUseCase:
         if domain_facts and semantics_result.semantic_memory_entities:
             for memory in semantics_result.semantic_memory_entities:
                 for domain_fact in domain_facts:
-                    conflict = self.conflict_detection_service.detect_memory_vs_db_conflict(
+                    conflict = await self.conflict_detection_service.detect_memory_vs_db_conflict(
                         memory=memory,
                         domain_fact=domain_fact,
+                        embedding_service=self.extract_semantics.embedding_service,
                     )
                     if conflict:
                         memory_vs_db_conflicts.append(conflict)
                         logger.warning(
                             "memory_vs_db_conflict_detected",
-                            entity_id=conflict.subject_entity_id,
-                            predicate=conflict.predicate,
+                            entities=conflict.entities,
+                            similarity=conflict.semantic_similarity,
                         )
 
         step_timings["augment"] = time.perf_counter() - step_start
@@ -340,17 +344,18 @@ class ProcessChatMessageUseCase:
                 if retrieved_mem.memory_id and retrieved_mem.memory_id in semantic_memory_map:
                     memory_entity = semantic_memory_map[retrieved_mem.memory_id]
                     for domain_fact in domain_facts:
-                        conflict = self.conflict_detection_service.detect_memory_vs_db_conflict(
+                        conflict = await self.conflict_detection_service.detect_memory_vs_db_conflict(
                             memory=memory_entity,
                             domain_fact=domain_fact,
+                            embedding_service=self.extract_semantics.embedding_service,
                         )
                         if conflict:
                             memory_vs_db_conflicts.append(conflict)
                             logger.warning(
                                 "memory_vs_db_conflict_detected_retrieved",
                                 memory_id=retrieved_mem.memory_id,
-                                entity_id=conflict.subject_entity_id,
-                                predicate=conflict.predicate,
+                                entities=conflict.entities,
+                                similarity=conflict.semantic_similarity,
                             )
 
         # Step 5.5: Resolve memory-vs-DB conflicts (Phase 2.1)
@@ -398,10 +403,9 @@ class ProcessChatMessageUseCase:
 
         # Step 7: Assemble final response
         # Convert RetrievedMemory to RetrievedMemoryDTO
-        # Use the semantic_memory_map from scoring to populate predicate/object_value
         retrieved_memory_dtos = []
         for mem in retrieved_memories:
-            # Check if this is a semantic memory and enhance with structured fields
+            # Check if this is a semantic memory and enhance with entity information
             semantic_mem = semantic_memory_map.get(mem.memory_id)
             retrieved_memory_dtos.append(
                 RetrievedMemoryDTO(
@@ -410,8 +414,8 @@ class ProcessChatMessageUseCase:
                     content=mem.content,
                     relevance_score=mem.relevance_score,
                     confidence=mem.confidence,
-                    predicate=semantic_mem.predicate if semantic_mem else None,
-                    object_value=semantic_mem.object_value if semantic_mem else None,
+                    importance=semantic_mem.importance if semantic_mem else None,
+                    entities=semantic_mem.entities if semantic_mem else None,
                 )
             )
 
@@ -430,11 +434,10 @@ class ProcessChatMessageUseCase:
 
             conflict_dtos.append(
                 MemoryConflictDTO(
-                    conflict_type=conflict.conflict_type.value,  # Phase 2.1: Add conflict type
-                    subject_entity_id=conflict.subject_entity_id,
-                    predicate=conflict.predicate,
-                    existing_value=conflict.existing_value,
-                    new_value=conflict.new_value,
+                    conflict_type=conflict.conflict_type.value,
+                    entities=conflict.entities,
+                    existing_content=conflict.existing_content,
+                    new_content=conflict.new_content,
                     existing_confidence=existing_confidence,
                     new_confidence=new_confidence,
                     resolution_strategy=conflict.recommended_resolution.value,
@@ -634,17 +637,14 @@ class ProcessChatMessageUseCase:
 
         # Validate each aging memory
         for memory in aging_memories_to_validate:
-            # Update memory fields
+            # Update memory using confirm() method
             memory.status = "active"
-            memory.reinforcement_count += 1
-            memory.last_validated_at = datetime.now(timezone.utc)
-
-            # Apply reinforcement boost
-            boost = heuristics.get_reinforcement_boost(memory.reinforcement_count)
-            memory.confidence = min(
-                memory.confidence + boost,
-                heuristics.MAX_CONFIDENCE,
+            memory.confirm(
+                new_event_id=0,  # Placeholder - no specific event for confirmation
+                importance_boost=0.05,  # Standard boost
             )
+            # Update last_accessed_at since memory was validated
+            memory.last_accessed_at = datetime.now(timezone.utc)
 
             # Update in database via the repository pattern
             # Access repository through the extract_semantics use case (which has it injected)
@@ -654,7 +654,8 @@ class ProcessChatMessageUseCase:
                 "memory_validated_from_confirmation",
                 memory_id=memory.memory_id,
                 new_confidence=memory.confidence,
-                reinforcement_count=memory.reinforcement_count,
+                new_importance=memory.importance,
+                confirmation_count=memory.confirmation_count,
             )
 
     async def _evaluate_reminder_triggers(
@@ -680,13 +681,20 @@ class ProcessChatMessageUseCase:
 
         triggered_reminders: list[dict[str, Any]] = []
 
-        # Step 1: Retrieve reminder policies from semantic memory
-        reminder_policies = await self.extract_semantics.semantic_memory_repo.find_by_subject_predicate(
-            subject_entity_id="system_policy",  # Match the canonical entity_id format
-            predicate="reminder_policy",
+        # Step 1: Retrieve reminder policies from semantic memory (entity-tagged)
+        reminder_policies = await self.extract_semantics.semantic_memory_repo.find_by_entities(
+            entity_ids=["system_policy"],
             user_id=user_id,
             status_filter="active",
+            match_all=False,  # Match ANY entity
         )
+
+        # Filter for reminder policy content
+        reminder_policies = [
+            policy for policy in reminder_policies
+            if "reminder_policy" in policy.content.lower() or
+            policy.metadata.get("policy_type") == "reminder"
+        ]
 
         if not reminder_policies:
             logger.debug("no_reminder_policies_found")
@@ -700,7 +708,8 @@ class ProcessChatMessageUseCase:
 
         # Step 2: Check each domain fact against each policy
         for policy in reminder_policies:
-            policy_data = policy.object_value
+            # Extract policy data from metadata (stored during policy creation)
+            policy_data = policy.metadata.get("policy_data", {})
 
             # Currently only support invoice reminder policies
             if policy_data.get("entity_type") != "invoice":

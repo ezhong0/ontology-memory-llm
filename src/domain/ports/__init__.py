@@ -4,6 +4,7 @@ Port interfaces define contracts for external dependencies.
 Infrastructure layer implements these ports.
 """
 from src.domain.ports.chat_repository import IChatEventRepository
+from src.domain.ports.domain_database_port import DomainDatabasePort
 from src.domain.ports.embedding_service import IEmbeddingService
 from src.domain.ports.entity_repository import IEntityRepository
 from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
@@ -24,6 +25,7 @@ __all__ = [
     # Phase 1C
     "IEpisodicMemoryRepository",
     "ISummaryRepository",
+    "DomainDatabasePort",
     # Phase 1D
     "IProceduralMemoryRepository",
     # LLM Tool Calling

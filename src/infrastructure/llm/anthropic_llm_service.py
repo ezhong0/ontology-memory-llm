@@ -194,12 +194,106 @@ class AnthropicLLMService(ILLMService):
             logger.warning("falling_back_to_empty_mentions_due_to_error")
             return []
 
+    async def extract_semantic_facts(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Extract semantic facts as entity-tagged natural language using Claude.
+
+        Replaces triple extraction with natural language approach:
+        - Instead of (subject, predicate, object), stores complete sentences
+        - Tags facts with all relevant entity IDs
+        - Calculates importance from confidence
+
+        Args:
+            message: Chat message content
+            resolved_entities: Resolved entities from Phase 1A
+                Each dict should have: entity_id, canonical_name, entity_type
+
+        Returns:
+            List of fact dictionaries with structure:
+            {
+                "content": str,  # Natural language fact
+                "entities": list[str],  # Entity IDs mentioned
+                "confidence": float,  # Extraction confidence [0.0, 1.0]
+            }
+
+        Example:
+            Input: "Gai Media prefers Friday deliveries"
+            Output: [{
+                "content": "Gai Media prefers Friday deliveries",
+                "entities": ["customer:gai_media_456"],
+                "confidence": 0.9
+            }]
+
+        Raises:
+            LLMServiceError: If extraction fails
+        """
+        if not message or not message.strip():
+            logger.debug("empty_message_for_fact_extraction")
+            return []
+
+        if not resolved_entities:
+            logger.debug("no_entities_for_fact_extraction")
+            return []
+
+        try:
+            # Build extraction prompt
+            prompt = self._build_fact_extraction_prompt(message, resolved_entities)
+
+            logger.debug(
+                "calling_anthropic_for_fact_extraction",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                model=self.MODEL,
+            )
+
+            # Call Anthropic
+            response = await self.client.messages.create(
+                model=self.MODEL,
+                max_tokens=self.MAX_TOKENS,
+                temperature=self.TEMPERATURE_EXTRACTION,
+                system="You are an expert at extracting factual knowledge from conversations. "
+                "Extract facts as clear, natural language sentences tagged with relevant entities. "
+                "Always respond with valid JSON only, no other text.",
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Parse response
+            facts = self._parse_fact_extraction_response(response, message)
+
+            logger.info(
+                "fact_extraction_success",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                fact_count=len(facts),
+                tokens=response.usage.input_tokens + response.usage.output_tokens,
+            )
+
+            return facts
+
+        except Exception as e:
+            logger.error(
+                "fact_extraction_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            msg = f"Semantic fact extraction failed: {e}"
+            raise LLMServiceError(msg) from e
+
     async def extract_semantic_triples(
         self,
         message: str,
         resolved_entities: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Extract semantic triples (SPO) from message using Claude.
+        """DEPRECATED: Extract semantic triples (SPO) from message using Claude.
+
+        This method is deprecated. Use extract_semantic_facts() instead for
+        entity-tagged natural language approach.
 
         Phase 1B: Extract structured knowledge (subject-predicate-object triples)
         from natural language messages using Claude Haiku 4.5.
@@ -279,12 +373,138 @@ class AnthropicLLMService(ILLMService):
             msg = f"Semantic triple extraction failed: {e}"
             raise LLMServiceError(msg) from e
 
+    def _build_fact_extraction_prompt(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> str:
+        """Build prompt for semantic fact extraction (entity-tagged natural language).
+
+        Args:
+            message: Message content
+            resolved_entities: Resolved entities
+
+        Returns:
+            Formatted prompt string
+        """
+        # Format entities as JSON
+        entities_json = json.dumps(resolved_entities, indent=2)
+
+        return f"""Extract semantic facts from the message as natural language sentences.
+
+Resolved Entities:
+{entities_json}
+
+Message: "{message}"
+
+Task: Extract all factual statements about the entities as complete, natural language sentences.
+
+Instructions:
+1. Identify factual statements about entities (preferences, attributes, relationships, actions)
+2. Extract each fact as a complete, clear sentence
+3. Tag each fact with ALL relevant entity IDs mentioned in the fact
+4. Assign confidence based on statement clarity (0.0-1.0):
+   - Explicit statement: 0.9 ("Gai Media prefers Friday deliveries")
+   - Implicit statement: 0.7 ("They usually want Friday")
+   - Inferred: 0.5 ("They mentioned Friday twice")
+
+Output Format (JSON):
+{{
+  "facts": [
+    {{
+      "content": "Gai Media prefers Friday deliveries",
+      "entities": ["customer_gai_media_456"],
+      "confidence": 0.9
+    }}
+  ]
+}}
+
+Respond with ONLY the JSON object. If no facts can be extracted, return {{"facts": []}}."""
+
+    def _parse_fact_extraction_response(
+        self,
+        response: Any,
+        message: str,
+    ) -> list[dict[str, Any]]:
+        """Parse Anthropic response for semantic fact extraction.
+
+        Args:
+            response: Anthropic API response
+            message: Original message
+
+        Returns:
+            List of fact dictionaries
+
+        Raises:
+            LLMServiceError: If response cannot be parsed
+        """
+        if not response.content:
+            logger.warning("empty_fact_extraction_response")
+            return []
+
+        # Extract text from response
+        response_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                response_text += block.text
+
+        if not response_text:
+            logger.warning("no_text_in_fact_extraction_response")
+            return []
+
+        try:
+            # Strip markdown code blocks if present
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+
+            # Parse JSON response
+            parsed = json.loads(response_text)
+
+            if not isinstance(parsed, dict):
+                msg = "Response is not a JSON object"
+                raise ValueError(msg)
+
+            facts = parsed.get("facts", [])
+
+            if not isinstance(facts, list):
+                msg = "facts field is not a list"
+                raise ValueError(msg)
+
+            logger.debug(
+                "parsed_fact_extraction_response",
+                fact_count=len(facts),
+            )
+
+            return facts
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "json_parse_error_in_fact_extraction",
+                response_text=response_text[:200],
+                error=str(e),
+            )
+            return []
+        except ValueError as e:
+            logger.error(
+                "invalid_fact_extraction_response_format",
+                error=str(e),
+            )
+            return []
+
     def _build_extraction_prompt(
         self,
         message: str,
         resolved_entities: list[dict[str, Any]],
     ) -> str:
-        """Build prompt for semantic triple extraction.
+        """DEPRECATED: Build prompt for semantic triple extraction.
+
+        Use _build_fact_extraction_prompt() instead for entity-tagged natural language.
 
         Args:
             message: Message content
@@ -822,6 +1042,86 @@ Respond with ONLY the JSON object. If no mentions found, return {{"mentions": []
             Total cost in USD
         """
         return self._total_cost
+
+    async def generate_structured_output(
+        self,
+        prompt: str,
+        response_format: str = "json",
+        temperature: float = 0.3,
+        max_tokens: int = 2000,
+    ) -> str:
+        """Generate structured output (JSON) from a prompt.
+
+        Used for consolidation, analysis, and other structured generation tasks.
+
+        Args:
+            prompt: User prompt
+            response_format: Expected format (json, text)
+            temperature: Sampling temperature (0-1)
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text (JSON string if response_format=json)
+
+        Raises:
+            LLMServiceError: If generation fails
+        """
+        try:
+            logger.debug(
+                "calling_anthropic_for_structured_generation",
+                prompt_length=len(prompt),
+                format=response_format,
+                model=self.MODEL,
+            )
+
+            system_prompt = "You are a helpful assistant that generates structured output."
+            if response_format == "json":
+                system_prompt += " Always respond with valid JSON only, no other text."
+
+            response = await self.client.messages.create(
+                model=self.MODEL,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Extract text from response
+            response_text = ""
+            for block in response.content:
+                if hasattr(block, "text"):
+                    response_text += block.text
+
+            # Clean up JSON response if needed
+            if response_format == "json":
+                response_text = response_text.strip()
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                    response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                response_text = response_text.strip()
+
+            logger.info(
+                "structured_generation_success",
+                response_length=len(response_text),
+                tokens=response.usage.input_tokens + response.usage.output_tokens,
+            )
+
+            return response_text
+
+        except Exception as e:
+            logger.error(
+                "structured_generation_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            msg = f"Structured output generation failed: {e}"
+            raise LLMServiceError(msg) from e
 
     async def chat_with_tools(
         self,

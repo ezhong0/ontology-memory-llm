@@ -6,12 +6,13 @@ Implements the 5-stage hybrid entity resolution algorithm from DESIGN.md v2.0.
 import structlog
 
 from src.config import heuristics
-from src.domain.entities import EntityAlias
+from src.domain.entities import CanonicalEntity, EntityAlias
 from src.domain.exceptions import AmbiguousEntityError
-from src.domain.ports import IEntityRepository, ILLMService
+from src.domain.ports import DomainDatabasePort, IEntityRepository, ILLMService
 from src.domain.value_objects import (
     ConversationContext,
     EntityMention,
+    EntityReference,
     ResolutionMethod,
     ResolutionResult,
 )
@@ -37,15 +38,18 @@ class EntityResolutionService:
         self,
         entity_repository: IEntityRepository,
         llm_service: ILLMService,
+        domain_db_port: DomainDatabasePort | None = None,
     ):
         """Initialize entity resolution service.
 
         Args:
             entity_repository: Repository for entity persistence
             llm_service: LLM service for coreference resolution
+            domain_db_port: Domain database port for Stage 5 lookup (optional)
         """
         self.entity_repo = entity_repository
         self.llm_service = llm_service
+        self.domain_db = domain_db_port
 
         # Load thresholds from heuristics (calibrated in Phase 2)
         self.fuzzy_match_threshold = heuristics.FUZZY_MATCH_THRESHOLD
@@ -165,11 +169,17 @@ class EntityResolutionService:
 
                 return result
 
-        # Stage 5: Domain database lookup (lazy creation)
-        # Phase 1C: Domain DB connector pending - requires external DB integration
-        # When implemented, will query domain.customers, domain.sales_orders, etc.
-        # and create canonical entities on-the-fly for unresolved mentions
-        logger.debug("domain_db_lookup_not_implemented", mention=mention.text)
+        # Stage 5: Domain database lookup (lazy entity creation)
+        if self.domain_db:
+            result = await self._stage5_domain_db_lookup(mention, context.user_id)
+            if result:
+                logger.info(
+                    "entity_resolved",
+                    method="domain_db",
+                    entity_id=result.entity_id,
+                    confidence=result.confidence,
+                )
+                return result
 
         # Resolution failed
         logger.warning("entity_resolution_failed", mention=mention.text)
@@ -371,6 +381,134 @@ class EntityResolutionService:
         except Exception as e:
             logger.error(
                 "stage4_coreference_error",
+                mention=mention.text,
+                error=str(e),
+            )
+            return None
+
+    async def _stage5_domain_db_lookup(
+        self, mention: EntityMention, user_id: str
+    ) -> ResolutionResult | None:
+        """Stage 5: Domain database lookup (lazy entity creation).
+
+        Query domain database (customers, etc.) and create canonical entities on-the-fly
+        when domain data exists but hasn't been mapped to memory system yet.
+
+        This enables "just works" behavior where mentioning real customers/orders
+        automatically creates entity mappings without manual pre-seeding.
+
+        Args:
+            mention: Entity mention to resolve
+            user_id: User ID (for potential alias creation)
+
+        Returns:
+            ResolutionResult if found in domain DB, None otherwise
+        """
+        if not self.domain_db:
+            return None
+
+        try:
+            # Currently only supports customer lookup
+            # Phase 2: Extend to sales_orders, products, etc.
+            customer = await self.domain_db.find_customer_by_name(mention.text)
+
+            if not customer:
+                logger.debug(
+                    "domain_db_lookup_no_match",
+                    mention=mention.text,
+                )
+                return None
+
+            # Found customer in domain DB - create canonical entity
+            entity_id = f"customer_{customer['customer_id']}"
+
+            # Check if entity already exists (shouldn't happen, but defensive)
+            existing = await self.entity_repo.find_by_entity_id(entity_id)
+            if existing:
+                logger.info(
+                    "domain_entity_already_exists",
+                    entity_id=entity_id,
+                    mention=mention.text,
+                )
+                return ResolutionResult(
+                    entity_id=existing.entity_id,
+                    confidence=self.high_confidence,
+                    method=ResolutionMethod.EXACT_MATCH,
+                    mention_text=mention.text,
+                    canonical_name=existing.canonical_name,
+                    metadata={"entity_type": existing.entity_type},
+                )
+
+            # Create new canonical entity
+            new_entity = CanonicalEntity(
+                entity_id=entity_id,
+                entity_type="customer",
+                canonical_name=customer["name"],
+                properties={
+                    "industry": customer.get("industry"),
+                    "notes": customer.get("notes"),
+                },
+                external_ref=EntityReference(
+                    table="domain.customers",
+                    primary_key="customer_id",
+                    primary_value=customer["customer_id"],
+                    display_name=customer["name"],
+                    properties={
+                        "industry": customer.get("industry"),
+                        "notes": customer.get("notes"),
+                    },
+                ),
+            )
+
+            created = await self.entity_repo.create(new_entity)
+
+            logger.info(
+                "domain_entity_created_on_demand",
+                entity_id=entity_id,
+                canonical_name=created.canonical_name,
+                mention=mention.text,
+            )
+
+            # Auto-create alias if mention differs from canonical name
+            # This implements learning for Stage 5
+            if mention.text.lower() != created.canonical_name.lower():
+                try:
+                    await self.learn_alias(
+                        entity_id=created.entity_id,
+                        alias_text=mention.text,
+                        user_id=user_id,
+                        source="domain_db",
+                    )
+                    logger.info(
+                        "domain_db_alias_learned",
+                        entity_id=created.entity_id,
+                        alias=mention.text,
+                    )
+                except Exception as e:
+                    # Don't fail resolution if alias creation fails
+                    logger.warning(
+                        "domain_db_alias_creation_failed",
+                        entity_id=created.entity_id,
+                        alias=mention.text,
+                        error=str(e),
+                    )
+
+            return ResolutionResult(
+                entity_id=created.entity_id,
+                confidence=self.high_confidence,  # Domain DB is authoritative
+                method=ResolutionMethod.EXACT_MATCH,  # Treat as exact since deterministic
+                mention_text=mention.text,
+                canonical_name=created.canonical_name,
+                metadata={
+                    "entity_type": "customer",
+                    "source": "domain_db",
+                    "lazy_created": True,
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                "stage5_domain_db_lookup_error",
                 mention=mention.text,
                 error=str(e),
             )

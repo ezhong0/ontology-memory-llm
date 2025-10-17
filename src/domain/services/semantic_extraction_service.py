@@ -8,7 +8,9 @@ from typing import Any, Protocol
 
 import structlog
 
+from src.api.metrics import pii_redactions_total
 from src.domain.entities.chat_message import ChatMessage
+from src.domain.services.pii_redaction_service import PIIRedactionService
 from src.domain.value_objects import PredicateType, SemanticTriple
 
 logger = structlog.get_logger(__name__)
@@ -41,19 +43,26 @@ class SemanticExtractionService:
     in chat messages, focusing on the resolved entities from Phase 1A.
 
     Responsibilities:
+    - Redact PII before LLM processing (defensive security)
     - Build extraction prompts with resolved entities
     - Call LLM for triple extraction
     - Parse and validate LLM responses
     - Convert to domain SemanticTriple value objects
     """
 
-    def __init__(self, llm_service: LLMPort) -> None:
+    def __init__(
+        self,
+        llm_service: LLMPort,
+        pii_redaction_service: PIIRedactionService | None = None,
+    ) -> None:
         """Initialize extraction service.
 
         Args:
             llm_service: LLM service implementing extraction
+            pii_redaction_service: Optional PII redaction service (defensive security)
         """
         self._llm_service = llm_service
+        self._pii_redaction_service = pii_redaction_service or PIIRedactionService()
 
     async def extract_triples(
         self,
@@ -81,16 +90,34 @@ class SemanticExtractionService:
             logger.info("no_resolved_entities_skipping_extraction")
             return []
 
-        # Call LLM for extraction
+        # Defensive PII redaction before LLM processing
+        redaction_result = self._pii_redaction_service.redact_with_metadata(
+            message.content
+        )
+
+        if redaction_result.was_redacted:
+            logger.warning(
+                "pii_detected_before_semantic_extraction",
+                event_id=message.event_id,
+                redaction_count=len(redaction_result.redactions),
+                redaction_types=[r["type"] for r in redaction_result.redactions],
+            )
+
+            # Record PII redaction metrics
+            for redaction in redaction_result.redactions:
+                pii_redactions_total.labels(pii_type=redaction["type"]).inc()
+
+        # Call LLM for extraction with redacted content
         logger.info(
             "extracting_semantic_triples",
             event_id=message.event_id,
             entity_count=len(resolved_entities),
+            was_redacted=redaction_result.was_redacted,
         )
 
         try:
             raw_triples = await self._llm_service.extract_semantic_triples(
-                message=message.content,
+                message=redaction_result.redacted_text,
                 resolved_entities=resolved_entities,
             )
         except Exception as e:

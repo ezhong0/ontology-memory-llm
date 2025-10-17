@@ -1,16 +1,14 @@
 """Semantic memory repository implementation.
 
-Implements semantic memory storage using SQLAlchemy and PostgreSQL with pgvector.
+Implements entity-tagged natural language memory storage using SQLAlchemy and PostgreSQL with pgvector.
 """
 
-
 import structlog
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.semantic_memory import SemanticMemory
 from src.domain.exceptions import RepositoryError
-from src.domain.value_objects import PredicateType
 from src.infrastructure.database.models import SemanticMemory as SemanticMemoryModel
 
 logger = structlog.get_logger(__name__)
@@ -56,9 +54,9 @@ class SemanticMemoryRepository:
             logger.info(
                 "semantic_memory_created",
                 memory_id=memory.memory_id,
-                subject=memory.subject_entity_id,
-                predicate=memory.predicate,
-                confidence=memory.confidence,
+                entities=memory.entities,
+                content_preview=memory.content[:50],
+                importance=memory.importance,
             )
 
             return memory
@@ -66,8 +64,7 @@ class SemanticMemoryRepository:
         except Exception as e:
             logger.error(
                 "create_semantic_memory_error",
-                subject=memory.subject_entity_id,
-                predicate=memory.predicate,
+                entities=memory.entities,
                 error=str(e),
             )
             msg = f"Error creating semantic memory: {e}"
@@ -96,44 +93,53 @@ class SemanticMemoryRepository:
             msg = f"Error finding memory by ID: {e}"
             raise RepositoryError(msg) from e
 
-    async def find_by_subject_predicate(
+    async def find_by_entities(
         self,
-        subject_entity_id: str,
-        predicate: str,
+        entity_ids: list[str],
         user_id: str,
         status_filter: str = "active",
+        match_all: bool = False,
     ) -> list[SemanticMemory]:
-        """Find memories for a specific subject and predicate.
-
-        Used primarily for conflict detection.
+        """Find memories that mention specific entities.
 
         Args:
-            subject_entity_id: Subject entity ID
-            predicate: Predicate name
+            entity_ids: Entity IDs to search for
             user_id: User ID to filter by
             status_filter: Status to filter by (default: "active")
+            match_all: If True, memory must contain ALL entities; if False, ANY entity
 
         Returns:
             List of matching memories (may be empty)
         """
         try:
-            stmt = select(SemanticMemoryModel).where(
-                and_(
-                    SemanticMemoryModel.subject_entity_id == subject_entity_id,
-                    SemanticMemoryModel.predicate == predicate,
-                    SemanticMemoryModel.user_id == user_id,
-                    SemanticMemoryModel.status == status_filter,
+            if match_all:
+                # Memory must contain all entities (array contains all)
+                stmt = select(SemanticMemoryModel).where(
+                    and_(
+                        SemanticMemoryModel.user_id == user_id,
+                        SemanticMemoryModel.status == status_filter,
+                        SemanticMemoryModel.entities.contains(entity_ids),
+                    )
                 )
-            )
+            else:
+                # Memory must contain at least one entity (array overlaps)
+                stmt = select(SemanticMemoryModel).where(
+                    and_(
+                        SemanticMemoryModel.user_id == user_id,
+                        SemanticMemoryModel.status == status_filter,
+                        SemanticMemoryModel.entities.overlap(entity_ids),
+                    )
+                )
+
             result = await self.session.execute(stmt)
             models = result.scalars().all()
 
             memories = [self._to_domain_entity(model) for model in models]
 
             logger.debug(
-                "found_memories_by_subject_predicate",
-                subject=subject_entity_id,
-                predicate=predicate,
+                "found_memories_by_entities",
+                entity_ids=entity_ids,
+                match_all=match_all,
                 count=len(memories),
             )
 
@@ -141,12 +147,11 @@ class SemanticMemoryRepository:
 
         except Exception as e:
             logger.error(
-                "find_by_subject_predicate_error",
-                subject=subject_entity_id,
-                predicate=predicate,
+                "find_by_entities_error",
+                entity_ids=entity_ids,
                 error=str(e),
             )
-            msg = f"Error finding memories: {e}"
+            msg = f"Error finding memories by entities: {e}"
             raise RepositoryError(msg) from e
 
     async def find_similar(
@@ -155,6 +160,7 @@ class SemanticMemoryRepository:
         user_id: str,
         limit: int = 50,
         min_confidence: float = 0.3,
+        min_importance: float = 0.3,
     ) -> list[tuple[SemanticMemory, float]]:
         """Find similar memories using pgvector cosine similarity.
 
@@ -163,39 +169,33 @@ class SemanticMemoryRepository:
             user_id: User ID to filter by
             limit: Maximum number of results
             min_confidence: Minimum confidence threshold (default: 0.3)
+            min_importance: Minimum importance threshold (default: 0.3)
 
         Returns:
             List of (memory, similarity_score) tuples, sorted by similarity descending
         """
         try:
-            # Use pgvector's cosine similarity operator <=>
-            # Note: We filter to active memories with sufficient confidence
-            from sqlalchemy import text
-
             # Convert embedding to string format for pgvector
-            # pgvector accepts: '[0.1,0.2,0.3,...]' (no spaces)
             if isinstance(query_embedding, list):
                 embedding_str = str(query_embedding).replace(" ", "")
             else:
                 embedding_str = str(query_embedding.tolist()).replace(" ", "")
 
             # Build raw SQL for pgvector similarity
-            # Using 1 - (embedding <=> query) to get similarity (higher = more similar)
-            # We embed the vector string directly in SQL since asyncpg can't bind it as a parameter
             stmt = text(
                 f"""
                 SELECT
-                    memory_id, user_id, subject_entity_id, predicate, predicate_type,
-                    object_value, confidence, confidence_factors, reinforcement_count,
-                    last_validated_at, source_type, source_memory_id, extracted_from_event_id,
-                    original_text, source_text, related_entities,
-                    status, superseded_by_memory_id, embedding, importance,
-                    created_at, updated_at,
+                    memory_id, user_id, content, entities, memory_metadata,
+                    confidence, importance, source_type, source_memory_id,
+                    extracted_from_event_id, source_text,
+                    status, superseded_by_memory_id, embedding,
+                    last_accessed_at, created_at, updated_at,
                     1 - (embedding <=> '{embedding_str}'::vector) as similarity
                 FROM app.semantic_memories
                 WHERE user_id = :user_id
                   AND status = 'active'
                   AND confidence >= :min_confidence
+                  AND importance >= :min_importance
                   AND embedding IS NOT NULL
                 ORDER BY embedding <=> '{embedding_str}'::vector
                 LIMIT :limit
@@ -204,12 +204,16 @@ class SemanticMemoryRepository:
 
             result = await self.session.execute(
                 stmt,
-                {"user_id": user_id, "min_confidence": min_confidence, "limit": limit},
+                {
+                    "user_id": user_id,
+                    "min_confidence": min_confidence,
+                    "min_importance": min_importance,
+                    "limit": limit,
+                },
             )
 
             matches: list[tuple[SemanticMemory, float]] = []
             for row in result:
-                # Convert row to domain entity
                 memory = self._row_to_domain_entity(row)
                 similarity = float(row.similarity)
                 matches.append((memory, similarity))
@@ -258,26 +262,23 @@ class SemanticMemoryRepository:
                 msg = f"Memory {memory.memory_id} not found"
                 raise RepositoryError(msg)
 
-            # Update fields (only fields that can change)
+            # Update mutable fields
+            model.content = memory.content
+            model.entities = memory.entities
+            model.memory_metadata = memory.metadata
             model.confidence = memory.confidence
+            model.importance = memory.importance
             model.status = self._map_status_to_orm(memory.status)
-            model.reinforcement_count = memory.reinforcement_count
-            model.last_validated_at = memory.last_validated_at
+            model.last_accessed_at = memory.last_accessed_at
             model.updated_at = memory.updated_at
-            model.object_value = memory.object_value  # Phase 2.1: Can change during conflict resolution
-            model.superseded_by_memory_id = memory.superseded_by_memory_id  # Phase 2.1: Track supersession
-
-            # Update confidence_factors to track source events
-            model.confidence_factors = {
-                "source_event_ids": memory.source_event_ids,
-            }
+            model.superseded_by_memory_id = memory.superseded_by_memory_id
 
             await self.session.flush()
 
             logger.info(
                 "semantic_memory_updated",
                 memory_id=memory.memory_id,
-                confidence=memory.confidence,
+                importance=memory.importance,
                 status=memory.status,
             )
 
@@ -355,16 +356,12 @@ class SemanticMemoryRepository:
         Returns:
             Domain entity
         """
-        # Extract source_event_ids from confidence_factors if available
+        # Extract source_event_ids from extracted_from_event_id
         source_event_ids = []
-        if model.confidence_factors:
-            source_event_ids = model.confidence_factors.get("source_event_ids", [])
-
-        # If no source_event_ids but has extracted_from_event_id, use that
-        if not source_event_ids and model.extracted_from_event_id:
+        if model.extracted_from_event_id:
             source_event_ids = [model.extracted_from_event_id]
 
-        # Convert embedding to list if present (handle both None and numpy array)
+        # Convert embedding to list if present
         embedding = None
         if model.embedding is not None:
             embedding = list(model.embedding) if hasattr(model.embedding, "__iter__") else model.embedding
@@ -372,21 +369,18 @@ class SemanticMemoryRepository:
         return SemanticMemory(
             memory_id=model.memory_id,
             user_id=model.user_id,
-            subject_entity_id=model.subject_entity_id,
-            predicate=model.predicate,
-            predicate_type=PredicateType(model.predicate_type),
-            object_value=model.object_value,
+            content=model.content,
+            entities=list(model.entities) if model.entities else [],
             confidence=model.confidence,
+            importance=model.importance,
             status=self._map_status_from_orm(model.status),
-            reinforcement_count=model.reinforcement_count,
             source_event_ids=source_event_ids,
             embedding=embedding,
-            original_text=model.original_text,
             source_text=model.source_text,
-            related_entities=list(model.related_entities) if model.related_entities else [],
+            metadata=model.memory_metadata or {},
             created_at=model.created_at,
             updated_at=model.updated_at,
-            last_validated_at=model.last_validated_at,
+            last_accessed_at=model.last_accessed_at,
         )
 
     def _row_to_domain_entity(self, row) -> SemanticMemory:
@@ -398,17 +392,12 @@ class SemanticMemoryRepository:
         Returns:
             Domain entity
         """
-        # Extract source_event_ids from confidence_factors if available
+        # Extract source_event_ids from extracted_from_event_id
         source_event_ids = []
-        if row.confidence_factors:
-            source_event_ids = row.confidence_factors.get("source_event_ids", [])
-
-        # If no source_event_ids but has extracted_from_event_id, use that
-        if not source_event_ids and row.extracted_from_event_id:
+        if row.extracted_from_event_id:
             source_event_ids = [row.extracted_from_event_id]
 
         # Convert embedding to list if present
-        # pgvector returns embeddings as strings from raw SQL: '[0.1,0.2,...]'
         embedding = None
         if row.embedding is not None:
             if isinstance(row.embedding, str):
@@ -423,21 +412,18 @@ class SemanticMemoryRepository:
         return SemanticMemory(
             memory_id=row.memory_id,
             user_id=row.user_id,
-            subject_entity_id=row.subject_entity_id,
-            predicate=row.predicate,
-            predicate_type=PredicateType(row.predicate_type),
-            object_value=row.object_value,
+            content=row.content,
+            entities=list(row.entities) if row.entities else [],
             confidence=row.confidence,
+            importance=row.importance,
             status=self._map_status_from_orm(row.status),
-            reinforcement_count=row.reinforcement_count,
             source_event_ids=source_event_ids,
             embedding=embedding,
-            original_text=row.original_text,
             source_text=row.source_text,
-            related_entities=list(row.related_entities) if row.related_entities else [],
+            metadata=row.memory_metadata if hasattr(row, 'memory_metadata') else (row.metadata if hasattr(row, 'metadata') else {}),
             created_at=row.created_at,
             updated_at=row.updated_at,
-            last_validated_at=row.last_validated_at,
+            last_accessed_at=row.last_accessed_at,
         )
 
     def _to_orm_model(self, memory: SemanticMemory) -> SemanticMemoryModel:
@@ -457,24 +443,19 @@ class SemanticMemoryRepository:
         return SemanticMemoryModel(
             memory_id=memory.memory_id,
             user_id=memory.user_id,
-            subject_entity_id=memory.subject_entity_id,
-            predicate=memory.predicate,
-            predicate_type=memory.predicate_type.value,
-            object_value=memory.object_value,
+            content=memory.content,
+            entities=memory.entities,
+            memory_metadata=memory.metadata,
             confidence=memory.confidence,
-            confidence_factors={"source_event_ids": memory.source_event_ids},
-            reinforcement_count=memory.reinforcement_count,
-            last_validated_at=memory.last_validated_at,
+            importance=memory.importance,
             source_type="episodic",  # Phase 1B: all from chat events
             source_memory_id=None,
             extracted_from_event_id=extracted_from_event_id,
             status=self._map_status_to_orm(memory.status),
             superseded_by_memory_id=None,
             embedding=memory.embedding,
-            original_text=memory.original_text,
             source_text=memory.source_text,
-            related_entities=memory.related_entities if memory.related_entities else [],
-            importance=0.5,  # Default importance for Phase 1B
+            last_accessed_at=memory.last_accessed_at,
             created_at=memory.created_at,
             updated_at=memory.updated_at,
         )

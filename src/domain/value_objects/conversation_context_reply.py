@@ -23,7 +23,7 @@ class RetrievedMemory:
     content: str
     relevance_score: float
     confidence: float
-    last_validated_at: Any | None = None  # datetime or None
+    last_accessed_at: Any | None = None  # datetime or None
     status: str = "active"  # active, aging, superseded, invalidated
 
 
@@ -173,12 +173,12 @@ class ReplyContext:
                 )
 
                 # Add status and validation info if memory is aging
-                if mem.status == "aging" and mem.last_validated_at:
+                if mem.status == "aging" and mem.last_accessed_at:
                     from datetime import datetime, timezone
                     days_since_validation = (
-                        datetime.now(timezone.utc) - mem.last_validated_at
+                        datetime.now(timezone.utc) - mem.last_accessed_at
                     ).days
-                    memory_line += f", status: AGING - last validated {days_since_validation} days ago on {mem.last_validated_at.strftime('%Y-%m-%d')}"
+                    memory_line += f", status: AGING - last validated {days_since_validation} days ago on {mem.last_accessed_at.strftime('%Y-%m-%d')}"
                     aged_memories.append(mem)
 
                 memory_line += f")\n- {mem.content}"

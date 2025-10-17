@@ -71,6 +71,28 @@ class ILLMService(Protocol):
         """
         ...
 
+    async def generate_structured_output(
+        self,
+        prompt: str,
+        response_format: str = "json",
+        temperature: float = 0.3,
+        max_tokens: int = 2000,
+    ) -> str:
+        """Generate structured output (JSON) from a prompt.
+
+        Used for consolidation, analysis, and other structured generation tasks.
+
+        Args:
+            prompt: User prompt
+            response_format: Expected format (json, text)
+            temperature: Sampling temperature (0-1)
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text (JSON string if response_format=json)
+        """
+        ...
+
     async def chat_with_tools(
         self,
         system_prompt: str,

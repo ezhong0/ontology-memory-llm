@@ -160,15 +160,22 @@ class CandidateGenerator:
             min_confidence=min_confidence,
         )
 
-        # Convert SemanticMemory to MemoryCandidate
+        # Convert SemanticMemory to MemoryCandidate, capturing similarity scores
         candidates = []
-        for memory, _similarity in results:
-            candidate = self._semantic_to_candidate(memory)
+        similarity_scores = []
+        for memory, similarity in results:
+            candidate = self._semantic_to_candidate(memory, similarity)
             candidates.append(candidate)
+            similarity_scores.append(similarity)
 
-        logger.debug(
+        # Log retrieval with scores for observability
+        logger.info(
             "retrieved_semantic_candidates",
             count=len(candidates),
+            similarity_scores=similarity_scores if len(similarity_scores) <= 5 else similarity_scores[:5],
+            avg_similarity=sum(similarity_scores) / len(similarity_scores) if similarity_scores else 0.0,
+            min_similarity=min(similarity_scores) if similarity_scores else 0.0,
+            max_similarity=max(similarity_scores) if similarity_scores else 0.0,
         )
 
         return candidates
@@ -251,24 +258,21 @@ class CandidateGenerator:
 
         return layer_type in filters.memory_types
 
-    def _semantic_to_candidate(self, memory: SemanticMemory) -> MemoryCandidate:
+    def _semantic_to_candidate(self, memory: SemanticMemory, similarity: float = 0.0) -> MemoryCandidate:
         """Convert SemanticMemory domain entity to MemoryCandidate.
 
         Args:
             memory: Semantic memory entity
+            similarity: Cosine similarity score from vector search
 
         Returns:
             Memory candidate for scoring
         """
-        # Format content as human-readable triple
-        obj_value = memory.object_value
-        if isinstance(obj_value, dict):
-            obj_value = obj_value.get("value", str(obj_value))
+        # Use natural language content directly
+        content = memory.content
 
-        content = f"{memory.subject_entity_id} {memory.predicate} {obj_value}"
-
-        # Extract entities (subject only for semantic memories)
-        entities = [memory.subject_entity_id] if memory.subject_entity_id else []
+        # Use entity list from memory
+        entities = memory.entities
 
         return MemoryCandidate(
             memory_id=memory.memory_id,
@@ -277,10 +281,11 @@ class CandidateGenerator:
             entities=entities,
             embedding=np.array(memory.embedding) if memory.embedding else np.zeros(1536),
             created_at=memory.created_at,
-            importance=0.5,  # Default importance for semantic memories
+            importance=memory.importance,
+            similarity_score=similarity,  # Store raw similarity for explainability
             confidence=memory.confidence,
-            reinforcement_count=memory.reinforcement_count,
-            last_validated_at=memory.last_validated_at,
+            confirmation_count=memory.confirmation_count,
+            last_accessed_at=memory.last_accessed_at,
         )
 
     def _deduplicate_candidates(

@@ -66,14 +66,13 @@ async def get_memory(
         return SemanticMemoryResponse(
             memory_id=memory.memory_id,
             user_id=memory.user_id,
-            subject_entity_id=memory.subject_entity_id,
-            predicate=memory.predicate,
-            predicate_type=memory.predicate_type.value,
-            object_value=memory.object_value,
+            content=memory.content,
+            entities=memory.entities,
             confidence=memory.confidence,
+            importance=memory.importance,
             status=memory.status,
-            reinforcement_count=memory.reinforcement_count,
-            last_validated_at=memory.last_validated_at,
+            confirmation_count=memory.confirmation_count,
+            last_accessed_at=memory.last_accessed_at,
             created_at=memory.created_at,
             updated_at=memory.updated_at,
         )
@@ -171,13 +170,13 @@ async def validate_memory(
             )
 
         if request.confirmed:
-            # Memory confirmed - increase confidence and reinforcement
+            # Memory confirmed - increase confidence and confirmation count
             memory.status = "active"
-            memory.reinforcement_count += 1
-            memory.last_validated_at = datetime.now(timezone.utc)
+            memory.confirmation_count += 1
+            memory.last_accessed_at = datetime.now(timezone.utc)
 
-            # Apply reinforcement boost
-            boost = heuristics.get_reinforcement_boost(memory.reinforcement_count)
+            # Apply confirmation boost to confidence
+            boost = heuristics.get_reinforcement_boost(memory.confirmation_count)
             memory.confidence = min(
                 memory.confidence + boost,
                 heuristics.MAX_CONFIDENCE,
@@ -190,34 +189,34 @@ async def validate_memory(
                 "memory_validated_confirmed",
                 memory_id=memory_id,
                 new_confidence=updated_memory.confidence,
-                reinforcement_count=updated_memory.reinforcement_count,
+                confirmation_count=updated_memory.confirmation_count,
             )
 
             return ValidationResponse(
                 memory_id=updated_memory.memory_id,
                 status=updated_memory.status,
                 confidence=updated_memory.confidence,
-                reinforcement_count=updated_memory.reinforcement_count,
-                last_validated_at=updated_memory.last_validated_at,
+                confirmation_count=updated_memory.confirmation_count,
+                last_accessed_at=updated_memory.last_accessed_at,
             )
 
         else:
             # Memory invalidated - mark as superseded if correction provided
-            if request.corrected_value:
-                # TODO: Create new memory with corrected value (Phase 2.2 enhancement)
+            if request.corrected_content:
+                # TODO: Create new memory with corrected content (Phase 2.2 enhancement)
                 # For now, just mark as superseded
                 memory.status = "superseded"
                 logger.info(
                     "memory_validated_corrected",
                     memory_id=memory_id,
-                    old_value=memory.object_value,
-                    new_value=request.corrected_value,
+                    old_content=memory.content,
+                    new_content=request.corrected_content,
                 )
             else:
                 memory.status = "invalidated"
                 logger.info("memory_validated_invalidated", memory_id=memory_id)
 
-            memory.last_validated_at = datetime.now(timezone.utc)
+            memory.last_accessed_at = datetime.now(timezone.utc)
 
             # Update memory
             updated_memory = await semantic_repo.update(memory)
@@ -226,8 +225,8 @@ async def validate_memory(
                 memory_id=updated_memory.memory_id,
                 status=updated_memory.status,
                 confidence=updated_memory.confidence,
-                reinforcement_count=updated_memory.reinforcement_count,
-                last_validated_at=updated_memory.last_validated_at,
+                confirmation_count=updated_memory.confirmation_count,
+                last_accessed_at=updated_memory.last_accessed_at,
             )
 
     except HTTPException:

@@ -101,6 +101,19 @@ class DomainDatabasePort(ABC):
         """
 
     @abstractmethod
+    async def find_customer_by_name(self, name: str) -> dict[str, Any] | None:
+        """Find a customer by name (case-insensitive).
+
+        Used by Stage 5 of entity resolution for lazy entity creation.
+
+        Args:
+            name: Customer name to search for
+
+        Returns:
+            Dict with customer_id, name, and other properties, or None if not found
+        """
+
+    @abstractmethod
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:

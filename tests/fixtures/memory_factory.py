@@ -12,9 +12,28 @@ from uuid import uuid4
 import json
 
 from src.domain.entities import SemanticMemory
-from src.domain.value_objects import PredicateType
 from src.infrastructure.database.repositories import SemanticMemoryRepository
 from src.infrastructure.di.container import container
+
+
+def calculate_importance(confidence: float, confirmation_count: int = 0) -> float:
+    """Calculate importance from confidence and confirmation count.
+
+    Formula: base_importance × confirmation_factor
+    - Base: 0.3 + (confidence × 0.6) maps confidence [0..1] → importance [0.3..0.9]
+    - Confirmation factor: 1.0 + (0.1 × confirmations), capped at 1.5
+
+    Args:
+        confidence: Memory confidence [0.0, 1.0]
+        confirmation_count: Number of confirmations (default: 0)
+
+    Returns:
+        Importance score [0.0, 1.0]
+    """
+    base_importance = 0.3 + (confidence * 0.6)
+    confirmation_factor = min(1.5, 1.0 + (0.1 * confirmation_count))
+    importance = min(1.0, base_importance * confirmation_factor)
+    return importance
 
 
 class MemoryFactory:
@@ -34,74 +53,61 @@ class MemoryFactory:
     async def create_semantic_memory(
         self,
         user_id: str,
-        subject_entity_id: str,
-        predicate: str,
-        object_value: Any,
-        predicate_type: str = "preference",
+        content: str,
+        entities: List[str],
         confidence: float = 0.7,
-        last_validated_at: Optional[datetime] = None,
+        importance: Optional[float] = None,
         status: str = "active",
-        reinforcement_count: int = 1,
         source_event_ids: Optional[List[int]] = None,
-        original_text: Optional[str] = None,
         source_text: Optional[str] = None,
-        related_entities: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        last_accessed_at: Optional[datetime] = None,
     ) -> SemanticMemory:
         """
         Create semantic memory directly (bypass chat pipeline).
 
         Args:
             user_id: User ID
-            subject_entity_id: Entity this memory is about
-            predicate: Relationship type (e.g., "prefers_delivery_day")
-            object_value: Value (can be dict, string, number, etc.)
-            predicate_type: Type of predicate (preference, attribute, relationship, action)
-            confidence: Initial confidence (default 0.7)
-            last_validated_at: When last validated (default: now)
+            content: The memory text (natural language)
+            entities: List of entity IDs mentioned in this memory
+            confidence: Confidence in accuracy [0.0, 1.0] (default: 0.7)
+            importance: Importance score [0.0, 1.0] (auto-calculated if None)
             status: Memory status (active, inactive, conflicted)
-            reinforcement_count: Number of times reinforced (default 1)
             source_event_ids: Chat event IDs that contributed to this memory
-            original_text: Natural language representation (e.g., "Gai Media prefers Friday")
             source_text: Original chat message
-            related_entities: All entity IDs mentioned
+            metadata: Flexible metadata dict
+            last_accessed_at: When last accessed (default: now)
 
         Returns:
             Created SemanticMemory entity
         """
-        # Normalize object_value to dict if it isn't already
-        if not isinstance(object_value, dict):
-            object_value = {"value": object_value}
+        # Ensure metadata has confirmation_count (initial creation is first confirmation)
+        if metadata is None:
+            metadata = {}
+        if "confirmation_count" not in metadata:
+            metadata["confirmation_count"] = 1
 
-        # Convert string predicate_type to enum
-        predicate_type_enum = PredicateType(predicate_type)
+        # Auto-calculate importance if not provided
+        if importance is None:
+            confirmation_count = metadata.get("confirmation_count", 1)
+            importance = calculate_importance(confidence, confirmation_count)
 
-        # Generate natural language representation if not provided
-        if not original_text:
-            value_str = object_value.get("value", str(object_value))
-            predicate_natural = predicate.replace("_", " ")
-            original_text = f"{subject_entity_id} {predicate_natural}: {value_str}"
-
-        # Generate embedding from natural language
-        embedding = await self.embedding_service.generate_embedding(
-            original_text
-        )
+        # Generate embedding from natural language content
+        embedding = await self.embedding_service.generate_embedding(content)
 
         # Create memory entity
         memory = SemanticMemory(
             user_id=user_id,
-            subject_entity_id=subject_entity_id,
-            predicate=predicate,
-            predicate_type=predicate_type_enum,
-            object_value=object_value,
+            content=content,
+            entities=entities,
             confidence=confidence,
+            importance=importance,
             status=status,
-            reinforcement_count=reinforcement_count,
             source_event_ids=source_event_ids or [],
             embedding=embedding,
-            original_text=original_text,
-            source_text=source_text,
-            related_entities=related_entities or [subject_entity_id],
-            last_validated_at=last_validated_at or datetime.now(timezone.utc),
+            source_text=source_text or content,
+            metadata=metadata,
+            last_accessed_at=last_accessed_at or datetime.now(timezone.utc),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -160,21 +166,17 @@ class MemoryFactory:
                 "session_id": session_id,
                 "summary": summary,
                 "event_type": event_type,
-                "source_event_ids": source_event_ids or [],  # ARRAY column - pass list
-                "entities": json.dumps(entities or []),  # JSONB - serialize
-                "domain_facts_referenced": json.dumps(domain_facts_referenced) if domain_facts_referenced else None,  # JSONB - serialize
+                "source_event_ids": source_event_ids or [],
+                "entities": json.dumps(entities or []),
+                "domain_facts_referenced": json.dumps(domain_facts_referenced) if domain_facts_referenced else None,
                 "importance": importance,
-                "embedding": str(embedding),  # Vector - convert list to string
+                "embedding": str(embedding),
                 "created_at": datetime.now(timezone.utc),
             },
         )
 
         memory_id = result.scalar_one()
-
-        # Flush to make data visible to other queries in same transaction
         await self.session.flush()
-
-        # NOTE: Don't commit - let test manage transaction lifecycle
         return memory_id
 
     async def create_procedural_memory(
@@ -226,18 +228,14 @@ class MemoryFactory:
                 or {"action_type": "augment", "predicates": []}),
                 "observed_count": observed_count,
                 "confidence": confidence,
-                "embedding": str(embedding),  # Vector - convert list to string
+                "embedding": str(embedding),
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             },
         )
 
         memory_id = result.scalar_one()
-
-        # Flush to make data visible to other queries in same transaction
         await self.session.flush()
-
-        # NOTE: Don't commit - let test manage transaction lifecycle
         return memory_id
 
     async def create_canonical_entity(
@@ -264,8 +262,6 @@ class MemoryFactory:
             entity_id
         """
         # Transform external_ref to match EntityReference schema
-        # Input: {"table": "domain.customers", "id": "uuid"}
-        # Output: {"table": "domain.customers", "primary_key": "customer_id", "primary_value": "uuid", "display_name": name}
         table = external_ref["table"]
         primary_value = external_ref["id"]
 
@@ -306,10 +302,7 @@ class MemoryFactory:
             },
         )
 
-        # Commit to make data visible across all queries (E2E tests need this)
-        # The test fixture will still rollback at the end for isolation
         await self.session.commit()
-
         return entity_id
 
     async def create_entity_alias(
@@ -353,9 +346,5 @@ class MemoryFactory:
         )
 
         alias_id = result.scalar_one()
-
-        # Flush to make data visible to other queries in same transaction
         await self.session.flush()
-
-        # NOTE: Don't commit - let test manage transaction lifecycle
         return alias_id

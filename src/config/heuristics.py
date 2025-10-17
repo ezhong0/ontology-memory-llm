@@ -116,10 +116,15 @@ SEMANTIC_HALF_LIFE_DAYS = 90  # Semantic facts decay slower
 # Conflict Resolution
 CONFLICT_TEMPORAL_THRESHOLD_DAYS = 30  # Days difference for temporal resolution
 CONFLICT_CONFIDENCE_THRESHOLD = 0.2  # Confidence difference threshold
-CONFLICT_REINFORCEMENT_THRESHOLD = 3  # Reinforcement count difference threshold
+CONFLICT_REINFORCEMENT_THRESHOLD = 3  # Reinforcement count difference threshold (deprecated - use importance)
+CONFLICT_IMPORTANCE_THRESHOLD = 0.15  # Importance difference threshold for resolution
 CONFIDENCE_GAP_THRESHOLD = 0.30  # Gap to trust higher confidence (legacy)
 AGE_THRESHOLD_DAYS = 60  # Age to trust recency (legacy)
 MIN_CONFIDENCE_FOR_CONFLICT = 0.4  # Below this, just replace
+
+# Semantic Conflict Detection (Entity-Tagged Natural Language)
+CONFLICT_ENTITY_OVERLAP_THRESHOLD = 0.8  # Entity overlap ratio to consider conflict [0.0, 1.0]
+CONFLICT_SEMANTIC_SIMILARITY_THRESHOLD = 0.85  # Semantic similarity to consider same topic [0.0, 1.0]
 
 # ==============================================================================
 # CONSOLIDATION

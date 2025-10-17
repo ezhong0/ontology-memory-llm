@@ -153,12 +153,110 @@ class OpenAILLMService(ILLMService):
             msg
         )
 
+    async def extract_semantic_facts(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Extract semantic facts as entity-tagged natural language.
+
+        Phase 1B (Refactored): Extract knowledge as natural language sentences
+        tagged with entity IDs, rather than structured triples.
+
+        Args:
+            message: Chat message content
+            resolved_entities: Resolved entities from Phase 1A
+                Each dict should have: entity_id, canonical_name, entity_type
+
+        Returns:
+            List of fact dictionaries with structure:
+            {
+                "content": str,  # Natural language fact
+                "entities": list[str],  # Entity IDs mentioned
+                "confidence": float,  # Extraction confidence [0.0, 1.0]
+                "metadata": dict (optional)
+            }
+
+        Example:
+            Input: "Gai Media prefers Friday deliveries"
+            Output: [{
+                "content": "Gai Media prefers Friday deliveries",
+                "entities": ["customer:gai_media_456"],
+                "confidence": 0.9
+            }]
+
+        Raises:
+            LLMServiceError: If extraction fails
+        """
+        if not message or not message.strip():
+            logger.debug("empty_message_for_extraction")
+            return []
+
+        if not resolved_entities:
+            logger.debug("no_entities_for_extraction")
+            return []
+
+        try:
+            # Build extraction prompt
+            prompt = self._build_fact_extraction_prompt(message, resolved_entities)
+
+            logger.debug(
+                "calling_openai_for_fact_extraction",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                model=self.MODEL,
+            )
+
+            # Call OpenAI with JSON mode for structured output
+            response = await self.client.chat.completions.create(
+                model=self.MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at extracting factual knowledge from conversations. "
+                        "Extract facts as clear, natural language sentences tagged with relevant entities.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1000,  # Allow for multiple facts
+                temperature=0.1,  # Low temperature for consistent extraction
+                response_format={"type": "json_object"},
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Parse response
+            facts = self._parse_fact_extraction_response(response, message)
+
+            logger.info(
+                "fact_extraction_success",
+                message_length=len(message),
+                entity_count=len(resolved_entities),
+                fact_count=len(facts),
+                tokens=response.usage.total_tokens if response.usage else 0,
+            )
+
+            return facts
+
+        except Exception as e:
+            logger.error(
+                "fact_extraction_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            msg = f"Semantic fact extraction failed: {e}"
+            raise LLMServiceError(msg) from e
+
     async def extract_semantic_triples(
         self,
         message: str,
         resolved_entities: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Extract semantic triples (SPO) from message using LLM.
+
+        DEPRECATED: Use extract_semantic_facts() instead.
+        This method is kept for backwards compatibility but will be removed.
 
         Phase 1B: Extract structured knowledge (subject-predicate-object triples)
         from natural language messages using GPT-4-turbo.
@@ -182,6 +280,11 @@ class OpenAILLMService(ILLMService):
         Raises:
             LLMServiceError: If extraction fails
         """
+        logger.warning(
+            "deprecated_method_called",
+            method="extract_semantic_triples",
+            replacement="extract_semantic_facts",
+        )
         if not message or not message.strip():
             logger.debug("empty_message_for_extraction")
             return []
@@ -360,6 +463,147 @@ Respond with ONLY the JSON object. If no triples can be extracted, return {{"tri
         except ValueError as e:
             logger.error(
                 "invalid_extraction_response_format",
+                error=str(e),
+            )
+            return []
+
+    def _build_fact_extraction_prompt(
+        self,
+        message: str,
+        resolved_entities: list[dict[str, Any]],
+    ) -> str:
+        """Build prompt for semantic fact extraction (natural language).
+
+        Args:
+            message: Message content
+            resolved_entities: Resolved entities
+
+        Returns:
+            Formatted prompt string
+        """
+        # Format entities as JSON
+        entities_json = json.dumps(resolved_entities, indent=2)
+
+        return f"""Extract factual knowledge from the message as entity-tagged natural language.
+
+Resolved Entities:
+{entities_json}
+
+Message: "{message}"
+
+Task: Extract all factual statements about the resolved entities as clear, natural language sentences.
+
+Instructions:
+1. Analyze the message for factual information about the entities
+2. Extract each fact as a complete, standalone sentence
+3. Tag each fact with the entity IDs it mentions (use entity_id from resolved entities)
+4. Keep facts in natural language - don't structure as triples or predicates
+5. Assign confidence based on statement clarity (0.0-1.0)
+   - Explicit statement: 0.9 ("Gai Media prefers Friday deliveries")
+   - Implicit statement: 0.7 ("They usually want Friday")
+   - Inferred: 0.5 ("They mentioned Friday twice")
+
+Examples:
+
+Input: "Acme Corp always wants deliveries on Friday. They're in manufacturing."
+Output: {{
+  "facts": [
+    {{
+      "content": "Acme Corp prefers Friday deliveries",
+      "entities": ["customer:acme_corp_123"],
+      "confidence": 0.9
+    }},
+    {{
+      "content": "Acme Corp is in the manufacturing industry",
+      "entities": ["customer:acme_corp_123"],
+      "confidence": 0.9
+    }}
+  ]
+}}
+
+Input: "Update order SO-456 for Gai Media"
+Output: {{
+  "facts": [
+    {{
+      "content": "Gai Media is associated with order SO-456",
+      "entities": ["customer:gai_media_789", "order:so_456"],
+      "confidence": 0.85
+    }}
+  ]
+}}
+
+Output Format (JSON):
+{{
+  "facts": [
+    {{
+      "content": "Natural language fact about entity",
+      "entities": ["entity_id1", "entity_id2"],
+      "confidence": 0.9,
+      "metadata": {{"source": "explicit"}}
+    }}
+  ]
+}}
+
+Respond with ONLY the JSON object. If no facts can be extracted, return {{"facts": []}}.
+"""
+
+    def _parse_fact_extraction_response(
+        self,
+        response: ChatCompletion,
+        message: str,
+    ) -> list[dict[str, Any]]:
+        """Parse OpenAI response for semantic fact extraction.
+
+        Args:
+            response: OpenAI API response
+            message: Original message
+
+        Returns:
+            List of fact dictionaries
+
+        Raises:
+            LLMServiceError: If response cannot be parsed
+        """
+        if not response.choices:
+            logger.warning("no_choices_in_fact_extraction_response")
+            return []
+
+        response_text = response.choices[0].message.content
+        if not response_text:
+            logger.warning("empty_fact_extraction_response")
+            return []
+
+        try:
+            # Parse JSON response
+            parsed = json.loads(response_text)
+
+            if not isinstance(parsed, dict):
+                msg = "Response is not a JSON object"
+                raise ValueError(msg)
+
+            facts = parsed.get("facts", [])
+
+            if not isinstance(facts, list):
+                msg = "facts field is not a list"
+                raise ValueError(msg)
+
+            logger.debug(
+                "parsed_fact_extraction_response",
+                fact_count=len(facts),
+            )
+
+            return facts
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "json_parse_error_in_fact_extraction",
+                response_text=response_text[:200],
+                error=str(e),
+            )
+            return []
+        except ValueError as e:
+            logger.error(
+                "invalid_fact_extraction_response_format",
                 error=str(e),
             )
             return []
