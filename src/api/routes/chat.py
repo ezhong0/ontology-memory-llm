@@ -136,11 +136,26 @@ async def process_chat_simplified(
                 ]
             },
             "memories_created": [
+                # Include semantic memories created during this turn
+                *[
+                    {
+                        "memory_id": mem.memory_id,
+                        "memory_type": "semantic",
+                        "subject_entity_id": mem.subject_entity_id,
+                        "predicate": mem.predicate,
+                        "predicate_type": mem.predicate_type,
+                        "object_value": mem.object_value,
+                        "confidence": mem.confidence,
+                        "status": mem.status,
+                    }
+                    for mem in output.semantic_memories
+                ],
+                # Include episodic memory (conversation event)
                 {
                     "memory_type": "episodic",
                     "summary": f"User said: {message[:100]}",
                     "event_id": output.event_id,
-                }
+                },
             ],
         }
 

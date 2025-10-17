@@ -811,7 +811,6 @@ async def test_scenario_15_audit_trail_explainability(api_client: AsyncClient, d
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement task update via conversation + summary storage")
 async def test_scenario_18_task_completion_via_conversation(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 18: Task completion via conversation
@@ -872,11 +871,13 @@ async def test_scenario_18_task_completion_via_conversation(api_client: AsyncCli
     # ASSERT: Semantic memory created with summary
     assert "memories_created" in data
     semantic_memories = [m for m in data["memories_created"] if m["memory_type"] == "semantic"]
-    assert len(semantic_memories) >= 1
+    assert len(semantic_memories) >= 1, "Should create semantic memories from task completion summary"
 
-    # Summary should be stored for future retrieval
-    summary_memory = next((m for m in semantic_memories if "sla" in m.get("summary", "").lower()), None)
-    assert summary_memory is not None, "Should create semantic memory with SLA summary"
+    # Summary should be stored as structured semantic memories
+    # The message contains: "We're meeting the 7-day SLA 95% of the time"
+    # This should create semantic memories with predicates like sla_compliance_rate, sla_timeframe
+    sla_memories = [m for m in semantic_memories if "sla" in m.get("predicate", "").lower()]
+    assert len(sla_memories) >= 1, "Should create semantic memories with SLA information (predicate contains 'sla')"
 
 
 # ============================================================================
@@ -1194,7 +1195,6 @@ async def test_scenario_09_cold_start_grounding_to_db(api_client: AsyncClient, d
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="TODO: Implement cross-object chained queries")
 async def test_scenario_11_cross_object_reasoning(api_client: AsyncClient, domain_seeder, memory_factory):
     """
     SCENARIO 11: Cross-object reasoning (SO → WO → Invoice chain)
@@ -1208,8 +1208,94 @@ async def test_scenario_11_cross_object_reasoning(api_client: AsyncClient, domai
              and no invoices exist, recommend generating invoice.
              Store policy memory: "Invoice immediately upon WO=done".
     """
-    # Implementation requires chained domain queries
-    pass
+    from datetime import date
+
+    # ARRANGE: Seed domain with SO → WO chain (WO is done, no invoice yet)
+    ids = await domain_seeder.seed({
+        "customers": [{
+            "name": "Kai Media",
+            "industry": "Entertainment",
+            "id": "kai_123"
+        }],
+        "sales_orders": [{
+            "customer": "kai_123",
+            "so_number": "SO-2001",
+            "title": "Equipment Repair",
+            "status": "in_fulfillment",
+            "id": "so_2001"
+        }],
+        "work_orders": [{
+            "sales_order": "so_2001",
+            "description": "Repair equipment",
+            "status": "done",  # Work is complete
+            "technician": "Bob",
+            "scheduled_for": date(2025, 10, 10),
+            "id": "wo_2001"
+        }]
+        # Note: NO invoice exists yet - this is the key condition for Scenario 11
+    })
+
+    # ARRANGE: Create canonical entity for Kai Media
+    await memory_factory.create_canonical_entity(
+        entity_id=f"customer_{ids['kai_123']}",
+        entity_type="customer",
+        canonical_name="Kai Media",
+        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
+        properties={"industry": "Entertainment"}
+    )
+
+    # ARRANGE: Create canonical entity for SO-2001
+    await memory_factory.create_canonical_entity(
+        entity_id=f"sales_order_{ids['so_2001']}",
+        entity_type="sales_order",
+        canonical_name="SO-2001",
+        external_ref={"table": "domain.sales_orders", "id": ids["so_2001"]},
+        properties={"status": "in_fulfillment"}
+    )
+
+    # ACT: User asks if they can invoice
+    response = await api_client.post("/api/v1/chat", json={
+        "user_id": "finance_agent",
+        "message": "Can we invoice Kai Media for SO-2001 now that the repair is done?"
+    })
+
+    # ASSERT: Response successful
+    assert response.status_code == 200
+    data = response.json()
+
+    # ASSERT: Response structure valid
+    assert "response" in data
+    assert "augmentation" in data
+
+    # ASSERT: Domain augmentation executed order_chain query
+    assert "domain_facts" in data["augmentation"]
+    domain_facts = data["augmentation"]["domain_facts"]
+
+    # Should have order_chain fact
+    order_chain_facts = [f for f in domain_facts if f.get("fact_type") == "order_chain"]
+    assert len(order_chain_facts) >= 1, "Should retrieve order chain fact"
+
+    # Check the order chain fact metadata
+    order_fact = order_chain_facts[0]
+    assert "metadata" in order_fact
+
+    # Key assertions from DESIGN.md - get_order_chain logic (lines 154-166):
+    # If all WOs done and no invoices exist, should recommend "generate_invoice"
+    assert order_fact["metadata"]["recommended_action"] == "generate_invoice", \
+        "Should recommend invoice generation when WO is done and no invoice exists"
+
+    # Should mention readiness in content
+    assert "ready to invoice" in order_fact["content"].lower() or "invoice" in data["response"].lower()
+
+    # ASSERT: Response mentions invoice readiness (epistemic humility - cite facts)
+    response_lower = data["response"].lower()
+    assert any(keyword in response_lower for keyword in [
+        "ready to invoice",
+        "can generate invoice",
+        "work complete",
+        "invoice",
+        "ready for invoicing"
+    ]), "Response should mention invoice readiness"
 
 
 @pytest.mark.e2e
