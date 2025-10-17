@@ -62,6 +62,10 @@ class AdaptiveQueryOrchestrator:
         self.domain_db = domain_db
         self.tracker = usage_tracker
 
+        # Request-scoped cache to prevent N+1 queries
+        # Cleared at the end of each augment() call
+        self._request_cache: dict[str, Any] = {}
+
         # Generate tools from port interface
         # Note: We pass the class itself for inspection, not an instance
         registry = ToolRegistry(DomainDatabasePort)  # type: ignore[type-abstract]
@@ -96,6 +100,9 @@ class AdaptiveQueryOrchestrator:
         Returns:
             List of domain facts retrieved by LLM
         """
+        # Clear request-scoped cache for this augmentation request
+        self._request_cache.clear()
+
         # Build system prompt with available tools and entity context
         system_prompt = self._build_system_prompt(entities)
 
@@ -137,8 +144,8 @@ class AdaptiveQueryOrchestrator:
                     tool_name = tool_call.name
                     arguments = tool_call.arguments
 
-                    # Execute tool
-                    result = await self.executor.execute(tool_name, arguments)
+                    # Execute tool with caching
+                    result = await self._execute_tool_with_cache(tool_name, arguments)
 
                     # Track for feedback
                     tool_calls_made.append(
@@ -275,6 +282,47 @@ IMPORTANT:
 - The retrieved data will be used by another system for response generation
 
 Available tools will be provided. Use them to fetch all relevant business data."""
+
+    async def _execute_tool_with_cache(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> Any:
+        """Execute tool with request-scoped caching.
+
+        Prevents N+1 queries when LLM calls same tool multiple times in one request.
+
+        Args:
+            tool_name: Name of tool to execute
+            arguments: Tool arguments
+
+        Returns:
+            Tool execution result (from cache if available)
+        """
+        # Create cache key from tool name + sorted arguments
+        cache_key = f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
+
+        # Check cache
+        if cache_key in self._request_cache:
+            logger.debug(
+                "tool_cache_hit",
+                tool=tool_name,
+                arguments=arguments,
+            )
+            return self._request_cache[cache_key]
+
+        # Execute tool
+        result = await self.executor.execute(tool_name, arguments)
+
+        # Cache result
+        self._request_cache[cache_key] = result
+
+        logger.debug(
+            "tool_cache_miss_executed",
+            tool=tool_name,
+            arguments=arguments,
+            result_count=len(result) if isinstance(result, list) else 1,
+        )
+
+        return result
 
     def _serialize_facts(self, result: Any) -> Any:
         """Serialize DomainFacts to JSON-compatible format.

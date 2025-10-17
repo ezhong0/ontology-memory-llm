@@ -46,6 +46,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_db(settings)
     print(f"Database initialized: {settings.database_url}")
 
+    # Eagerly initialize LLM provider to avoid first-request latency
+    from src.infrastructure.di.container import container
+    _ = container.llm_provider()
+    _ = container.llm_service()
+    print("LLM services initialized (eager loading)")
+
     yield
 
     # Shutdown

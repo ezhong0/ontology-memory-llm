@@ -46,6 +46,129 @@ class ScenarioRegistry:
 
 
 # =============================================================================
+# ACCEPTANCE TEST SCENARIO (Comprehensive E2E Demonstration)
+# =============================================================================
+
+# Scenario 0: Comprehensive Acceptance Test
+ScenarioRegistry.register(
+    ScenarioDefinition(
+        scenario_id=0,
+        title="🎯 ACCEPTANCE TEST: Domain Augmentation + Cross-Session Memory",
+        description=(
+            "Full E2E test demonstrating: (1) Stage 5 entity resolution with lazy domain DB lookup, "
+            "(2) Domain augmentation retrieving orders/invoices/work orders from domain.*, "
+            "(3) Cross-session memory persistence and retrieval, (4) LLM reply generation with provenance tracking."
+        ),
+        category="acceptance_test",
+        domain_setup=DomainDataSetup(
+            customers=[
+                CustomerSetup(name="Gai Media", industry="Media & Publishing"),
+                CustomerSetup(name="Acme Corporation", industry="Manufacturing"),
+                CustomerSetup(name="TechStart Inc", industry="Technology"),
+                CustomerSetup(name="Global Logistics", industry="Transportation"),
+                CustomerSetup(name="Creative Studio", industry="Design"),
+            ],
+            sales_orders=[
+                SalesOrderSetup(
+                    customer_name="Gai Media",
+                    so_number="SO-1001",
+                    title="Q4 Print Campaign",
+                    status="in_progress",
+                ),
+                SalesOrderSetup(
+                    customer_name="Acme Corporation",
+                    so_number="SO-1002",
+                    title="Widget Manufacturing Run",
+                    status="completed",
+                ),
+                SalesOrderSetup(
+                    customer_name="TechStart Inc",
+                    so_number="SO-1003",
+                    title="Cloud Infrastructure Setup",
+                    status="pending",
+                ),
+            ],
+            work_orders=[
+                WorkOrderSetup(
+                    sales_order_number="SO-1001",
+                    description="Phase 1 - Design & Layout",
+                    status="done",
+                    technician="Tech-A",
+                ),
+                WorkOrderSetup(
+                    sales_order_number="SO-1001",
+                    description="Phase 2 - Print Production",
+                    status="in_progress",
+                    technician="Tech-B",
+                    scheduled_for=date(2025, 10, 25),
+                ),
+            ],
+            invoices=[
+                InvoiceSetup(
+                    sales_order_number="SO-1001",
+                    invoice_number="INV-2001",
+                    amount=Decimal("12500.00"),
+                    due_date=date(2025, 11, 15),
+                    status="open",
+                ),
+                InvoiceSetup(
+                    sales_order_number="SO-1002",
+                    invoice_number="INV-2002",
+                    amount=Decimal("45000.00"),
+                    due_date=date(2025, 10, 30),
+                    status="open",
+                ),
+            ],
+            payments=[
+                PaymentSetup(
+                    invoice_number="INV-2001",
+                    amount=Decimal("5000.00"),
+                    method="wire_transfer",
+                ),
+            ],
+            tasks=[
+                TaskSetup(
+                    customer_name="Gai Media",
+                    title="Confirm delivery schedule",
+                    body="Need to coordinate final delivery date with customer",
+                    status="todo",
+                ),
+            ],
+        ),
+        expected_query=(
+            "Part 1: What's the status of Gai Media's order and any unpaid invoices?\n"
+            "Part 2 (Session A): Remember that Gai Media prefers Friday deliveries.\n"
+            "Part 3 (Session B - different session): When should we deliver for Gai Media?"
+        ),
+        expected_behavior=(
+            "PART 1 - DOMAIN AUGMENTATION:\n"
+            "• Entity Resolution: Resolves 'Gai Media' via Stage 5 (domain DB lookup) → creates customer_<uuid> entity\n"
+            "• Domain Facts Retrieved: SO-1001 (Q4 Print Campaign, in_progress), INV-2001 ($12,500, due 2025-11-15, $5k paid, $7.5k remaining)\n"
+            "• Work Orders: Phase 1 done, Phase 2 in_progress (scheduled 2025-10-25)\n"
+            "• LLM Reply: Mentions SO-1001, invoice INV-2001, payment status, and work order progress\n\n"
+            "PART 2 - MEMORY CREATION:\n"
+            "• Semantic Memory: Creates memory 'Gai Media prefers Friday deliveries' with confidence 0.9\n"
+            "• Entity Tagging: Links memory to customer_<uuid> entity\n"
+            "• Auto-Alias: Creates alias 'Gai Media' → customer_<uuid> for future Stage 2 lookups\n\n"
+            "PART 3 - CROSS-SESSION RETRIEVAL:\n"
+            "• New Session: Different session_id but same user_id\n"
+            "• Entity Resolution: Resolves 'Gai Media' via Stage 2 (alias) - faster than Stage 5\n"
+            "• Memory Retrieval: Queries by entity_id, finds 'prefers Friday deliveries' from Session A\n"
+            "• LLM Reply: 'Based on our records, Gai Media prefers Friday deliveries' (confidence: 90%)\n"
+            "• Provenance: Returns memory_ids, similarity_scores, source_types in response\n\n"
+            "SUCCESS CRITERIA:\n"
+            "✓ Domain data seeded (5 customers, 3 SOs, 2 WOs, 2 invoices, 1 payment, 1 task)\n"
+            "✓ Entities resolved via Stage 5 on first mention\n"
+            "✓ Domain facts retrieved via LLM tool calling\n"
+            "✓ Semantic memory created in Session A\n"
+            "✓ Memory retrieved in Session B and used in reply\n"
+            "✓ Reply mentions 'Friday' from Session A memory\n"
+            "✓ Provenance tracking shows memory sources"
+        ),
+    )
+)
+
+# =============================================================================
 # 18 SCENARIOS FROM ProjectDescription.md
 # =============================================================================
 
@@ -93,11 +216,10 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="Kai Media",
-                predicate="prefers_delivery_day",
-                predicate_type="preference",
-                object_value={"day": "Friday"},
+                content="Kai Media prefers Friday deliveries",
+                entities=["Kai Media"],
                 confidence=0.85,
+                importance=0.7,
             )
         ],
     )
@@ -338,18 +460,16 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="Kai Media",
-                predicate="prefers_delivery_day",
-                predicate_type="preference",
-                object_value={"day": "Thursday", "session": "older"},
+                content="Kai Media prefers Thursday deliveries",
+                entities=["Kai Media"],
                 confidence=0.70,
+                importance=0.6,
             ),
             SemanticMemorySetup(
-                subject="Kai Media",
-                predicate="prefers_delivery_day",
-                predicate_type="preference",
-                object_value={"day": "Friday", "session": "recent"},
+                content="Kai Media prefers Friday deliveries",
+                entities=["Kai Media"],
                 confidence=0.85,
+                importance=0.7,
             ),
         ],
     )
@@ -444,11 +564,10 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="Kai Media",
-                predicate="prefers_delivery_day",
-                predicate_type="preference",
-                object_value={"day": "Friday", "last_validated": "2025-05-10"},
+                content="Kai Media prefers Friday deliveries (last validated 2025-05-10)",
+                entities=["Kai Media"],
                 confidence=0.60,  # Decayed
+                importance=0.5,
             )
         ],
     )
@@ -574,11 +693,10 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="TC Boiler",
-                predicate="payment_terms",
-                predicate_type="requirement",
-                object_value={"terms": "NET15"},
+                content="TC Boiler has NET15 payment terms",
+                entities=["TC Boiler"],
                 confidence=0.90,
+                importance=0.8,
             ),
         ],
     )
@@ -606,11 +724,10 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="Kai Media",
-                predicate="prefers_delivery_day",
-                predicate_type="preference",
-                object_value={"day": "Friday"},
+                content="Kai Media prefers Friday deliveries",
+                entities=["Kai Media"],
                 confidence=0.92,
+                importance=0.8,
             )
         ],
     )
@@ -673,11 +790,10 @@ ScenarioRegistry.register(
         ),
         semantic_memories=[
             SemanticMemorySetup(
-                subject="SO-1001",
-                predicate="status",
-                predicate_type="observation",
-                object_value={"status": "fulfilled"},  # Outdated memory
+                content="SO-1001 is fulfilled",  # Outdated memory - conflicts with DB
+                entities=["Kai Media"],
                 confidence=0.80,
+                importance=0.6,
             )
         ],
     )

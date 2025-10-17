@@ -347,6 +347,52 @@ class SemanticMemoryRepository:
             msg = f"Error finding aging memories: {e}"
             raise RepositoryError(msg) from e
 
+    async def find_by_content_hash(
+        self,
+        content_hash: str,
+        user_id: str,
+    ) -> SemanticMemory | None:
+        """Find memory by content hash for idempotency.
+
+        Used to prevent duplicate memories from repeated chat messages.
+
+        Args:
+            content_hash: SHA-256 hash of content (from ContentHasher)
+            user_id: User identifier
+
+        Returns:
+            Existing memory with matching hash, or None if not found
+        """
+        try:
+            stmt = select(SemanticMemoryModel).where(
+                and_(
+                    SemanticMemoryModel.user_id == user_id,
+                    SemanticMemoryModel.memory_metadata["content_hash"].astext == content_hash,
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            model = result.scalar_one_or_none()
+
+            if model:
+                logger.debug(
+                    "found_duplicate_by_content_hash",
+                    content_hash=content_hash[:16],  # First 16 chars for logging
+                    memory_id=model.memory_id,
+                )
+
+            return self._to_domain_entity(model) if model else None
+
+        except Exception as e:
+            logger.error(
+                "find_by_content_hash_error",
+                content_hash=content_hash[:16],
+                error=str(e),
+            )
+            # Don't raise - gracefully return None on error
+            # This allows system to continue if hash lookup fails
+            return None
+
     def _to_domain_entity(self, model: SemanticMemoryModel) -> SemanticMemory:
         """Convert ORM model to domain entity.
 

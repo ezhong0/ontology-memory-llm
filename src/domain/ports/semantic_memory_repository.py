@@ -112,3 +112,21 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             List of aging memories from recent context
         """
+
+    @abstractmethod
+    async def find_by_content_hash(
+        self,
+        content_hash: str,
+        user_id: str,
+    ) -> SemanticMemory | None:
+        """Find memory by content hash for idempotency.
+
+        Used to prevent duplicate memories from repeated chat messages.
+
+        Args:
+            content_hash: SHA-256 hash of content (from ContentHasher)
+            user_id: User identifier
+
+        Returns:
+            Existing memory with matching hash, or None if not found
+        """

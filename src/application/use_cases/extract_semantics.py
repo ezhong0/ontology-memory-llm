@@ -12,6 +12,7 @@ from src.application.dtos.chat_dtos import (
     ResolvedEntityDTO,
     SemanticMemoryDTO,
 )
+from src.application.services.content_hasher import ContentHasher
 from src.domain.entities import ChatMessage, SemanticMemory
 from src.domain.ports import IEmbeddingService, ISemanticMemoryRepository
 from src.domain.services import (
@@ -259,6 +260,32 @@ class ExtractSemanticsUseCase:
 
                 # If we got here without confirming/conflicting, create new memory
                 if not conflict or (conflict and conflict.is_resolvable_automatically):
+                    # IDEMPOTENCY: Check for duplicate content using hash
+                    content_hash = ContentHasher.generate_memory_hash(
+                        user_id=user_id,
+                        content=content,
+                        timestamp=message.created_at,
+                        bucket_hours=24,  # 24-hour bucket = same content within a day is duplicate
+                    )
+
+                    # Check if memory with this hash already exists
+                    existing_hash_memory = await self.semantic_memory_repo.find_by_content_hash(
+                        content_hash=content_hash,
+                        user_id=user_id,
+                    )
+
+                    if existing_hash_memory:
+                        logger.info(
+                            "duplicate_memory_skipped_by_hash",
+                            content_hash=content_hash[:16],
+                            existing_memory_id=existing_hash_memory.memory_id,
+                            content_preview=content[:50],
+                        )
+                        # Skip creating duplicate - add existing memory to response
+                        semantic_memory_dtos.append(self._memory_to_dto(existing_hash_memory))
+                        semantic_memory_entities.append(existing_hash_memory)
+                        continue  # Skip to next fact
+
                     # Generate embedding from natural language content
                     embedding = await self.embedding_service.generate_embedding(content)
 
@@ -266,6 +293,39 @@ class ExtractSemanticsUseCase:
                         "generating_memory_embedding",
                         content_preview=content[:50],
                     )
+
+                    # Build rich metadata for extraction provenance
+                    # Vision Principle: Explainability (understand where memories come from)
+                    extraction_metadata = {
+                        # Idempotency tracking
+                        "content_hash": content_hash,
+                        # Basic tracking
+                        "confirmation_count": 1,  # Initial creation is first confirmation
+
+                        # Extraction provenance
+                        "extraction_method": "llm_semantic_facts",
+                        "extraction_source": "chat_message",
+                        "llm_confidence": confidence,  # Raw LLM confidence
+
+                        # Importance calculation breakdown (for explainability)
+                        "importance_calculation": {
+                            "base_formula": "0.3 + (confidence * 0.6)",
+                            "confidence_input": confidence,
+                            "base_importance": 0.3 + (confidence * 0.6),
+                            "confirmation_factor": 1.0,  # No confirmations yet
+                            "final_importance": importance,
+                        },
+
+                        # Context signals
+                        "entity_count": len(fact_entities),
+                        "has_domain_context": bool(existing_memories),
+                        "conflict_detected": conflict is not None,
+                        "conflict_resolved": conflict is not None and conflict.is_resolvable_automatically,
+
+                        # Source attribution
+                        "source_message_preview": message.content[:100],
+                        "extracted_at_utc": message.created_at.isoformat() if message.created_at else None,
+                    }
 
                     # Create semantic memory entity
                     memory = SemanticMemory(
@@ -277,7 +337,7 @@ class ExtractSemanticsUseCase:
                         source_event_ids=[message.event_id],
                         embedding=embedding,
                         source_text=message.content,
-                        metadata={"confirmation_count": 1},  # Initial creation is first confirmation
+                        metadata=extraction_metadata,
                     )
 
                     # Store in database

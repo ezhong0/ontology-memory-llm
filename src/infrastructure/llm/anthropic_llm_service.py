@@ -390,7 +390,7 @@ class AnthropicLLMService(ILLMService):
         # Format entities as JSON
         entities_json = json.dumps(resolved_entities, indent=2)
 
-        return f"""Extract semantic facts from the message as natural language sentences.
+        return f"""Extract semantic facts from the message as PURE NATURAL LANGUAGE sentences.
 
 Resolved Entities:
 {entities_json}
@@ -399,21 +399,40 @@ Message: "{message}"
 
 Task: Extract all factual statements about the entities as complete, natural language sentences.
 
+CRITICAL FORMATTING RULES:
+- Extract facts as PURE NATURAL LANGUAGE ONLY
+- DO NOT include JSON objects, dictionaries, or structured data in the sentence content
+- DO NOT use formats like {{'key': 'value'}} or key:value in the content
+- Write facts as if you were speaking to a human in plain English
+
 Instructions:
-1. Identify factual statements about entities (preferences, attributes, relationships, actions)
-2. Extract each fact as a complete, clear sentence
-3. Tag each fact with ALL relevant entity IDs mentioned in the fact
-4. Assign confidence based on statement clarity (0.0-1.0):
-   - Explicit statement: 0.9 ("Gai Media prefers Friday deliveries")
-   - Implicit statement: 0.7 ("They usually want Friday")
-   - Inferred: 0.5 ("They mentioned Friday twice")
+1. SKIP QUESTIONS: Do NOT extract facts from questions (messages ending in '?' or asking about information). Questions are for retrieval, not extraction.
+2. Identify factual statements about entities (preferences, attributes, relationships, actions)
+3. Extract each fact as a complete, clear sentence IN PURE NATURAL LANGUAGE
+4. Tag each fact with ALL relevant entity IDs mentioned in the fact
+5. Assign confidence based on statement clarity (0.0-1.0):
+   - Explicit statement: 0.9
+   - Implicit statement: 0.7
+   - Inferred: 0.5
+
+EXAMPLES OF CORRECT OUTPUT:
+✅ GOOD: "Kai Media prefers Friday deliveries"
+✅ GOOD: "Kai Media's payment terms are NET15"
+✅ GOOD: "Acme Corporation is located in San Francisco"
+✅ GOOD: "Invoice INV-1009 is due on September 30, 2025"
+
+EXAMPLES OF INCORRECT OUTPUT (DO NOT DO THIS):
+❌ BAD: "Kai Media prefers delivery day {{'day': 'Friday'}}"
+❌ BAD: "Kai Media has payment_terms: NET15"
+❌ BAD: "Acme Corporation location={{'city': 'San Francisco'}}"
+❌ BAD: "Invoice INV-1009 due_date: 2025-09-30"
 
 Output Format (JSON):
 {{
   "facts": [
     {{
-      "content": "Gai Media prefers Friday deliveries",
-      "entities": ["customer_gai_media_456"],
+      "content": "Kai Media prefers Friday deliveries",
+      "entities": ["customer_kai_media_456"],
       "confidence": 0.9
     }}
   ]

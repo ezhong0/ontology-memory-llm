@@ -58,13 +58,13 @@ async def get_conflicts(
         if memory.status == "invalidated":
             conflict_type = "memory_vs_db"
 
-        # Build conflict data
+        # Build conflict data using natural language schema
         conflict_data = {
             "memory_id": memory.memory_id,
-            "subject_entity_id": memory.subject_entity_id,
-            "predicate": memory.predicate,
-            "object_value": memory.object_value,
+            "content": memory.content,  # Natural language statement
+            "entities": memory.entities,  # Array of entity IDs
             "confidence": float(memory.confidence),
+            "importance": float(memory.importance),
             "status": memory.status,
             "superseded_by": memory.superseded_by_memory_id,
         }

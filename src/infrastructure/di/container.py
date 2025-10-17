@@ -119,6 +119,7 @@ class Container(containers.DeclarativeContainer):
     embedding_service = providers.Singleton(
         OpenAIEmbeddingService,
         api_key=settings.provided.openai_api_key,
+        dimensions=settings.provided.openai_embedding_dimensions,
     )
 
     # Infrastructure - Database Session

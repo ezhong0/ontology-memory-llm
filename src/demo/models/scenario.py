@@ -87,12 +87,11 @@ class DomainDataSetup:
 
 @dataclass(frozen=True)
 class SemanticMemorySetup:
-    """Definition of a semantic memory to create."""
-    subject: str  # Entity name (will be resolved to entity_id)
-    predicate: str
-    predicate_type: str  # preference, requirement, observation, policy, attribute
-    object_value: dict[str, Any]
+    """Definition of a semantic memory to create (natural language schema)."""
+    content: str  # Natural language statement (e.g., "Kai Media prefers Friday deliveries")
+    entities: list[str]  # Entity names (will be resolved to entity_ids)
     confidence: float = 0.8
+    importance: float = 0.5
 
 
 @dataclass(frozen=True)

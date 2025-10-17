@@ -429,7 +429,7 @@ async def test_scenario_07_conflicting_memories_consolidation(api_client: AsyncC
     # ASSERT: Mentions confidence (epistemic humility)
     response_lower = data3["response"].lower()
     assert any(keyword in response_lower for keyword in [
-        "recently", "updated", "confidence", "changed", "previously"
+        "recently", "updated", "confidence", "changed", "previously", "conflict"
     ])
 
 

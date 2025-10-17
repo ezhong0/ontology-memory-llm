@@ -172,7 +172,8 @@ async def validate_memory(
         if request.confirmed:
             # Memory confirmed - increase confidence and confirmation count
             memory.status = "active"
-            memory.confirmation_count += 1
+            # Update confirmation count in metadata (confirmation_count is a property)
+            memory.metadata["confirmation_count"] = memory.confirmation_count + 1
             memory.last_accessed_at = datetime.now(timezone.utc)
 
             # Apply confirmation boost to confidence

@@ -24,9 +24,15 @@ from src.infrastructure.database.domain_models import (
 )
 from src.infrastructure.database.models import (
     CanonicalEntity,
+    ChatEvent,
+    DomainOntology,
     EntityAlias,
     EpisodicMemory,
+    MemoryConflict,
+    MemorySummary,
+    ProceduralMemory,
     SemanticMemory,
+    ToolUsageLog,
 )
 
 logger = logging.getLogger(__name__)
@@ -197,13 +203,14 @@ class ScenarioLoaderService:
 
         # Validate semantic memories reference existing customers
         for memory_setup in scenario.semantic_memories:
-            if memory_setup.subject not in customer_names:
-                msg = (
-                    f"Validation failed: Semantic memory references "
-                    f"subject '{memory_setup.subject}' which is not defined as a customer in scenario. "
-                    f"Available customers: {sorted(customer_names)}"
-                )
-                raise ScenarioLoadError(msg)
+            for entity_name in memory_setup.entities:
+                if entity_name not in customer_names:
+                    msg = (
+                        f"Validation failed: Semantic memory '{memory_setup.content[:50]}...' references "
+                        f"entity '{entity_name}' which is not defined as a customer in scenario. "
+                        f"Available customers: {sorted(customer_names)}"
+                    )
+                    raise ScenarioLoadError(msg)
 
         logger.debug(f"Scenario {scenario.scenario_id} validation passed")
 
@@ -504,72 +511,68 @@ class ScenarioLoaderService:
     async def _load_semantic_memories(self, scenario: ScenarioDefinition) -> int:
         """Load semantic memories from scenario (idempotent).
 
-        For Phase 1: Direct creation.
+        For Phase 1: Direct creation using natural language schema.
         Phase 2: Use SemanticExtractionService.
         """
         count = 0
         for memory_setup in scenario.semantic_memories:
-            # Look up canonical entity
-            entity_id = self._canonical_entity_map.get(memory_setup.subject)
-            if not entity_id:
-                msg = f"Canonical entity for '{memory_setup.subject}' not found"
-                raise ScenarioLoadError(
-                    msg
-                )
+            # Resolve all entity names to entity_ids
+            entity_ids = []
+            for entity_name in memory_setup.entities:
+                entity_id = self._canonical_entity_map.get(entity_name)
+                if not entity_id:
+                    msg = f"Canonical entity for '{entity_name}' not found in loaded scenario"
+                    raise ScenarioLoadError(msg)
+                entity_ids.append(entity_id)
 
-            # Check if memory already exists
+            # Check if memory already exists (match by content and user_id)
             existing = await self.session.execute(
                 select(SemanticMemory).where(
                     SemanticMemory.user_id == self.user_id,
-                    SemanticMemory.subject_entity_id == entity_id,
-                    SemanticMemory.predicate == memory_setup.predicate,
+                    SemanticMemory.content == memory_setup.content,
                     SemanticMemory.status == "active"
                 )
             )
             if existing.scalar_one_or_none():
-                logger.debug(
-                    "Semantic memory %s -> %s already exists",
-                    memory_setup.subject,
-                    memory_setup.predicate
-                )
+                logger.debug("Semantic memory '%s' already exists", memory_setup.content[:50])
                 continue
 
-            # Create semantic memory (without embedding for Phase 1)
+            # Create semantic memory using natural language schema
             memory = SemanticMemory(
                 user_id=self.user_id,
-                subject_entity_id=entity_id,
-                predicate=memory_setup.predicate,
-                predicate_type=memory_setup.predicate_type,
-                object_value=memory_setup.object_value,
+                content=memory_setup.content,  # Natural language statement
+                entities=entity_ids,  # Array of resolved entity IDs
                 confidence=memory_setup.confidence,
-                confidence_factors={"base": memory_setup.confidence, "source": "scenario_load"},
-                reinforcement_count=1,
+                importance=memory_setup.importance,
                 source_type="scenario_load",
+                source_text=memory_setup.content,  # For explainability
                 status="active",
-                importance=0.5,
+                memory_metadata={
+                    "base_confidence": memory_setup.confidence,
+                    "source": "scenario_load",
+                },
                 # embedding will be None for Phase 1
             )
             self.session.add(memory)
             count += 1
-            logger.debug(
-                "Created semantic memory: %s -> %s",
-                memory_setup.subject,
-                memory_setup.predicate
-            )
+            logger.debug("Created semantic memory: %s", memory_setup.content[:50])
 
         await self.session.flush()
         return count
 
     async def reset(self) -> None:
-        """Delete all demo data from both domain and app schemas.
+        """Delete ALL data from both domain and app schemas.
 
         WARNING: This is destructive and cannot be undone.
+        Clears everything from domain schema and all user data from app schema.
         """
-        logger.warning("Resetting all demo data")
+        logger.warning("Resetting ALL demo data (domain + app schemas)")
 
         try:
-            # Delete in correct order (respect foreign keys)
-            # Domain schema - delete all demo data
+            # ============================================================
+            # DOMAIN SCHEMA - Delete ALL data (respect foreign keys)
+            # ============================================================
+            logger.info("Clearing domain schema...")
             await self.session.execute(delete(DomainPayment))
             await self.session.execute(delete(DomainInvoice))
             await self.session.execute(delete(DomainWorkOrder))
@@ -577,46 +580,43 @@ class ScenarioLoaderService:
             await self.session.execute(delete(DomainTask))
             await self.session.execute(delete(DomainCustomer))
 
-            # App schema - delete demo data
-            # Get all customer canonical entity IDs first
-            customer_entities_result = await self.session.execute(
-                select(CanonicalEntity.entity_id).where(
-                    CanonicalEntity.entity_id.like("customer:%")
-                )
-            )
-            customer_entity_ids = [row[0] for row in customer_entities_result]
+            # ============================================================
+            # APP SCHEMA - Delete ALL user data (respect foreign keys)
+            # ============================================================
+            logger.info("Clearing app schema...")
 
-            if customer_entity_ids:
-                # Delete memories that reference customer entities
-                await self.session.execute(
-                    delete(SemanticMemory).where(
-                        SemanticMemory.subject_entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 1: Delete tool usage logs (no FK dependencies)
+            await self.session.execute(delete(ToolUsageLog))
 
-                # Delete episodic memories for demo users
-                await self.session.execute(
-                    delete(EpisodicMemory).where(
-                        EpisodicMemory.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
-                    )
-                )
+            # Step 2: Delete memory conflicts (no FK dependencies)
+            await self.session.execute(delete(MemoryConflict))
 
-                # Delete aliases that reference customer entities
-                await self.session.execute(
-                    delete(EntityAlias).where(
-                        EntityAlias.canonical_entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 3: Delete memory summaries (self-referencing FK)
+            await self.session.execute(delete(MemorySummary))
 
-                # Delete canonical entities
-                await self.session.execute(
-                    delete(CanonicalEntity).where(
-                        CanonicalEntity.entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 4: Delete all memory types
+            await self.session.execute(delete(ProceduralMemory))
+            await self.session.execute(delete(SemanticMemory))
+            await self.session.execute(delete(EpisodicMemory))
+
+            # Step 5: Delete chat events
+            await self.session.execute(delete(ChatEvent))
+
+            # Step 6: Delete entity aliases (FK to canonical_entities)
+            await self.session.execute(delete(EntityAlias))
+
+            # Step 7: Delete canonical entities
+            await self.session.execute(delete(CanonicalEntity))
+
+            # Step 8: Delete domain ontology
+            await self.session.execute(delete(DomainOntology))
+
+            # Note: We do NOT delete from:
+            # - alembic_version (migration tracking)
+            # - system_config (system settings)
 
             await self.session.commit()
-            logger.info("All demo data reset successfully")
+            logger.info("ALL demo data reset successfully (domain + app schemas cleared)")
 
         except Exception as e:
             await self.session.rollback()
@@ -625,62 +625,53 @@ class ScenarioLoaderService:
             raise ScenarioLoadError(msg) from e
 
     async def reset_memories_only(self) -> None:
-        """Delete only memory/chat data (keep domain data intact).
+        """Delete ALL memory/chat/entity data from app schema (keep domain data intact).
 
         WARNING: This is destructive and cannot be undone.
-        Clears: chat events, entities, aliases, semantic/episodic memories.
+        Clears everything from app schema except system_config and alembic_version.
+        Keeps all domain schema data (customers, invoices, etc.).
         """
-        logger.warning("Clearing memory data only (keeping domain data)")
+        logger.warning("Clearing ALL app schema data (keeping domain data)")
 
         try:
-            # Delete chat events for demo users
-            from src.infrastructure.database.models import ChatEvent
+            # ============================================================
+            # APP SCHEMA ONLY - Delete ALL data (respect foreign keys)
+            # Keep domain schema untouched
+            # ============================================================
 
-            await self.session.execute(
-                delete(ChatEvent).where(
-                    ChatEvent.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
-                )
-            )
+            # Step 1: Delete tool usage logs (no FK dependencies)
+            await self.session.execute(delete(ToolUsageLog))
 
-            # Get all customer canonical entity IDs
-            customer_entities_result = await self.session.execute(
-                select(CanonicalEntity.entity_id).where(
-                    CanonicalEntity.entity_id.like("customer:%")
-                )
-            )
-            customer_entity_ids = [row[0] for row in customer_entities_result]
+            # Step 2: Delete memory conflicts (no FK dependencies)
+            await self.session.execute(delete(MemoryConflict))
 
-            if customer_entity_ids:
-                # Delete memories that reference customer entities
-                await self.session.execute(
-                    delete(SemanticMemory).where(
-                        SemanticMemory.subject_entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 3: Delete memory summaries (self-referencing FK)
+            await self.session.execute(delete(MemorySummary))
 
-                # Delete episodic memories for demo users
-                await self.session.execute(
-                    delete(EpisodicMemory).where(
-                        EpisodicMemory.user_id.in_([self.user_id, "demo-user", "demo-user-001"])
-                    )
-                )
+            # Step 4: Delete all memory types
+            await self.session.execute(delete(ProceduralMemory))
+            await self.session.execute(delete(SemanticMemory))
+            await self.session.execute(delete(EpisodicMemory))
 
-                # Delete aliases that reference customer entities
-                await self.session.execute(
-                    delete(EntityAlias).where(
-                        EntityAlias.canonical_entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 5: Delete chat events
+            await self.session.execute(delete(ChatEvent))
 
-                # Delete canonical entities
-                await self.session.execute(
-                    delete(CanonicalEntity).where(
-                        CanonicalEntity.entity_id.in_(customer_entity_ids)
-                    )
-                )
+            # Step 6: Delete entity aliases (FK to canonical_entities)
+            await self.session.execute(delete(EntityAlias))
+
+            # Step 7: Delete canonical entities
+            await self.session.execute(delete(CanonicalEntity))
+
+            # Step 8: Delete domain ontology
+            await self.session.execute(delete(DomainOntology))
+
+            # Note: We do NOT delete from:
+            # - alembic_version (migration tracking)
+            # - system_config (system settings)
+            # - domain schema (customers, invoices, etc. - preserved)
 
             await self.session.commit()
-            logger.info("Memory data cleared successfully (domain data preserved)")
+            logger.info("ALL app schema data cleared successfully (domain data preserved)")
 
         except Exception as e:
             await self.session.rollback()

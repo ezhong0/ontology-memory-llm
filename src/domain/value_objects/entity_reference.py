@@ -70,6 +70,15 @@ class EntityReference:
     def from_dict(cls, data: dict[str, Any]) -> "EntityReference":
         """Create EntityReference from dictionary.
 
+        Handles both new format and legacy format for backward compatibility.
+
+        New format:
+            {"table": "domain.customers", "primary_key": "customer_id",
+             "primary_value": "123", "display_name": "Acme Corp"}
+
+        Legacy format (pre-refactor):
+            {"table": "domain.customers", "id": "123"}
+
         Args:
             data: Dictionary with entity reference fields
 
@@ -79,6 +88,35 @@ class EntityReference:
         Raises:
             ValueError: If required fields are missing
         """
+        # Handle legacy format from pre-refactor entities
+        if "primary_key" not in data and "id" in data:
+            # Legacy format: extract table and id, infer primary_key name
+            table = data["table"]
+            primary_value = data["id"]
+
+            # Infer primary_key name from table (e.g., "domain.customers" -> "customer_id")
+            if "customers" in table:
+                primary_key = "customer_id"
+            elif "orders" in table:
+                primary_key = "order_id"
+            elif "products" in table:
+                primary_key = "product_id"
+            else:
+                # Fallback: use "id"
+                primary_key = "id"
+
+            # Use table as display_name fallback (better than crashing)
+            display_name = data.get("display_name", f"Legacy entity from {table}")
+
+            return cls(
+                table=table,
+                primary_key=primary_key,
+                primary_value=primary_value,
+                display_name=display_name,
+                properties=data.get("properties"),
+            )
+
+        # New format: all fields present
         return cls(
             table=data["table"],
             primary_key=data["primary_key"],

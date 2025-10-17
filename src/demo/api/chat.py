@@ -147,10 +147,11 @@ async def send_chat_message(
                 {
                     "memory_id": mem.memory_id,
                     "type": "semantic",
-                    "subject_entity_id": mem.subject_entity_id,
-                    "predicate": mem.predicate,
-                    "object_value": str(mem.object_value),
+                    "content": mem.content,  # Natural language content
+                    "entities": mem.entities,  # Array of entity IDs
                     "confidence": mem.confidence,
+                    "importance": mem.importance,
+                    "status": mem.status,
                 }
                 for mem in output.semantic_memories
             ],
@@ -174,7 +175,7 @@ async def send_chat_message(
                 details={
                     "user_id": request.user_id,
                     "memories_count": len(output.semantic_memories),
-                    "predicates": [mem.predicate for mem in output.semantic_memories],
+                    "memory_contents": [mem.content[:50] + "..." if len(mem.content) > 50 else mem.content for mem in output.semantic_memories],
                 },
             )
 
@@ -349,60 +350,13 @@ async def _fetch_recent_chat_events(
     return [RecentChatEvent(role=event.role, content=event.content) for event in reversed(events)]
 
 
-async def _fetch_relevant_memories(
-    session: AsyncSession, user_id: str
-) -> list[RetrievedMemory]:
-    """Fetch relevant memories for user.
-
-    Week 2: Simple approach - fetch all active semantic memories.
-    Phase 1C will add proper semantic search and relevance scoring.
-
-    Args:
-        session: Database session
-        user_id: User identifier
-
-    Returns:
-        List of retrieved memories
-    """
-    # Fetch semantic memories with entity names
-    query = (
-        select(SemanticMemory, CanonicalEntity.canonical_name)
-        .join(
-            CanonicalEntity,
-            SemanticMemory.subject_entity_id == CanonicalEntity.entity_id,
-        )
-        .where(SemanticMemory.user_id == user_id)
-        .where(SemanticMemory.status == "active")
-        .order_by(SemanticMemory.created_at.desc())
-        .limit(10)
-    )
-
-    result = await session.execute(query)
-    rows = result.all()
-
-    memories: list[RetrievedMemory] = []
-    for memory, entity_name in rows:
-        # Build human-readable content
-        obj_value = memory.object_value
-        if isinstance(obj_value, dict):
-            # Format dict nicely
-            obj_str = ", ".join(f"{k}: {v}" for k, v in obj_value.items())
-        else:
-            obj_str = str(obj_value)
-
-        content = f"{entity_name} {memory.predicate}: {obj_str}"
-
-        memories.append(
-            RetrievedMemory(
-                memory_id=memory.memory_id,
-                memory_type="semantic",
-                content=content,
-                relevance_score=0.8,  # Week 2: Placeholder, Phase 1C adds real scoring
-                confidence=memory.confidence,
-            )
-        )
-
-    return memories
+# NOTE: This helper function is unused (legacy from Week 2)
+# The endpoint now uses ProcessChatMessageUseCase which handles memory retrieval
+# async def _fetch_relevant_memories(
+#     session: AsyncSession, user_id: str
+# ) -> list[RetrievedMemory]:
+#     """Fetch relevant memories for user - UNUSED."""
+#     pass
 
 
 def _generate_fallback_reply(context: ReplyContext) -> str:

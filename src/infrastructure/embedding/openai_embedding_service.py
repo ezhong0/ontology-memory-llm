@@ -16,23 +16,24 @@ class OpenAIEmbeddingService(IEmbeddingService):
     """OpenAI implementation of IEmbeddingService.
 
     Uses text-embedding-3-small model for generating embeddings.
-    - 1536 dimensions
+    - Configurable dimensions (default 1536)
     - Cost: $0.00002 per 1K tokens
     - Fast and efficient for memory embeddings
     """
 
     # Model configuration
     MODEL = "text-embedding-3-small"
-    DIMENSIONS = 1536
     MAX_BATCH_SIZE = 100  # OpenAI limit
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, dimensions: int = 1536):
         """Initialize OpenAI embedding service.
 
         Args:
             api_key: OpenAI API key
+            dimensions: Embedding vector dimensions (default: 1536)
         """
         self.client = AsyncOpenAI(api_key=api_key)
+        self.dimensions = dimensions
         self._total_tokens_used = 0
 
     async def generate_embedding(self, text: str) -> list[float]:
@@ -42,7 +43,7 @@ class OpenAIEmbeddingService(IEmbeddingService):
             text: Text to embed (max ~8000 tokens for text-embedding-3-small)
 
         Returns:
-            Embedding vector (1536 dimensions)
+            Embedding vector (configured dimensions)
 
         Raises:
             EmbeddingError: If embedding generation fails
@@ -61,7 +62,7 @@ class OpenAIEmbeddingService(IEmbeddingService):
             response = await self.client.embeddings.create(
                 model=self.MODEL,
                 input=text,
-                dimensions=self.DIMENSIONS,
+                dimensions=self.dimensions,
             )
 
             if not response.data:
@@ -136,7 +137,7 @@ class OpenAIEmbeddingService(IEmbeddingService):
             response = await self.client.embeddings.create(
                 model=self.MODEL,
                 input=valid_texts,
-                dimensions=self.DIMENSIONS,
+                dimensions=self.dimensions,
             )
 
             if not response.data or len(response.data) != len(valid_texts):
@@ -178,9 +179,9 @@ class OpenAIEmbeddingService(IEmbeddingService):
         """Get embedding vector dimensions.
 
         Returns:
-            Number of dimensions (1536 for text-embedding-3-small)
+            Number of dimensions (configured value)
         """
-        return self.DIMENSIONS
+        return self.dimensions
 
     @property
     def total_tokens_used(self) -> int:
