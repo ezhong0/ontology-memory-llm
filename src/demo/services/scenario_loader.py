@@ -457,7 +457,7 @@ class ScenarioLoaderService:
             if not customer:
                 continue  # Customer might be a sales order or invoice
 
-            entity_id = f"customer:{customer.customer_id}"
+            entity_id = f"customer_{customer.customer_id}"
 
             # Check if canonical entity already exists
             existing_entity = await self.session.execute(

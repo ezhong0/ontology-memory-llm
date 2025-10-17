@@ -104,7 +104,15 @@ class ReplyContext:
             "- DO NOT fabricate plausible-sounding information\n"
             "- DO NOT use generic industry defaults (like 'typical NET30 terms')\n"
             "- Instead, say: 'I don't have information about [entity]' or 'No records found'\n"
-            "- Suggest checking source systems or asking the user for clarification"
+            "- Suggest checking source systems or asking the user for clarification\n\n"
+            "CRITICAL - Using Available Context:\n"
+            "- When database facts ARE provided, you MUST use them to provide analysis and recommendations\n"
+            "- Don't refuse to help when you have relevant database records - analyze what you have\n"
+            "- Example: If you have task records and order status, assess SLA risk from those facts\n"
+            "- Example: If you have work order records with dates/times, provide SQL to update them\n"
+            "- Example: If you have invoice records, calculate payment status and provide insights\n"
+            "- Epistemic humility means acknowledging GAPS, NOT refusing to use AVAILABLE data\n"
+            "- Your job is to be helpful with the data you have - analyze it, reason about it, and provide actionable guidance"
         )
         sections.append("")
 

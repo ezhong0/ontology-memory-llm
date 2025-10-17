@@ -113,6 +113,27 @@ class ScoreMemoriesUseCase:
             aging_count=len(aging_memories),
         )
 
+        # Also retrieve memories by entity (for memories without embeddings, e.g., from scenarios)
+        entity_ids = [e.entity_id for e in resolved_entities]
+        if entity_ids:
+            entity_memories = await self.semantic_memory_repo.find_by_entities(
+                entity_ids=entity_ids,
+                user_id=user_id,
+                status_filter="active",
+                match_all=False,  # Match ANY entity
+            )
+
+            # Add entity-based memories to existing_memories if not already present
+            for entity_memory in entity_memories:
+                if entity_memory.memory_id and not any(m.memory_id == entity_memory.memory_id for m in existing_memories):
+                    existing_memories.append(entity_memory)
+
+            logger.info(
+                "included_entity_based_memories",
+                entity_count=len(entity_memories),
+                entity_ids=entity_ids,
+            )
+
         logger.info(
             "retrieved_existing_memories",
             count=len(existing_memories),
@@ -176,34 +197,26 @@ class ScoreMemoriesUseCase:
         # Convert SemanticMemory entities to MemoryCandidate for scoring
         memory_candidates = []
         for mem in all_memories:
-            # Ensure embedding is a numpy array
+            # Handle memories without embeddings (e.g., from scenario loading)
+            # Use zero-vector fallback so they can still be scored by entity overlap
             if mem.embedding is None:
-                logger.warning(
-                    "memory_missing_embedding",
+                logger.info(
+                    "memory_missing_embedding_using_zero_vector",
                     memory_id=mem.memory_id,
                     entities=mem.entities,
                 )
-                continue
+                # Create zero-vector embedding (1536 dimensions for text-embedding-3-small)
+                embedding_array = np.zeros(1536, dtype=np.float64)
+            else:
+                # Normal case: convert existing embedding to numpy array
+                embedding_array = np.array(mem.embedding, dtype=np.float64) if not isinstance(mem.embedding, np.ndarray) else mem.embedding
 
             # Debug logging
             logger.debug(
-                "converting_embedding_to_array",
+                "embedding_prepared",
                 memory_id=mem.memory_id,
-                embedding_type=type(mem.embedding).__name__,
-                is_ndarray=isinstance(mem.embedding, np.ndarray),
-            )
-
-            # Convert embedding to numpy array if needed
-            if isinstance(mem.embedding, np.ndarray):
-                embedding_array = mem.embedding
-            else:
-                embedding_array = np.array(mem.embedding, dtype=np.float64)
-
-            logger.debug(
-                "embedding_converted",
-                memory_id=mem.memory_id,
-                result_type=type(embedding_array).__name__,
-                has_shape=hasattr(embedding_array, "shape"),
+                embedding_type=type(embedding_array).__name__,
+                is_zero_vector=(mem.embedding is None),
             )
 
             memory_candidates.append(
@@ -221,9 +234,7 @@ class ScoreMemoriesUseCase:
                 )
             )
 
-        # Build query context for scoring
-        entity_ids = [e.entity_id for e in resolved_entities]
-
+        # Build query context for scoring (entity_ids already computed above for retrieval)
         # Debug logging for query_embedding
         logger.debug(
             "creating_query_context",

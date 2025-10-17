@@ -235,11 +235,10 @@ async def get_scenario_data(scenario_id: int) -> ScenarioDataResponse:
 
     semantic_memories = [
         {
-            "subject": mem.subject,
-            "predicate": mem.predicate,
-            "predicate_type": mem.predicate_type,
-            "object_value": mem.object_value,
+            "content": mem.content,
+            "entities": mem.entities,
             "confidence": mem.confidence,
+            "importance": mem.importance,
         }
         for mem in scenario.semantic_memories
     ]

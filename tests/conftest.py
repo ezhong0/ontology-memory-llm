@@ -179,9 +179,38 @@ def mock_domain_db_service():
 # ============================================================================
 
 @pytest_asyncio.fixture
+async def scenario_loader(test_db_session) -> "ScenarioLoaderService":
+    """
+    Demo scenario loader for E2E tests.
+
+    IMPORTANT: E2E tests should use this instead of domain_seeder to ensure
+    tests validate the SAME code path that demo scenarios use.
+
+    Usage:
+        await scenario_loader.load_scenario(scenario_id=1)
+        # Now test behavior with scenario data loaded
+
+    Benefits:
+    - ✅ Tests passing = demo scenarios work
+    - ✅ Single source of truth (ScenarioRegistry)
+    - ✅ No duplication between tests and demo data
+    - ✅ ScenarioLoaderService gets test coverage
+    """
+    from src.demo.services.scenario_loader import ScenarioLoaderService
+    return ScenarioLoaderService(test_db_session, user_id="demo-user")
+
+
+@pytest_asyncio.fixture
 async def domain_seeder(test_db_session) -> "DomainSeeder":
     """
     Domain database seeder for E2E tests.
+
+    DEPRECATED: Use `scenario_loader` fixture instead for E2E tests.
+    This ensures tests validate the same code path as demo scenarios.
+
+    Only use this for:
+    - Unit tests that need specific edge cases
+    - Tests that don't correspond to demo scenarios
 
     Provides helper to populate domain.* tables with test data.
 

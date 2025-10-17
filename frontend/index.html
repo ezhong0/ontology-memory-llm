@@ -2881,7 +2881,7 @@ async def test_exact_match():
         function renderScenarios() {
             const html = scenariosData.map((scenario, index) => {
                 const categoryClass = categoryMap[scenario.category] || 'intelligence';
-                const scenarioNumber = index + 1;
+                const scenarioNumber = scenario.scenario_id;
 
                 return `
                     <div class="scenario-card category-${categoryClass}">
@@ -2949,42 +2949,42 @@ async def test_exact_match():
                 html += '<div class="scenario-details-title"><span class="badge badge-primary">Database Records</span></div>';
 
                 let dbContent = '';
-                if (data.customers.length > 0) {
+                if (data.customers && data.customers.length > 0) {
                     dbContent += '<strong>Customers:</strong>\n';
                     data.customers.forEach(c => {
                         dbContent += `  • ${c.name} (${c.industry})\n`;
                     });
                     dbContent += '\n';
                 }
-                if (data.sales_orders.length > 0) {
+                if (data.sales_orders && data.sales_orders.length > 0) {
                     dbContent += '<strong>Sales Orders:</strong>\n';
                     data.sales_orders.forEach(so => {
                         dbContent += `  • ${so.so_number}: ${so.title} [${so.status}]\n`;
                     });
                     dbContent += '\n';
                 }
-                if (data.invoices.length > 0) {
+                if (data.invoices && data.invoices.length > 0) {
                     dbContent += '<strong>Invoices:</strong>\n';
                     data.invoices.forEach(inv => {
                         dbContent += `  • ${inv.invoice_number}: $${inv.amount} due ${inv.due_date} [${inv.status}]\n`;
                     });
                     dbContent += '\n';
                 }
-                if (data.work_orders.length > 0) {
+                if (data.work_orders && data.work_orders.length > 0) {
                     dbContent += '<strong>Work Orders:</strong>\n';
                     data.work_orders.forEach(wo => {
                         dbContent += `  • ${wo.description} - ${wo.technician} [${wo.status}]\n`;
                     });
                     dbContent += '\n';
                 }
-                if (data.payments.length > 0) {
+                if (data.payments && data.payments.length > 0) {
                     dbContent += '<strong>Payments:</strong>\n';
                     data.payments.forEach(pay => {
                         dbContent += `  • ${pay.invoice_number}: $${pay.amount} via ${pay.method}\n`;
                     });
                     dbContent += '\n';
                 }
-                if (data.tasks.length > 0) {
+                if (data.tasks && data.tasks.length > 0) {
                     dbContent += '<strong>Tasks:</strong>\n';
                     data.tasks.forEach(task => {
                         dbContent += `  • ${task.title} [${task.status}]\n`;
@@ -2995,16 +2995,15 @@ async def test_exact_match():
                 html += '</div>';
 
                 // Memory Entries
-                if (data.semantic_memories.length > 0) {
+                if (data.semantic_memories && data.semantic_memories.length > 0) {
                     html += '<div class="scenario-details-section">';
                     html += '<div class="scenario-details-title"><span class="badge badge-success">Semantic Memories</span></div>';
 
                     let memContent = '';
                     data.semantic_memories.forEach(mem => {
-                        const objValue = typeof mem.object_value === 'object'
-                            ? JSON.stringify(mem.object_value)
-                            : mem.object_value;
-                        memContent += `• ${mem.subject} → ${mem.predicate}: ${objValue} (confidence: ${(mem.confidence * 100).toFixed(0)}%)\n`;
+                        const entities = mem.entities.join(', ');
+                        memContent += `• "${mem.content}"\n`;
+                        memContent += `  Entities: ${entities} | Confidence: ${(mem.confidence * 100).toFixed(0)}% | Importance: ${(mem.importance * 100).toFixed(0)}%\n\n`;
                     });
 
                     html += `<div class="scenario-details-content">${memContent}</div>`;

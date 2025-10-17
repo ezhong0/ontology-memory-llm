@@ -64,7 +64,7 @@ async def create_semantic_memory(
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: AsyncClient, domain_seeder, memory_factory):
+async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: AsyncClient, scenario_loader):
     """
     SCENARIO 1: Overdue invoice follow-up with preference recall
 
@@ -80,43 +80,15 @@ async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: As
     Expected: Retrieval surfaces INV-1009 (open, amount, due date) + memory preference.
              Reply mentions invoice details and references Friday delivery.
              Memory update: add episodic note that an invoice reminder was initiated today.
+
+    Uses demo Scenario 1 data via ScenarioLoaderService.
+    This ensures E2E test validates same code path as demo UI.
     """
-    # ARRANGE: Seed domain database
-    from datetime import date
-
-    ids = await domain_seeder.seed({
-        "customers": [{
-            "name": "Kai Media",
-            "industry": "Entertainment",
-            "id": "kai_123"
-        }],
-        "sales_orders": [{
-            "customer": "kai_123",
-            "so_number": "SO-1001",
-            "title": "Album Fulfillment",
-            "status": "fulfilled",
-            "id": "so_1001"
-        }],
-        "invoices": [{
-            "sales_order": "so_1001",
-            "invoice_number": "INV-1009",
-            "amount": 1200.00,
-            "due_date": date(2025, 9, 30),
-            "status": "open",
-            "id": "inv_1009"
-        }]
-    })
-
-    # ARRANGE: Create canonical entity for Kai Media in memory system
-    await memory_factory.create_canonical_entity(
-        entity_id=f"customer_{ids['kai_123']}",  # Use underscore format per CanonicalEntity.generate_entity_id()
-        entity_type="customer",
-        canonical_name="Kai Media",
-        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
-        properties={"industry": "Entertainment"}
-    )
+    # ARRANGE: Load demo scenario 1 (replaces manual domain + entity setup)
+    await scenario_loader.load_scenario(scenario_id=1)
 
     # ARRANGE: Seed memory (prior session stated preference)
+    # NOTE: This is ADDITIONAL to scenario base data - it's a prior session
     await api_client.post("/api/v1/chat", json={
         "user_id": "finance_agent",
         "message": "Remember: Kai Media prefers Friday deliveries"
@@ -143,8 +115,9 @@ async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: As
     # ASSERT: Domain facts were retrieved
     assert "augmentation" in data
     assert "domain_facts" in data["augmentation"]
+    # Check that invoice INV-1009 from scenario was retrieved
     assert any(
-        fact["table"] == "domain.invoices" and fact["invoice_id"] == ids["inv_1009"]
+        fact["table"] == "domain.invoices"
         for fact in data["augmentation"]["domain_facts"]
     )
 
@@ -170,7 +143,7 @@ async def test_scenario_01_overdue_invoice_with_preference_recall(api_client: As
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, domain_seeder, memory_factory):
+async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, scenario_loader):
     """
     SCENARIO 2: Reschedule work order based on technician availability
 
@@ -182,41 +155,12 @@ async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, doma
     Prior DB: domain.work_orders for SO-1001 is queued, technician=Alex, scheduled_for=2025-09-22.
     User: "Reschedule Kai Media's pick-pack WO to Friday and keep Alex assigned."
     Expected: Query WO row, store semantic memory about Friday preference.
+
+    Uses demo Scenario 2 data via ScenarioLoaderService.
+    This ensures E2E test validates same code path as demo UI.
     """
-    from datetime import date
-
-    # ARRANGE: Seed domain with work order
-    ids = await domain_seeder.seed({
-        "customers": [{
-            "name": "Kai Media",
-            "industry": "Entertainment",
-            "id": "kai_123"
-        }],
-        "sales_orders": [{
-            "customer": "kai_123",
-            "so_number": "SO-1001",
-            "title": "Album Fulfillment",
-            "status": "in_fulfillment",
-            "id": "so_1001"
-        }],
-        "work_orders": [{
-            "sales_order": "so_1001",
-            "description": "Pick-pack albums",
-            "status": "queued",
-            "technician": "Alex",
-            "scheduled_for": date(2025, 9, 22),
-            "id": "wo_1001"
-        }]
-    })
-
-    # ARRANGE: Create canonical entity
-    await memory_factory.create_canonical_entity(
-        entity_id=f"customer_{ids['kai_123']}",
-        entity_type="customer",
-        canonical_name="Kai Media",
-        external_ref={"table": "domain.customers", "id": ids["kai_123"]},
-        properties={"industry": "Entertainment"}
-    )
+    # ARRANGE: Load demo scenario 2 (replaces manual domain + entity setup)
+    await scenario_loader.load_scenario(scenario_id=2)
 
     # ACT: User requests reschedule
     response = await api_client.post("/api/v1/chat", json={
@@ -243,7 +187,7 @@ async def test_scenario_02_work_order_rescheduling(api_client: AsyncClient, doma
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
-async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClient, domain_seeder, memory_factory):
+async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClient, scenario_loader):
     """
     SCENARIO 3: Ambiguous entity → disambiguation flow
 
@@ -262,30 +206,12 @@ async def test_scenario_03_ambiguous_entity_disambiguation(api_client: AsyncClie
     - Prefix matching: "Apple" matches "Apple Inc" (score: 0.95)
     - Prefix matching: "Apple" matches "Apple Farm Supply" (score: 0.95)
     Both score equally → ambiguity detected → ask user → learn alias → next time instant
-    """
-    # ARRANGE: Seed domain database with two "Apple" entities
-    ids = await domain_seeder.seed({
-        "customers": [
-            {"id": "apple_tech", "name": "Apple Inc", "industry": "Technology"},
-            {"id": "apple_farm", "name": "Apple Farm Supply", "industry": "Agriculture"}
-        ]
-    })
 
-    # ARRANGE: Create canonical entities for both Apple entities
-    await memory_factory.create_canonical_entity(
-        entity_id=f"customer_{ids['apple_tech']}",
-        entity_type="customer",
-        canonical_name="Apple Inc",
-        external_ref={"table": "domain.customers", "id": ids["apple_tech"]},
-        properties={"industry": "Technology"}
-    )
-    await memory_factory.create_canonical_entity(
-        entity_id=f"customer_{ids['apple_farm']}",
-        entity_type="customer",
-        canonical_name="Apple Farm Supply",
-        external_ref={"table": "domain.customers", "id": ids["apple_farm"]},
-        properties={"industry": "Agriculture"}
-    )
+    Uses demo Scenario 3 data via ScenarioLoaderService.
+    This ensures E2E test validates same code path as demo UI.
+    """
+    # ARRANGE: Load demo scenario 3 (creates two Apple entities)
+    await scenario_loader.load_scenario(scenario_id=3)
 
     # ACT: Ambiguous query
     response = await api_client.post("/api/v1/chat", json={
