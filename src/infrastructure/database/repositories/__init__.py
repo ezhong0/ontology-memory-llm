@@ -22,6 +22,9 @@ from src.infrastructure.database.repositories.semantic_memory_repository import 
 from src.infrastructure.database.repositories.summary_repository import (
     SummaryRepository,
 )
+from src.infrastructure.database.repositories.tool_usage_repository import (
+    PostgresToolUsageRepository,
+)
 
 __all__ = [
     "ChatEventRepository",
@@ -29,6 +32,7 @@ __all__ = [
     "EntityRepository",
     "EpisodicMemoryRepository",
     "OntologyRepository",
+    "PostgresToolUsageRepository",
     "ProceduralMemoryRepository",
     "SemanticMemoryRepository",
     "SummaryRepository",

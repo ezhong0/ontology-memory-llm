@@ -3304,6 +3304,11 @@
                     currentSessionId = data.session_id;
                 }
 
+                // Refresh memory stats if memories were created
+                if (data.debug && data.debug.memories_created && data.debug.memories_created.length > 0) {
+                    loadMemoryStats();
+                }
+
                 // Render reasoning steps if reasoning pane is visible and traces available
                 if (data.traces) {
                     renderReasoningSteps(data.traces);
@@ -3581,8 +3586,8 @@
                 scoreStep.classList.add('completed');
 
                 if (details) {
-                    if (data.debug && data.debug.memories_used && data.debug.memories_used.length > 0) {
-                        const memories = data.debug.memories_used;
+                    if (data.debug && data.debug.memories_retrieved && data.debug.memories_retrieved.length > 0) {
+                        const memories = data.debug.memories_retrieved;
                         const avgRelevance = memories.reduce((sum, m) => sum + (m.relevance || 0), 0) / memories.length;
                         const avgConfidence = memories.reduce((sum, m) => sum + (m.confidence || 0), 0) / memories.length;
                         details.textContent = `${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'} retrieved (relevance: ${avgRelevance.toFixed(2)}, confidence: ${avgConfidence.toFixed(2)})`;

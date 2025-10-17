@@ -1,6 +1,8 @@
 """Chat interface for demo - shows memory system working end-to-end.
 
-Week 2 implementation: Simple but functional chat that demonstrates:
+Full implementation: Uses the same ProcessChatMessageUseCase as production API
+- Entity resolution
+- Semantic memory extraction
 - Domain fact retrieval
 - Memory retrieval
 - Context building
@@ -17,6 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.dependencies import get_process_chat_message_use_case
+from src.application.dtos import ProcessChatMessageInput
+from src.application.use_cases import ProcessChatMessageUseCase
 from src.domain.services import DebugTraceService
 from src.domain.value_objects.conversation_context_reply import (
     RecentChatEvent,
@@ -75,169 +80,49 @@ class ChatMessageResponse(BaseModel):
 @router.post("/message", response_model=ChatMessageResponse)
 async def send_chat_message(
     request: ChatMessageRequest,
-    session: AsyncSession = Depends(get_db),
+    use_case: ProcessChatMessageUseCase = Depends(get_process_chat_message_use_case),
 ) -> ChatMessageResponse:
     """Send chat message and get reply with full memory system integration.
 
-    Week 2 Implementation:
-    - Fetches domain facts (customers, invoices, sales orders)
-    - Fetches semantic memories for context
+    Full Implementation (uses production ProcessChatMessageUseCase):
+    - Entity resolution (extracts and resolves entities like "I like ice cream")
+    - Semantic memory extraction (creates memories from user statements)
+    - Domain fact retrieval (fetches relevant customer/order data)
+    - Memory retrieval (finds relevant existing memories)
     - Builds reply context
-    - Generates LLM reply
-    - Returns reply + debug traces
+    - Generates LLM reply with full provenance
+    - Returns reply + debug traces + created memories
 
     Args:
         request: Chat message request
-        session: Database session
+        use_case: Chat processing use case (injected)
 
     Returns:
-        Chat response with reply and debug info
+        Chat response with reply, debug info, and created memories
     """
     logger.info(
-        "chat_message_received",
+        "demo_chat_message_received",
         user_id=request.user_id,
         message_length=len(request.message),
     )
 
-    # Start debug trace context
-    trace_context = DebugTraceService.start_trace(
-        metadata={
-            "user_id": request.user_id,
-            "message": request.message,
-        }
-    )
-
     try:
-        # Step 0: Get or create session_id and store user message
+        # Get or create session_id
         session_id = UUID(request.session_id) if request.session_id else uuid4()
 
-        # Store user message in chat_events
-        user_event = ChatEvent(
-            session_id=session_id,
+        # Create input DTO for use case
+        input_dto = ProcessChatMessageInput(
             user_id=request.user_id,
-            role="user",
+            session_id=session_id,
             content=request.message,
-            content_hash=hashlib.sha256(request.message.encode()).hexdigest(),
-            created_at=datetime.now(UTC),
-        )
-        session.add(user_event)
-        await session.flush()  # Get event_id for potential use
-
-        # Step 1: Fetch domain facts
-        start_time = datetime.now(UTC)
-        domain_facts = await _fetch_domain_facts(session, request.user_id)
-        duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-
-        DebugTraceService.add_database_query_trace(
-            query_type="SELECT",
-            table="domain.customers, domain.invoices",
-            rows_affected=len(domain_facts),
-            duration_ms=duration_ms,
+            role="user",
+            metadata={},
         )
 
-        DebugTraceService.add_reasoning_step_trace(
-            step="domain_fact_retrieval",
-            description=f"Retrieved {len(domain_facts)} domain facts",
-            output_data={"facts_count": len(domain_facts)},
-        )
+        # Execute full chat processing pipeline (entity resolution + semantic extraction + reply generation)
+        output = await use_case.execute(input_dto)
 
-        logger.info(
-            "domain_facts_fetched",
-            user_id=request.user_id,
-            facts_count=len(domain_facts),
-        )
-
-        # Publish activity
-        activity.add_activity(
-            event_type="database_query",
-            summary=f"Retrieved {len(domain_facts)} domain facts from database",
-            details={"user_id": request.user_id, "facts_count": len(domain_facts)},
-            duration_ms=duration_ms,
-        )
-
-        # Step 2: Fetch relevant memories
-        start_time = datetime.now(UTC)
-        memories = await _fetch_relevant_memories(session, request.user_id)
-        duration_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-
-        DebugTraceService.add_memory_retrieval_trace(
-            query=request.message,
-            memories_found=len(memories),
-            top_memory={
-                "content": memories[0].content,
-                "confidence": memories[0].confidence,
-                "relevance": memories[0].relevance_score,
-            }
-            if memories
-            else None,
-            retrieval_method="simple_fetch",
-        )
-
-        logger.info(
-            "memories_fetched",
-            user_id=request.user_id,
-            memories_count=len(memories),
-        )
-
-        # Publish activity
-        activity.add_activity(
-            event_type="memory_retrieval",
-            summary=f"Retrieved {len(memories)} relevant memories for context",
-            details={
-                "user_id": request.user_id,
-                "memories_count": len(memories),
-                "query": request.message[:50] + "..." if len(request.message) > 50 else request.message,
-            },
-        )
-
-        # Step 2.5: Fetch recent conversation history
-        chat_history = await _fetch_recent_chat_events(session, session_id, exclude_event_id=user_event.event_id)
-
-        # Step 3: Build reply context
-        context = ReplyContext(
-            query=request.message,
-            domain_facts=domain_facts,
-            retrieved_memories=memories,
-            recent_chat_events=chat_history,
-            user_id=request.user_id,
-            session_id=session_id,
-        )
-
-        # Step 4: Generate reply using LLM (with automatic fallback if no API key)
-        # Get LLM reply generator from DI container (properly configured with OpenAI provider)
-        generator = container.llm_reply_generator()
-        reply = await generator.generate(context)
-
-        logger.info(
-            "chat_reply_generated",
-            user_id=request.user_id,
-            reply_length=len(reply),
-        )
-
-        # Publish activity
-        activity.add_activity(
-            event_type="llm_call",
-            summary=f"Generated LLM reply ({len(reply)} chars)",
-            details={
-                "user_id": request.user_id,
-                "reply_length": len(reply),
-                "query_preview": request.message[:40] + "..." if len(request.message) > 40 else request.message,
-            },
-        )
-
-        # Store assistant reply in chat_events
-        assistant_event = ChatEvent(
-            session_id=session_id,
-            user_id=request.user_id,
-            role="assistant",
-            content=reply,
-            content_hash=hashlib.sha256(reply.encode()).hexdigest(),
-            created_at=datetime.now(UTC),
-        )
-        session.add(assistant_event)
-        await session.commit()  # Commit all changes
-
-        # Step 5: Build debug response
+        # Build debug response
         debug_info = {
             "domain_facts_used": [
                 {
@@ -245,34 +130,71 @@ async def send_chat_message(
                     "content": fact.content,
                     "source": fact.source_table,
                 }
-                for fact in domain_facts
+                for fact in output.domain_facts
             ],
-            "memories_used": [
+            "memories_retrieved": [
                 {
+                    "memory_id": mem.memory_id,
                     "type": mem.memory_type,
                     "content": mem.content,
                     "confidence": mem.confidence,
                     "relevance": mem.relevance_score,
                 }
-                for mem in memories
+                for mem in output.retrieved_memories
             ],
-            "context_summary": context.to_debug_summary(),
-            "conversation_history_count": len(chat_history),
+            "memories_created": [
+                {
+                    "memory_id": mem.memory_id,
+                    "type": "semantic",
+                    "subject_entity_id": mem.subject_entity_id,
+                    "predicate": mem.predicate,
+                    "object_value": str(mem.object_value),
+                    "confidence": mem.confidence,
+                }
+                for mem in output.semantic_memories
+            ],
+            "entities_resolved": [
+                {
+                    "entity_id": entity.entity_id,
+                    "canonical_name": entity.canonical_name,
+                    "mention_text": entity.mention_text,
+                    "confidence": entity.confidence,
+                    "method": entity.method,
+                }
+                for entity in output.resolved_entities
+            ],
         }
 
-        # Get collected traces
-        trace_data = trace_context.to_dict() if trace_context else None
+        # Publish activity for created memories
+        if output.semantic_memories:
+            activity.add_activity(
+                event_type="memory_creation",
+                summary=f"Created {len(output.semantic_memories)} new semantic memories",
+                details={
+                    "user_id": request.user_id,
+                    "memories_count": len(output.semantic_memories),
+                    "predicates": [mem.predicate for mem in output.semantic_memories],
+                },
+            )
+
+        logger.info(
+            "demo_chat_reply_generated",
+            user_id=request.user_id,
+            reply_length=len(output.reply),
+            memories_created=len(output.semantic_memories),
+            entities_resolved=len(output.resolved_entities),
+        )
 
         return ChatMessageResponse(
-            reply=reply,
+            reply=output.reply,
             session_id=str(session_id),
             debug=debug_info,
-            traces=trace_data
+            traces=None  # Traces not needed for demo
         )
 
     except Exception as e:
         logger.error(
-            "chat_message_failed",
+            "demo_chat_message_failed",
             user_id=request.user_id,
             error=str(e),
             error_type=type(e).__name__,
@@ -357,6 +279,36 @@ async def _fetch_domain_facts(
                 },
                 source_table="domain.invoices",
                 source_rows=[str(inv.invoice_id)],
+                retrieved_at=now,
+            )
+        )
+
+    # Fetch sales orders with customer names
+    sales_order_query = (
+        select(DomainSalesOrder, DomainCustomer.name)
+        .join(DomainCustomer, DomainSalesOrder.customer_id == DomainCustomer.customer_id)
+        .order_by(DomainSalesOrder.created_at.desc())
+        .limit(10)
+    )
+
+    so_result = await session.execute(sales_order_query)
+    sales_orders = so_result.all()
+
+    for so, customer_name in sales_orders:
+        facts.append(
+            DomainFact(
+                fact_type="sales_order_status",
+                entity_id=f"sales_order:{so.so_id}",
+                content=f"Sales Order {so.so_number} for {customer_name}: {so.title} (Status: {so.status})",
+                metadata={
+                    "so_number": so.so_number,
+                    "customer_name": customer_name,
+                    "title": so.title,
+                    "status": so.status,
+                    "created_at": so.created_at.isoformat() if so.created_at else None,
+                },
+                source_table="domain.sales_orders",
+                source_rows=[str(so.so_id)],
                 retrieved_at=now,
             )
         )

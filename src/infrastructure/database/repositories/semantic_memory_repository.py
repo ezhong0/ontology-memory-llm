@@ -293,6 +293,58 @@ class SemanticMemoryRepository:
             msg = f"Error updating semantic memory: {e}"
             raise RepositoryError(msg) from e
 
+    async def find_aging_memories(
+        self,
+        user_id: str,
+        days: int = 7,
+    ) -> list[SemanticMemory]:
+        """Find aging memories from recent session context.
+
+        Phase 2.2: Retrieve aging memories for validation prompts.
+
+        Args:
+            user_id: User identifier
+            days: Number of days to look back (default: 7)
+
+        Returns:
+            List of aging memories from recent context
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            recent_cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+            stmt = select(SemanticMemoryModel).where(
+                and_(
+                    SemanticMemoryModel.user_id == user_id,
+                    SemanticMemoryModel.status == "aging",
+                    SemanticMemoryModel.updated_at >= recent_cutoff,
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            models = result.scalars().all()
+
+            aging_memories = [self._to_domain_entity(model) for model in models]
+
+            logger.debug(
+                "found_aging_memories",
+                user_id=user_id,
+                count=len(aging_memories),
+                days=days,
+            )
+
+            return aging_memories
+
+        except Exception as e:
+            logger.error(
+                "find_aging_memories_error",
+                user_id=user_id,
+                error=str(e),
+            )
+            msg = f"Error finding aging memories: {e}"
+            raise RepositoryError(msg) from e
+
     def _to_domain_entity(self, model: SemanticMemoryModel) -> SemanticMemory:
         """Convert ORM model to domain entity.
 

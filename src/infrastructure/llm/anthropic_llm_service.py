@@ -12,6 +12,7 @@ from anthropic import AsyncAnthropic
 
 from src.domain.exceptions import LLMServiceError
 from src.domain.ports import ILLMService
+from src.domain.ports.llm_service import LLMToolResponse, ToolCall
 from src.domain.value_objects import (
     ConversationContext,
     EntityMention,
@@ -539,3 +540,99 @@ Response (entity_id or UNKNOWN):"""
             Total cost in USD
         """
         return self._total_cost
+
+    async def chat_with_tools(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        model: str = "claude-haiku-4-5",
+    ) -> LLMToolResponse:
+        """Chat with tool calling support using Claude.
+
+        Vision Alignment:
+        - Emergent intelligence (LLM decides what to fetch)
+        - No hardcoded query planning
+        - Adaptive to context
+
+        Args:
+            system_prompt: System instructions
+            messages: Conversation messages in Anthropic format
+            tools: Available tools in Claude format
+            model: Model to use (default: Claude 4.5 Haiku)
+
+        Returns:
+            Response with optional tool calls
+
+        Raises:
+            LLMServiceError: If API call fails
+        """
+        try:
+            logger.debug(
+                "calling_anthropic_with_tools",
+                model=model,
+                tool_count=len(tools),
+                message_count=len(messages),
+            )
+
+            # Call Anthropic Messages API with tools
+            response = await self.client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=messages,  # type: ignore[arg-type]
+                tools=tools,  # type: ignore[arg-type] # Claude native tool calling
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Extract tool calls if present
+            tool_calls = None
+            if response.stop_reason == "tool_use":
+                tool_calls = []
+                for block in response.content:
+                    if block.type == "tool_use":
+                        tool_calls.append(
+                            ToolCall(
+                                id=block.id,
+                                name=block.name,
+                                arguments=block.input,  # type: ignore[arg-type]
+                            )
+                        )
+
+                logger.info(
+                    "llm_tool_calls_requested",
+                    tool_count=len(tool_calls),
+                    tools=[tc.name for tc in tool_calls],
+                )
+
+            # Extract text content
+            content = None
+            for block in response.content:
+                if hasattr(block, "text"):
+                    content = block.text
+                    break
+
+            result = LLMToolResponse(
+                content=content,
+                tool_calls=tool_calls,
+            )
+
+            logger.debug(
+                "anthropic_tool_call_complete",
+                has_content=content is not None,
+                has_tool_calls=tool_calls is not None,
+                tokens=response.usage.input_tokens + response.usage.output_tokens,
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "anthropic_tool_call_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            msg = f"Anthropic tool calling failed: {e}"
+            raise LLMServiceError(msg) from e

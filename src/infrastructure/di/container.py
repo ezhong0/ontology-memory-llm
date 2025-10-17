@@ -15,7 +15,6 @@ from src.config.settings import Settings
 from src.domain.services import (
     ConflictDetectionService,
     ConflictResolutionService,
-    DomainAugmentationService,
     EntityResolutionService,
     LLMReplyGenerator,
     MemoryValidationService,
@@ -23,9 +22,14 @@ from src.domain.services import (
     SemanticExtractionService,
     SimpleMentionExtractor,
 )
+from src.application.services.adaptive_query_orchestrator import (
+    AdaptiveQueryOrchestrator,
+)
 from src.infrastructure.database.repositories import (
     ChatEventRepository,
+    DomainDatabaseRepository,
     EntityRepository,
+    PostgresToolUsageRepository,
     SemanticMemoryRepository,
 )
 from src.infrastructure.database.session import async_session_factory
@@ -138,6 +142,14 @@ class Container(containers.DeclarativeContainer):
         SemanticMemoryRepository,
     )
 
+    tool_usage_repository_factory = providers.Factory(
+        PostgresToolUsageRepository,
+    )
+
+    domain_database_repository_factory = providers.Factory(
+        DomainDatabaseRepository,
+    )
+
     # Domain Services
     mention_extractor = providers.Singleton(
         SimpleMentionExtractor,
@@ -170,9 +182,11 @@ class Container(containers.DeclarativeContainer):
         # semantic_memory_repository provided per-request
     )
 
-    # Phase 1C Services
-    domain_augmentation_service = providers.Singleton(
-        DomainAugmentationService,
+    # Phase 1C Services - LLM Tool Calling
+    adaptive_query_orchestrator_factory = providers.Factory(
+        AdaptiveQueryOrchestrator,
+        llm_service=llm_service,
+        # domain_db and usage_tracker provided per-request
     )
 
     # LLM Reply Generator (uses configurable provider and model)
@@ -210,10 +224,10 @@ class Container(containers.DeclarativeContainer):
         embedding_service=embedding_service,
     )
 
-    # Phase 1C: Domain Augmentation
+    # Phase 1C: Domain Augmentation - LLM Tool Calling
     augment_with_domain_use_case_factory = providers.Factory(
         AugmentWithDomainUseCase,
-        domain_augmentation_service=domain_augmentation_service,
+        query_orchestrator=adaptive_query_orchestrator_factory,
     )
 
     # Phase 1D: Memory Scoring

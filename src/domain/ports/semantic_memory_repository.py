@@ -92,3 +92,23 @@ class ISemanticMemoryRepository(ABC):
         Returns:
             Updated memory
         """
+
+    @abstractmethod
+    async def find_aging_memories(
+        self,
+        user_id: str,
+        days: int = 7,
+    ) -> list[SemanticMemory]:
+        """Find aging memories from recent session context.
+
+        Phase 2.2: Retrieve aging memories for validation prompts.
+        Confirmation messages may not match semantically, so we need to
+        include aging memories even if they don't appear in vector search.
+
+        Args:
+            user_id: User identifier
+            days: Number of days to look back (default: 7)
+
+        Returns:
+            List of aging memories from recent context
+        """

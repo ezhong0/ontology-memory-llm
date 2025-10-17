@@ -77,8 +77,21 @@ class EntityResolutionService:
             "resolving_entity",
             mention=mention.text,
             is_pronoun=mention.is_pronoun,
+            is_first_person=mention.is_first_person,
             user_id=context.user_id,
         )
+
+        # Special handling: First-person pronouns always resolve to the user entity
+        if mention.is_first_person:
+            result = await self._resolve_first_person_pronoun(mention, context.user_id)
+            if result:
+                logger.info(
+                    "entity_resolved",
+                    method="first_person",
+                    entity_id=result.entity_id,
+                    confidence=result.confidence,
+                )
+                return result
 
         # Stage 1: Exact match on canonical name (70% of cases)
         result = await self._stage1_exact_match(mention)
@@ -359,6 +372,47 @@ class EntityResolutionService:
             logger.error(
                 "stage4_coreference_error",
                 mention=mention.text,
+                error=str(e),
+            )
+            return None
+
+    async def _resolve_first_person_pronoun(
+        self, mention: EntityMention, user_id: str
+    ) -> ResolutionResult | None:
+        """Resolve first-person pronouns to user entity.
+
+        First-person pronouns ("I", "me", "my", etc.) always refer to the user themselves.
+        This creates or retrieves a user entity (e.g., user_demo-user) to anchor user preferences.
+
+        Args:
+            mention: First-person pronoun mention
+            user_id: User identifier
+
+        Returns:
+            ResolutionResult pointing to user entity
+        """
+        try:
+            # Get or create user entity
+            user_entity = await self.entity_repo.get_or_create_user_entity(user_id)
+
+            return ResolutionResult(
+                entity_id=user_entity.entity_id,
+                confidence=self.high_confidence,  # First-person pronouns are unambiguous
+                method=ResolutionMethod.EXACT_MATCH,  # Treat as exact since it's deterministic
+                mention_text=mention.text,
+                canonical_name=user_entity.canonical_name,
+                metadata={
+                    "entity_type": "user",
+                    "user_id": user_id,
+                    "resolution_type": "first_person_pronoun",
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                "first_person_pronoun_resolution_error",
+                mention=mention.text,
+                user_id=user_id,
                 error=str(e),
             )
             return None

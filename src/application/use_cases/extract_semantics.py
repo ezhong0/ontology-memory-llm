@@ -4,6 +4,8 @@ Extracts semantic extraction logic from ProcessChatMessageUseCase god object.
 Handles triple extraction, conflict detection, and memory storage.
 """
 
+from typing import Any
+
 import structlog
 
 from src.application.dtos.chat_dtos import (
@@ -67,6 +69,7 @@ class ExtractSemanticsUseCase:
         conflict_resolution_service: ConflictResolutionService,
         semantic_memory_repository: ISemanticMemoryRepository,
         embedding_service: IEmbeddingService,
+        canonical_entity_repository: Any = None,  # ICanonicalEntityRepository
     ):
         """Initialize use case.
 
@@ -77,6 +80,7 @@ class ExtractSemanticsUseCase:
             conflict_resolution_service: Service for resolving detected conflicts (Phase 2.1)
             semantic_memory_repository: Repository for semantic memory storage
             embedding_service: Service for generating embeddings
+            canonical_entity_repository: Repository for canonical entities (optional, Phase 3.3)
         """
         self.semantic_extraction_service = semantic_extraction_service
         self.memory_validation_service = memory_validation_service
@@ -84,6 +88,7 @@ class ExtractSemanticsUseCase:
         self.conflict_resolution_service = conflict_resolution_service
         self.semantic_memory_repo = semantic_memory_repository
         self.embedding_service = embedding_service
+        self.canonical_entity_repo = canonical_entity_repository
 
     async def execute(
         self,
@@ -111,17 +116,9 @@ class ExtractSemanticsUseCase:
         conflict_count = 0
         conflicts_detected: list[MemoryConflict] = []
 
-        if not resolved_entities:
-            logger.debug("no_resolved_entities_for_semantic_extraction")
-            return ExtractSemanticsResult(
-                semantic_memory_dtos=[],
-                semantic_memory_entities=[],
-                conflict_count=0,
-                conflicts_detected=[],
-            )
-
         # Phase 3.3: Check for policy statements (e.g., reminder policies)
-        # "If invoice is X days before due, remind me"
+        # Policy detection happens BEFORE entity check because policies are system-level
+        # and don't require specific entities (subject_entity_id="system")
         policy_memory = await self._detect_and_create_policy(message, user_id)
         if policy_memory:
             logger.info("policy_detected_and_stored", policy_type="reminder")
@@ -132,18 +129,22 @@ class ExtractSemanticsUseCase:
                 conflicts_detected=[],
             )
 
-        # Skip semantic extraction for questions (only extract from statements)
-        if self._is_question(message.content):
-            logger.debug(
-                "skipping_semantic_extraction_for_question",
-                content_preview=message.content[:100],
-            )
+        # Check for resolved entities (needed for semantic extraction)
+        if not resolved_entities:
+            logger.debug("no_resolved_entities_for_semantic_extraction")
             return ExtractSemanticsResult(
                 semantic_memory_dtos=[],
                 semantic_memory_entities=[],
                 conflict_count=0,
                 conflicts_detected=[],
             )
+
+        # Note: We don't filter questions here. The LLM-based semantic extraction is smart enough to:
+        # - Extract factual statements from preference statements: "I like chocolate"
+        # - Extract factual statements from remember requests: "Can you remember I like butter?"
+        # - NOT extract from pure information-seeking questions: "What invoices are outstanding?"
+        # This aligns with the vision: "Memory is the transformation of experience into understanding."
+        # The LLM's semantic understanding > brittle pattern matching.
 
         logger.info(
             "starting_semantic_extraction",
@@ -328,54 +329,10 @@ class ExtractSemanticsUseCase:
     # Phase 2.1: Removed _handle_auto_resolvable_conflict()
     # Now using ConflictResolutionService for proper resolution with status tracking
 
-    def _is_question(self, content: str) -> bool:
-        """Check if message content is a question.
-
-        Questions should create episodic memories (event happened)
-        but NOT semantic memories (no factual assertions).
-
-        Args:
-            content: Message content
-
-        Returns:
-            True if message is a question, False otherwise
-        """
-        content_stripped = content.strip()
-
-        # Check for question mark
-        if content_stripped.endswith("?"):
-            return True
-
-        # Check for question words at start (case-insensitive)
-        question_words = [
-            "what",
-            "when",
-            "where",
-            "who",
-            "why",
-            "how",
-            "which",
-            "can",
-            "could",
-            "would",
-            "should",
-            "is",
-            "are",
-            "was",
-            "were",
-            "do",
-            "does",
-            "did",
-            "has",
-            "have",
-            "will",
-        ]
-
-        first_word = content_stripped.lower().split()[0] if content_stripped else ""
-        if first_word in question_words:
-            return True
-
-        return False
+    # Note: Removed _is_question() method
+    # Vision-aligned approach: Let the LLM-based semantic extraction determine what's extractable.
+    # The extraction prompt instructs: "Analyze the message for factual statements about entities."
+    # The LLM handles this intelligently without brittle pattern matching.
 
     def _triple_to_natural_language(
         self,
@@ -510,7 +467,7 @@ class ExtractSemanticsUseCase:
         # Create semantic memory
         policy_memory = SemanticMemory(
             user_id=user_id,
-            subject_entity_id="system",  # System-level policy
+            subject_entity_id="system_policy",  # System-level policy (matches canonical entity_id)
             predicate="reminder_policy",
             predicate_type=PredicateType.ACTION,
             object_value=policy_data,
@@ -519,7 +476,38 @@ class ExtractSemanticsUseCase:
             embedding=embedding,
         )
 
-        # Store in database
+        # Ensure "system" canonical entity exists
+        # Policy memories use subject_entity_id="system" which requires a canonical entity
+        if self.canonical_entity_repo:
+            from src.domain.entities import CanonicalEntity
+            from src.domain.value_objects import EntityReference
+
+            # Check if system entity exists, create if not
+            try:
+                system_entity = await self.canonical_entity_repo.find_by_entity_id("system_policy")
+            except Exception:
+                system_entity = None
+
+            if not system_entity:
+                # Create system entity
+                # System entity doesn't map to external database, use placeholder EntityReference
+                system_ref = EntityReference(
+                    table="system",
+                    primary_key="id",
+                    primary_value="policy",
+                    display_name="System",
+                )
+                system_entity = CanonicalEntity(
+                    entity_id="system_policy",
+                    entity_type="system",
+                    canonical_name="System",
+                    external_ref=system_ref,
+                    properties={"type": "system_policies"},
+                )
+                await self.canonical_entity_repo.create(system_entity)
+                logger.info("system_entity_created_for_policies")
+
+        # Store policy memory in database
         stored_memory = await self.semantic_memory_repo.create(policy_memory)
 
         logger.info(

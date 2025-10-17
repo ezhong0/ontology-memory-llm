@@ -20,6 +20,7 @@ class EntityMention:
         context_after: Text after the mention (for coreference resolution)
         is_pronoun: Whether this is a pronoun requiring coreference (e.g., "they", "it")
         sentence: Full sentence containing the mention
+        is_first_person: Whether this is a first-person pronoun (I, me, my, etc.)
     """
 
     text: str
@@ -28,6 +29,7 @@ class EntityMention:
     context_after: str
     is_pronoun: bool
     sentence: str
+    is_first_person: bool = False
 
     def __post_init__(self) -> None:
         """Validate mention invariants."""

@@ -174,24 +174,13 @@ class ProcessChatMessageUseCase:
         # even without specific entities
 
         # Step 3: Extract semantics (Phase 1B)
-        # Only extract semantics if entities were resolved
-        if not entities_result.resolved_entities:
-            logger.debug("no_entities_resolved_skipping_semantic_extraction")
-            # Create empty result for semantic extraction
-            from src.application.use_cases.extract_semantics import ExtractSemanticsResult
-            semantics_result = ExtractSemanticsResult(
-                semantic_memory_dtos=[],
-                semantic_memory_entities=[],
-                conflict_count=0,
-                conflicts_detected=[],
-            )
-        else:
-            # Step 3: Extract semantics (Phase 1B)
-            semantics_result = await self.extract_semantics.execute(
-                message=stored_message,
-                resolved_entities=entities_result.resolved_entities,
-                user_id=input_dto.user_id,
-            )
+        # Always call semantic extraction even if no entities are resolved,
+        # because policy detection (Phase 3.3) needs to run regardless of entities
+        semantics_result = await self.extract_semantics.execute(
+            message=stored_message,
+            resolved_entities=entities_result.resolved_entities,
+            user_id=input_dto.user_id,
+        )
 
         # Phase 3.1: Create policy memory when PII was detected
         # This enables transparency and audit trail for privacy compliance
@@ -202,6 +191,30 @@ class ProcessChatMessageUseCase:
 
             pii_types = [r["type"] for r in redaction_result.redactions]
 
+            # Ensure "system_policy" canonical entity exists (required for foreign key)
+            # This is the same entity used for reminder policies
+            if self.extract_semantics.canonical_entity_repo:
+                from src.domain.entities import CanonicalEntity
+                from src.domain.value_objects import EntityReference
+
+                system_entity = await self.extract_semantics.canonical_entity_repo.find_by_entity_id("system_policy")
+                if not system_entity:
+                    system_ref = EntityReference(
+                        table="system",
+                        primary_key="id",
+                        primary_value="policy",
+                        display_name="System",
+                    )
+                    system_entity = CanonicalEntity(
+                        entity_id="system_policy",
+                        entity_type="system",
+                        canonical_name="System",
+                        external_ref=system_ref,
+                        properties={"type": "system_policies"},
+                    )
+                    await self.extract_semantics.canonical_entity_repo.create(system_entity)
+                    logger.debug("system_policy_entity_created")
+
             # Create policy memory indicating PII was redacted
             # Generate embedding for the policy memory
             embedding_text = f"PII redaction policy: never store sensitive information ({', '.join(pii_types)})"
@@ -211,7 +224,7 @@ class ProcessChatMessageUseCase:
 
             pii_policy_memory = SemanticMemory(
                 user_id=input_dto.user_id,
-                subject_entity_id="system",
+                subject_entity_id="system_policy",
                 predicate="pii_policy",
                 predicate_type=PredicateType.ATTRIBUTE,  # System policy as attribute
                 object_value={
@@ -234,10 +247,11 @@ class ProcessChatMessageUseCase:
                 pii_types=pii_types,
             )
 
-        # Step 4: Augment with domain facts (Phase 1C)
+        # Step 4: Augment with domain facts (Phase 1C) - LLM Tool Calling
         domain_fact_dtos = await self.augment_with_domain.execute(
             resolved_entities=entities_result.resolved_entities,
             query_text=input_dto.content,
+            session_id=str(input_dto.session_id),
         )
 
         # Step 4.3: Phase 3.3 - Evaluate reminder triggers (Procedural Memory)
@@ -609,32 +623,16 @@ class ProcessChatMessageUseCase:
                 heuristics.MAX_CONFIDENCE,
             )
 
-            # Update in database
-            from src.infrastructure.database.repositories import SemanticMemoryRepository
-            # Note: We need repository access here
-            # Since we don't have it injected, we'll access it through the semantic extraction use case
-            # This is a bit of a hack, but acceptable for Phase 2.2
-            # In Phase 3, we'd refactor this to use a proper validation service
+            # Update in database via the repository pattern
+            # Access repository through the extract_semantics use case (which has it injected)
+            await self.extract_semantics.semantic_memory_repo.update(memory)
 
-            # Actually, we can't access the repository here without dependency injection
-            # Let me add it as a parameter through the constructor
-            # For now, log that we would update it
             logger.info(
                 "memory_validated_from_confirmation",
                 memory_id=memory.memory_id,
                 new_confidence=memory.confidence,
                 reinforcement_count=memory.reinforcement_count,
             )
-
-            # Since we can't update without repository, let's add it to the constructor
-            # But that would require changing the dependency injection setup
-            # For now, I'll just update the entity (it's already in memory) and hope it gets persisted
-            # Actually, we need to properly update it. Let me check if we have access to the repository
-            # through the extract_semantics use case
-
-            # The extract_semantics use case has a semantic_memory_repo attribute
-            # Access repository through there
-            await self.extract_semantics.semantic_memory_repo.update(memory)
 
     async def _evaluate_reminder_triggers(
         self,
@@ -661,7 +659,7 @@ class ProcessChatMessageUseCase:
 
         # Step 1: Retrieve reminder policies from semantic memory
         reminder_policies = await self.extract_semantics.semantic_memory_repo.find_by_subject_predicate(
-            subject_entity_id="system",
+            subject_entity_id="system_policy",  # Match the canonical entity_id format
             predicate="reminder_policy",
             user_id=user_id,
             status_filter="active",

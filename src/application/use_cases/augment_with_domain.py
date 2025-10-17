@@ -1,13 +1,20 @@
 """Augment with domain use case - Phase 1C extraction.
 
 Extracts domain augmentation logic from ProcessChatMessageUseCase god object.
-Handles retrieving facts from domain database.
+Handles retrieving facts from domain database using LLM tool calling.
+
+Vision Alignment:
+- Emergent intelligence (LLM decides what to fetch)
+- No hardcoded keywords
+- Adaptive to context
 """
 
 import structlog
 
 from src.application.dtos.chat_dtos import DomainFactDTO, ResolvedEntityDTO
-from src.domain.services import DomainAugmentationService, EntityInfo
+from src.application.services.adaptive_query_orchestrator import (
+    AdaptiveQueryOrchestrator,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -16,62 +23,74 @@ class AugmentWithDomainUseCase:
     """Use case for augmenting with domain database facts.
 
     Extracted from ProcessChatMessageUseCase to follow Single Responsibility Principle.
-    Handles Phase 1C: Domain Augmentation.
+    Handles Phase 1C: Domain Augmentation using LLM tool calling.
+
+    Vision Alignment:
+    - Emergent intelligence (LLM decides queries based on context)
+    - No hardcoded keywords
+    - Feedback-driven (tracks tool usage)
 
     Responsibilities:
-    - Convert resolved entities to EntityInfo
-    - Query domain database for relevant facts
+    - Convert resolved entities to dict format
+    - Orchestrate LLM tool calling for domain fact retrieval
     - Convert domain facts to DTOs
     """
 
     def __init__(
         self,
-        domain_augmentation_service: DomainAugmentationService,
+        query_orchestrator: AdaptiveQueryOrchestrator,
     ):
         """Initialize use case.
 
         Args:
-            domain_augmentation_service: Service for retrieving domain database facts
+            query_orchestrator: Orchestrator for LLM-based domain fact retrieval
         """
-        self.domain_augmentation_service = domain_augmentation_service
+        self.query_orchestrator = query_orchestrator
 
     async def execute(
         self,
         resolved_entities: list[ResolvedEntityDTO],
         query_text: str,
+        session_id: str,
     ) -> list[DomainFactDTO]:
-        """Augment with domain database facts.
+        """Augment with domain database facts using LLM tool calling.
+
+        Vision Alignment:
+        - LLM decides what to fetch based on context (not keywords)
+        - Tracks tool usage for learning
+        - Adaptive to query intent
 
         Args:
             resolved_entities: List of entities resolved from the message
             query_text: Original query text for context
+            session_id: Session ID for tracking tool usage
 
         Returns:
             List of domain facts retrieved from database
         """
-        # Phase 3.3: Allow general queries without entities (e.g., "What invoices do we have?")
         entity_count = len(resolved_entities) if resolved_entities else 0
 
         logger.info(
-            "starting_domain_augmentation",
+            "starting_llm_domain_augmentation",
             entity_count=entity_count,
-            general_query=not resolved_entities,
+            session_id=session_id,
         )
 
-        # Convert DTOs to EntityInfo for augmentation service
-        entities_for_augmentation = [
-            EntityInfo(
-                entity_id=e.entity_id,
-                entity_type=e.entity_type,
-                canonical_name=e.canonical_name,
-            )
+        # Convert DTOs to dict format for orchestrator
+        entities_for_orchestrator = [
+            {
+                "entity_id": e.entity_id,
+                "entity_type": e.entity_type,
+                "canonical_name": e.canonical_name,
+            }
             for e in resolved_entities
         ] if resolved_entities else []
 
-        # Query domain database (now supports general queries without entities)
-        domain_facts = await self.domain_augmentation_service.augment(
-            entities=entities_for_augmentation,
-            query_text=query_text,
+        # Use LLM-based orchestrator (replaces keyword classification)
+        domain_facts = await self.query_orchestrator.augment(
+            query=query_text,
+            entities=entities_for_orchestrator,
+            conversation_id=session_id,
         )
 
         # Convert DomainFact to DomainFactDTO
@@ -89,7 +108,7 @@ class AugmentWithDomainUseCase:
         ]
 
         logger.info(
-            "domain_facts_retrieved",
+            "llm_domain_facts_retrieved",
             fact_count=len(domain_fact_dtos),
         )
 

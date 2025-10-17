@@ -13,10 +13,6 @@ from src.domain.services.debug_trace_service import (
     TraceContext,
     TraceType,
 )
-from src.domain.services.domain_augmentation_service import (
-    DomainAugmentationService,
-    EntityInfo,
-)
 from src.domain.services.entity_resolution_service import EntityResolutionService
 from src.domain.services.llm_reply_generator import LLMReplyGenerator
 from src.domain.services.memory_validation_service import MemoryValidationService
@@ -41,9 +37,7 @@ __all__ = [
     "ConsolidationTriggerService",
     "ProceduralMemoryService",
     "MultiSignalScorer",
-    # Domain augmentation & reply generation
-    "DomainAugmentationService",
-    "EntityInfo",
+    # Reply generation
     "LLMReplyGenerator",
     "PIIRedactionService",
     # Debug & observability

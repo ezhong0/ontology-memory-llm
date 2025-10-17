@@ -97,31 +97,20 @@ class ScoreMemoriesUseCase:
         # Phase 2.2: Also retrieve aging memories from recent session context
         # (Confirmation messages may not match semantically, so we need to include aging memories)
         # This ensures validation prompts can be confirmed even with simple "Yes" responses
-        from sqlalchemy import select, and_
-        from src.infrastructure.database.models import SemanticMemory as SemanticMemoryModel
-        from datetime import datetime, timedelta, timezone
-
-        recent_cutoff = datetime.now(timezone.utc) - timedelta(days=7)  # Last week
-        stmt = select(SemanticMemoryModel).where(
-            and_(
-                SemanticMemoryModel.user_id == user_id,
-                SemanticMemoryModel.status == "aging",
-                SemanticMemoryModel.updated_at >= recent_cutoff,
-            )
+        aging_memories = await self.semantic_memory_repo.find_aging_memories(
+            user_id=user_id,
+            days=7,  # Last week
         )
-        result = await self.semantic_memory_repo.session.execute(stmt)
-        aging_models = result.scalars().all()
 
-        # Convert to domain entities and add to existing_memories if not already present
-        for model in aging_models:
-            aging_memory = self.semantic_memory_repo._to_domain_entity(model)
+        # Add aging memories to existing_memories if not already present
+        for aging_memory in aging_memories:
             # Check if not already in list
             if aging_memory.memory_id and not any(m.memory_id == aging_memory.memory_id for m in existing_memories):
                 existing_memories.append(aging_memory)
 
         logger.info(
             "included_aging_memories_for_validation",
-            aging_count=len(aging_models),
+            aging_count=len(aging_memories),
         )
 
         logger.info(

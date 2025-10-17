@@ -11,6 +11,7 @@ from src.domain.ports.llm_service import ILLMService
 from src.domain.ports.procedural_memory_repository import IProceduralMemoryRepository
 from src.domain.ports.semantic_memory_repository import ISemanticMemoryRepository
 from src.domain.ports.summary_repository import ISummaryRepository
+from src.domain.ports.tool_usage_tracker_port import IToolUsageTracker
 
 __all__ = [
     # Phase 1A
@@ -25,4 +26,6 @@ __all__ = [
     "ISummaryRepository",
     # Phase 1D
     "IProceduralMemoryRepository",
+    # LLM Tool Calling
+    "IToolUsageTracker",
 ]

@@ -164,6 +164,14 @@ CONTEXT_PROCEDURAL = 0.05  # 5% for procedural hints
 TOKENS_PER_CHAR = 0.25  # Rough estimate: 4 chars per token
 
 # ==============================================================================
+# LLM TOOL CALLING (Phase 1C)
+# ==============================================================================
+
+# Tool Orchestration
+TOOL_ORCHESTRATION_MAX_ITERATIONS = 5  # Max rounds of tool calling (prevent loops)
+TOOL_ORCHESTRATION_MODEL = "claude-haiku-4-5"  # Fast, cheap, capable model for tool calling
+
+# ==============================================================================
 # PHASE 2 CALIBRATION REQUIREMENTS
 # ==============================================================================
 

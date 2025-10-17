@@ -2,9 +2,27 @@
 
 Defines the contract for LLM operations (primarily coreference resolution).
 """
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from src.domain.value_objects import ConversationContext, EntityMention, ResolutionResult
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """Represents a tool call from LLM."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LLMToolResponse:
+    """LLM response with optional tool calls."""
+
+    content: str | None
+    tool_calls: list[ToolCall] | None
 
 
 class ILLMService(Protocol):
@@ -50,5 +68,30 @@ class ILLMService(Protocol):
 
         Returns:
             List of entity mentions found in text
+        """
+        ...
+
+    async def chat_with_tools(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        model: str = "claude-haiku-4-5",
+    ) -> LLMToolResponse:
+        """Chat with tool calling support.
+
+        Vision Alignment:
+        - Emergent intelligence (LLM decides what to fetch)
+        - No hardcoded query planning
+        - Adaptive to context
+
+        Args:
+            system_prompt: System instructions
+            messages: Conversation messages
+            tools: Available tools in Claude format
+            model: Model to use (default: Claude 4.5 Haiku)
+
+        Returns:
+            Response with optional tool calls
         """
         ...

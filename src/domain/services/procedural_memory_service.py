@@ -1,9 +1,14 @@
 """Procedural memory service.
 
-Detects and applies learned patterns from episodic memories.
+Detects and applies learned patterns from tool usage logs.
 
 Design from: PHASE1D_PLAN_ITERATION.md
 Vision: Layer 5 - "When X, also Y" learned heuristics
+
+VISION ALIGNMENT:
+- NO hardcoded keyword matching (emergent intelligence, not brittle rules)
+- Learn from actual tool call patterns (what LLM actually does)
+- Context-aware (tool combinations, not isolated keywords)
 """
 
 from collections import Counter, defaultdict
@@ -15,47 +20,46 @@ import structlog
 from src.config import heuristics
 from src.domain.entities.procedural_memory import ProceduralMemory
 from src.domain.exceptions import DomainError
-from src.domain.ports.episodic_memory_repository import IEpisodicMemoryRepository
+from src.domain.ports.tool_usage_tracker_port import IToolUsageTracker
 from src.domain.ports.procedural_memory_repository import IProceduralMemoryRepository
-from src.domain.value_objects.memory_candidate import MemoryCandidate
 from src.domain.value_objects.procedural_memory import Pattern
 
 logger = structlog.get_logger()
 
 
 class ProceduralMemoryService:
-    """Detects and applies procedural patterns.
+    """Detects and applies procedural patterns from tool usage.
 
-    Philosophy: Learn from interaction patterns to augment future retrievals.
+    Philosophy: Learn from what the LLM actually does, not keyword matching.
 
     Phase 1 Approach:
-    - Basic frequency analysis (co-occurrence patterns)
-    - Threshold-based detection (min_support parameter)
-    - Phase 2+: Use ML for more sophisticated detection
+    - Analyze tool usage logs (what tools are called together)
+    - Detect co-occurrence patterns (frequency analysis)
+    - Phase 2+: Use sequence mining for temporal patterns
 
     Example pattern:
-        Trigger: "User asks about customer payment history"
-        Action: "Also retrieve open invoices and credit status"
+        Trigger: "LLM calls get_invoice_status"
+        Action: "Also call get_credit_status and get_work_orders_for_customer"
         Confidence: 0.85 (observed 5+ times)
 
     Usage:
-        >>> service = ProceduralMemoryService(episodic_repo, procedural_repo)
+        >>> service = ProceduralMemoryService(tool_usage_tracker, procedural_repo)
         >>> patterns = await service.detect_patterns(user_id="user_1")
         >>> print(f"Found {len(patterns)} new patterns")
     """
 
     def __init__(
         self,
-        episodic_repo: IEpisodicMemoryRepository,
+        tool_usage_tracker: IToolUsageTracker,
         procedural_repo: IProceduralMemoryRepository,
     ) -> None:
         """Initialize procedural memory service.
 
         Args:
-            episodic_repo: Repository for episodic memories
+            tool_usage_tracker: Tracks tool usage logs for pattern mining
             procedural_repo: Repository for procedural memories
         """
-        self._episodic_repo = episodic_repo
+        self._tool_tracker = tool_usage_tracker
         self._procedural_repo = procedural_repo
 
     async def detect_patterns(
@@ -64,9 +68,9 @@ class ProceduralMemoryService:
         lookback_days: int = 30,
         min_support: int = 3,
     ) -> list[ProceduralMemory]:
-        """Detect new patterns from recent episodic memories.
+        """Detect new patterns from tool usage logs.
 
-        Analyzes recent episodes to find co-occurrence patterns.
+        Analyzes recent tool calls to find co-occurrence patterns.
 
         Args:
             user_id: User identifier
@@ -81,41 +85,41 @@ class ProceduralMemoryService:
         """
         try:
             logger.info(
-                "detecting_patterns",
+                "detecting_tool_patterns",
                 user_id=user_id,
                 lookback_days=lookback_days,
                 min_support=min_support,
             )
 
-            # Fetch recent episodes
+            # Fetch recent tool usage logs
             since = datetime.now(UTC) - timedelta(days=lookback_days)
-            episodes = await self._episodic_repo.find_by_user(
+            usage_logs = await self._tool_tracker.get_usage_logs(
                 user_id=user_id,
                 since=since,
-                limit=500,  # Analyze last 500 episodes
+                limit=500,  # Analyze last 500 interactions
             )
 
-            if len(episodes) < min_support * 2:
+            if len(usage_logs) < min_support * 2:
                 logger.info(
-                    "insufficient_episodes_for_pattern_detection",
+                    "insufficient_tool_usage_for_pattern_detection",
                     user_id=user_id,
-                    episode_count=len(episodes),
+                    log_count=len(usage_logs),
                     min_required=min_support * 2,
                 )
                 return []
 
-            # Extract features from episodes
-            episode_features = [
-                self._extract_features(episode) for episode in episodes
+            # Extract tool call sequences from logs
+            tool_sequences = [
+                self._extract_tool_sequence(log) for log in usage_logs
             ]
 
-            # Find frequent sequences (basic frequency analysis)
-            patterns = self._find_frequent_sequences(
-                episode_features, min_support=min_support
+            # Find frequent co-occurrence patterns
+            patterns = self._find_frequent_tool_patterns(
+                tool_sequences, min_support=min_support
             )
 
             if not patterns:
-                logger.info("no_patterns_found", user_id=user_id)
+                logger.info("no_tool_patterns_found", user_id=user_id)
                 return []
 
             # Convert patterns to ProceduralMemory and store
@@ -124,7 +128,7 @@ class ProceduralMemoryService:
                 # Check if pattern already exists
                 existing = await self._procedural_repo.find_by_trigger_features(
                     user_id=user_id,
-                    intent=pattern.trigger_features.get("intent"),
+                    intent=pattern.trigger_features.get("anchor_tool"),
                     entity_types=pattern.trigger_features.get("entity_types"),
                     min_confidence=0.0,
                     limit=1,
@@ -137,7 +141,7 @@ class ProceduralMemoryService:
                         await self._procedural_repo.update(updated)
                     )
                     logger.info(
-                        "pattern_reinforced",
+                        "tool_pattern_reinforced",
                         memory_id=updated.memory_id,
                         observed_count=updated.observed_count,
                         confidence=updated.confidence,
@@ -150,14 +154,14 @@ class ProceduralMemoryService:
                     created = await self._procedural_repo.create(memory)
                     procedural_memories.append(created)
                     logger.info(
-                        "pattern_created",
+                        "tool_pattern_created",
                         memory_id=created.memory_id,
                         trigger=created.trigger_pattern,
                         confidence=created.confidence,
                     )
 
             logger.info(
-                "pattern_detection_completed",
+                "tool_pattern_detection_completed",
                 user_id=user_id,
                 patterns_found=len(procedural_memories),
             )
@@ -166,280 +170,186 @@ class ProceduralMemoryService:
 
         except Exception as e:
             logger.error(
-                "pattern_detection_error", user_id=user_id, error=str(e)
+                "tool_pattern_detection_error", user_id=user_id, error=str(e)
             )
-            msg = f"Error detecting patterns: {e}"
+            msg = f"Error detecting tool patterns: {e}"
             raise DomainError(msg) from e
 
-    def _extract_features(self, episode: MemoryCandidate) -> dict[str, Any]:
-        """Extract features from episodic memory.
-
-        Phase 1: Simple heuristic-based extraction
-        Phase 2+: Use NLP or LLM for better feature extraction
+    def _extract_tool_sequence(self, usage_log: dict[str, Any]) -> dict[str, Any]:
+        """Extract tool call sequence from usage log.
 
         Args:
-            episode: Memory candidate (episodic memory)
+            usage_log: Tool usage log entry
 
         Returns:
-            Feature dictionary
+            Sequence dictionary with tools called and metadata
         """
-        content_lower = episode.content.lower()
+        tools_called = usage_log.get("tools_called", [])
 
-        # Extract intent (simple pattern matching)
-        intent = self._classify_intent(content_lower)
+        # Extract unique tool names (order preserved)
+        tool_names = []
+        seen = set()
+        for tool_call in tools_called:
+            tool_name = tool_call.get("tool")
+            if tool_name and tool_name not in seen:
+                tool_names.append(tool_name)
+                seen.add(tool_name)
 
-        # Extract entity types from episode
-        entity_types = list(set(episode.entities))
-
-        # Extract topics (simple keyword matching)
-        topics = self._extract_topics(content_lower)
+        # Extract entity types from tool arguments
+        # (e.g., customer_id in get_invoice_status implies "customer" entity type)
+        entity_types: set[str] = set()
+        for tool_call in tools_called:
+            args = tool_call.get("arguments", {})
+            # Infer entity types from argument names
+            if "customer_id" in args:
+                entity_types.add("customer")
+            if "sales_order_number" in args:
+                entity_types.add("sales_order")
+            # Add more inferences as needed
 
         return {
-            "intent": intent,
-            "entity_types": sorted(entity_types),  # Sort for consistency
-            "topics": sorted(topics),  # Sort for consistency
-            "episode_id": episode.memory_id,
-            "timestamp": episode.created_at,
+            "tools": tool_names,
+            "entity_types": sorted(list(entity_types)),
+            "timestamp": usage_log.get("timestamp"),
+            "conversation_id": usage_log.get("conversation_id"),
+            "facts_count": usage_log.get("facts_count", 0),
         }
 
-    def _classify_intent(self, content: str) -> str:
-        """Classify query intent using simple patterns.
-
-        Phase 1: Simple keyword-based classification
-        Phase 2+: Use ML classifier
-
-        Args:
-            content: Content text (lowercased)
-
-        Returns:
-            Intent label
-        """
-        # Payment-related
-        if any(
-            word in content
-            for word in ["payment", "invoice", "bill", "pay", "paid"]
-        ):
-            if "history" in content or "past" in content:
-                return "query_payment_history"
-            elif "open" in content or "outstanding" in content:
-                return "query_open_payments"
-            else:
-                return "query_payment"
-
-        # Customer-related
-        if any(word in content for word in ["customer", "client", "account"]):
-            if "status" in content:
-                return "query_customer_status"
-            elif "history" in content:
-                return "query_customer_history"
-            else:
-                return "query_customer"
-
-        # Product-related
-        if any(
-            word in content for word in ["product", "item", "inventory", "stock"]
-        ):
-            if "availability" in content or "stock" in content:
-                return "query_product_availability"
-            else:
-                return "query_product"
-
-        # Order-related
-        if any(word in content for word in ["order", "purchase", "transaction"]):
-            if "status" in content:
-                return "query_order_status"
-            elif "history" in content:
-                return "query_order_history"
-            else:
-                return "query_order"
-
-        # Preference-related
-        if any(word in content for word in ["prefer", "like", "want", "need"]):
-            return "statement_preference"
-
-        # Default
-        return "query_general"
-
-    def _extract_topics(self, content: str) -> list[str]:
-        """Extract topics from content using keyword matching.
-
-        Phase 1: Simple keyword matching
-        Phase 2+: Use topic modeling or LLM
-
-        Args:
-            content: Content text (lowercased)
-
-        Returns:
-            List of topics
-        """
-        topics = []
-
-        topic_keywords = {
-            "payments": ["payment", "invoice", "bill", "pay", "paid", "charge"],
-            "orders": ["order", "purchase", "transaction", "buy", "bought"],
-            "products": [
-                "product",
-                "item",
-                "inventory",
-                "stock",
-                "merchandise",
-            ],
-            "customers": ["customer", "client", "account", "user"],
-            "shipping": ["ship", "delivery", "shipment", "deliver", "freight"],
-            "credit": ["credit", "balance", "limit", "outstanding"],
-            "preferences": ["prefer", "like", "want", "need", "requirement"],
-        }
-
-        for topic, keywords in topic_keywords.items():
-            if any(keyword in content for keyword in keywords):
-                topics.append(topic)
-
-        return topics
-
-    def _find_frequent_sequences(
-        self, episode_features: list[dict[str, Any]], min_support: int = 3
+    def _find_frequent_tool_patterns(
+        self, tool_sequences: list[dict[str, Any]], min_support: int = 3
     ) -> list[Pattern]:
-        """Find frequent co-occurrence patterns.
+        """Find frequent tool co-occurrence patterns.
 
         Phase 1: Basic frequency analysis
-        - Find pairs of (trigger_intent, action_entities/topics) that co-occur frequently
+        - Find pairs/groups of tools that are called together frequently
+        - Anchor pattern to the first tool called
 
         Phase 2+: Use sequence mining algorithms (e.g., PrefixSpan)
 
         Args:
-            episode_features: List of feature dictionaries
+            tool_sequences: List of tool call sequences
             min_support: Minimum occurrences to consider pattern
 
         Returns:
             List of Pattern instances
         """
-        # Group episodes by intent
-        intent_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for features in episode_features:
-            intent = features["intent"]
-            intent_groups[intent].append(features)
+        # Group sequences by anchor tool (first tool called)
+        anchor_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for sequence in tool_sequences:
+            tools = sequence["tools"]
+            if not tools:
+                continue
+            anchor_tool = tools[0]
+            anchor_groups[anchor_tool].append(sequence)
 
         patterns = []
 
-        # For each intent, find common entity_types and topics
-        for intent, episodes in intent_groups.items():
-            if len(episodes) < min_support:
+        # For each anchor tool, find commonly co-occurring tools
+        for anchor_tool, sequences in anchor_groups.items():
+            if len(sequences) < min_support:
                 continue  # Not frequent enough
 
-            # Count entity_type co-occurrences
+            # Count co-occurring tools (excluding anchor)
+            cooccurrence_counter: Counter[str] = Counter()
             entity_counter: Counter[str] = Counter()
-            topic_counter: Counter[str] = Counter()
 
-            for ep in episodes:
-                for entity_type in ep["entity_types"]:
+            for seq in sequences:
+                # Count all tools after the anchor
+                for tool in seq["tools"][1:]:
+                    cooccurrence_counter[tool] += 1
+                # Count entity types
+                for entity_type in seq["entity_types"]:
                     entity_counter[entity_type] += 1
-                for topic in ep["topics"]:
-                    topic_counter[topic] += 1
 
-            # Find frequent entity_types (appear in >50% of episodes for this intent)
-            threshold = len(episodes) * 0.5
+            # Find tools that co-occur in >50% of cases
+            threshold = len(sequences) * 0.5
+            frequent_cooccurrences = [
+                tool
+                for tool, count in cooccurrence_counter.items()
+                if count >= threshold
+            ]
+
+            if not frequent_cooccurrences:
+                continue  # No strong co-occurrence pattern
+
+            # Find frequent entity types
             frequent_entities = [
                 entity
                 for entity, count in entity_counter.items()
                 if count >= threshold
             ]
-            frequent_topics = [
-                topic for topic, count in topic_counter.items() if count >= threshold
-            ]
-
-            if not frequent_entities and not frequent_topics:
-                continue  # No strong associations
 
             # Create pattern
-            trigger_pattern = self._format_trigger_pattern(intent)
+            trigger_pattern = self._format_trigger_pattern(anchor_tool)
             action_heuristic = self._format_action_heuristic(
-                frequent_entities, frequent_topics
+                anchor_tool, frequent_cooccurrences
             )
 
-            # Get source episode IDs
-            source_episode_ids = [ep["episode_id"] for ep in episodes]
+            # Get conversation IDs as source
+            source_conversation_ids = [
+                seq["conversation_id"] for seq in sequences
+            ]
 
             # Calculate confidence (higher frequency → higher confidence)
             # Cap at 0.90 for Phase 1 patterns (not ML-based)
-            confidence = min(0.90, 0.5 + (len(episodes) / 20.0))
+            confidence = min(0.90, 0.5 + (len(sequences) / 20.0))
 
             pattern = Pattern(
                 trigger_pattern=trigger_pattern,
                 trigger_features={
-                    "intent": intent,
+                    "anchor_tool": anchor_tool,
                     "entity_types": frequent_entities,
-                    "topics": frequent_topics,
+                    "tool_type": "domain_query",
                 },
                 action_heuristic=action_heuristic,
                 action_structure={
-                    "action_type": "retrieve_related",
-                    "queries": frequent_topics,
-                    "predicates": [
-                        f"has_{topic}" for topic in frequent_topics
-                    ],  # Simplified
+                    "action_type": "call_additional_tools",
+                    "tools": frequent_cooccurrences,
+                    "reason": f"These tools are frequently called after {anchor_tool}",
                 },
-                observed_count=len(episodes),
+                observed_count=len(sequences),
                 confidence=confidence,
-                source_episode_ids=source_episode_ids,
+                source_episode_ids=source_conversation_ids,  # Using conversation IDs
             )
 
             patterns.append(pattern)
 
         return patterns
 
-    def _format_trigger_pattern(self, intent: str) -> str:
-        """Format intent into natural language trigger pattern.
+    def _format_trigger_pattern(self, anchor_tool: str) -> str:
+        """Format anchor tool into natural language trigger pattern.
 
         Args:
-            intent: Intent label
+            anchor_tool: Anchor tool name
 
         Returns:
             Natural language trigger description
         """
-        intent_templates = {
-            "query_payment_history": "User asks about payment history",
-            "query_open_payments": "User asks about open/outstanding payments",
-            "query_payment": "User asks about payments",
-            "query_customer_status": "User asks about customer status",
-            "query_customer_history": "User asks about customer history",
-            "query_customer": "User asks about customer information",
-            "query_product_availability": "User asks about product availability",
-            "query_product": "User asks about products",
-            "query_order_status": "User asks about order status",
-            "query_order_history": "User asks about order history",
-            "query_order": "User asks about orders",
-            "statement_preference": "User states a preference or requirement",
-            "query_general": "User asks a general question",
-        }
-
-        return intent_templates.get(intent, f"User intent: {intent}")
+        # Convert snake_case to readable form
+        readable = anchor_tool.replace("_", " ").title()
+        return f"When LLM calls {readable}"
 
     def _format_action_heuristic(
-        self, entity_types: list[str], topics: list[str]
+        self, anchor_tool: str, cooccurring_tools: list[str]
     ) -> str:
         """Format action heuristic into natural language.
 
         Args:
-            entity_types: Frequent entity types
-            topics: Frequent topics
+            anchor_tool: Anchor tool name
+            cooccurring_tools: Frequently co-occurring tool names
 
         Returns:
             Natural language action description
         """
-        parts = []
+        if not cooccurring_tools:
+            return "No additional actions detected"
 
-        if entity_types:
-            entities_str = ", ".join(entity_types)
-            parts.append(f"entities: {entities_str}")
+        tools_readable = [
+            tool.replace("_", " ").title() for tool in cooccurring_tools
+        ]
+        tools_str = ", ".join(tools_readable)
 
-        if topics:
-            topics_str = ", ".join(topics)
-            parts.append(f"topics: {topics_str}")
-
-        if parts:
-            return f"Also retrieve related {' and '.join(parts)}"
-        else:
-            return "Retrieve related context"
+        return f"Also call: {tools_str}"
 
     async def augment_query(
         self,
@@ -464,7 +374,7 @@ class ProceduralMemoryService:
         """
         try:
             logger.debug(
-                "augmenting_query_with_patterns",
+                "augmenting_query_with_tool_patterns",
                 user_id=user_id,
                 top_k=top_k,
             )

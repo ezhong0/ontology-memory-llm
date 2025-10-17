@@ -42,7 +42,7 @@ class LLMReplyGenerator:
 
         Args:
             llm_provider: LLM provider implementation (None = fallback mode)
-            model: Model to use for generation (e.g., 'gpt-4o-mini', 'claude-3-5-haiku-20241022')
+            model: Model to use for generation (e.g., 'claude-haiku-4-5')
         """
         self._provider = llm_provider
         self._model = model

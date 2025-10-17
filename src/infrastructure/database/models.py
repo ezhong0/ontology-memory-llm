@@ -261,3 +261,30 @@ class SystemConfig(Base):
     config_key = Column(Text, primary_key=True)
     config_value = Column(JSONB, nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ToolUsageLog(Base):
+    """Tool usage log (track LLM tool calling patterns for learning).
+
+    Vision Alignment:
+    - Learning from usage (track what works)
+    - Feedback loop infrastructure
+    - Phase 2: Analyze patterns, optimize tool selection
+    """
+
+    __tablename__ = "tool_usage_log"
+    __table_args__ = (
+        Index("idx_tool_usage_conversation", "conversation_id"),
+        Index("idx_tool_usage_timestamp", "timestamp"),
+        Index("idx_tool_usage_tools_called", "tools_called", postgresql_using="gin"),
+        {"schema": "app"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    conversation_id = Column(Text, nullable=False)
+    query = Column(Text, nullable=False)
+    tools_called = Column(JSONB, nullable=False)  # Array of {tool, arguments, iteration}
+    facts_count = Column(Integer, nullable=False)
+    timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    outcome_satisfaction = Column(Integer)  # NULL=unknown, 1=satisfied, 0=not satisfied
+    outcome_feedback = Column(Text)

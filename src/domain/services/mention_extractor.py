@@ -26,6 +26,15 @@ class SimpleMentionExtractor:
     For better accuracy, use LLM-based extraction (Phase 1B+).
     """
 
+    # First-person pronouns that refer to the user
+    FIRST_PERSON_PRONOUNS = {
+        "i",
+        "me",
+        "my",
+        "mine",
+        "myself",
+    }
+
     # Pronouns and demonstratives that require coreference
     COREFERENCE_TERMS = {
         "they",
@@ -64,8 +73,8 @@ class SimpleMentionExtractor:
     )
 
     # Common words to ignore (not entities)
+    # Note: "I" removed - it's now handled as a first-person pronoun
     STOPWORDS = {
-        "I",
         "The",
         "A",
         "An",
@@ -145,7 +154,34 @@ class SimpleMentionExtractor:
         # Split into sentences for better context
         sentences = self._split_sentences(text)
 
-        # Extract coreference terms first (they need resolution)
+        # Extract first-person pronouns first (they refer to the user)
+        for pronoun in self.FIRST_PERSON_PRONOUNS:
+            pattern = re.compile(r"\b" + re.escape(pronoun) + r"\b", re.IGNORECASE)
+            for match in pattern.finditer(text_lower):
+                position = match.start()
+                sentence, sent_start = self._get_sentence_at_position(sentences, position)
+
+                # Get context around mention
+                context_before, context_after = self._get_context(text, position, len(pronoun))
+
+                mention = EntityMention(
+                    text=match.group(),
+                    position=position,
+                    context_before=context_before,
+                    context_after=context_after,
+                    is_pronoun=True,
+                    sentence=sentence,
+                    is_first_person=True,
+                )
+                mentions.append(mention)
+
+                logger.debug(
+                    "first_person_pronoun_extracted",
+                    mention=mention.text,
+                    position=position,
+                )
+
+        # Extract coreference terms (they need resolution)
         for term in self.COREFERENCE_TERMS:
             pattern = re.compile(r"\b" + re.escape(term) + r"\b", re.IGNORECASE)
             for match in pattern.finditer(text_lower):
@@ -162,6 +198,7 @@ class SimpleMentionExtractor:
                     context_after=context_after,
                     is_pronoun=True,
                     sentence=sentence,
+                    is_first_person=False,
                 )
                 mentions.append(mention)
 
@@ -190,6 +227,7 @@ class SimpleMentionExtractor:
                 context_after=context_after,
                 is_pronoun=False,
                 sentence=sentence,
+                is_first_person=False,
             )
             mentions.append(mention)
 
@@ -247,6 +285,7 @@ class SimpleMentionExtractor:
                 context_after=context_after,
                 is_pronoun=False,
                 sentence=sentence,
+                is_first_person=False,
             )
             mentions.append(mention)
 

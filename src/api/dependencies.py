@@ -14,18 +14,21 @@ from src.domain.services import (
     ConflictResolutionService,
     ConsolidationService,
     ConsolidationTriggerService,
-    DomainAugmentationService,
     MemoryValidationService,
     MultiSignalScorer,
     PIIRedactionService,
     ProceduralMemoryService,
     SemanticExtractionService,
 )
+from src.application.services.adaptive_query_orchestrator import (
+    AdaptiveQueryOrchestrator,
+)
 from src.infrastructure.database.repositories import (
     ChatEventRepository,
     DomainDatabaseRepository,
     EntityRepository,
     EpisodicMemoryRepository,
+    PostgresToolUsageRepository,
     ProceduralMemoryRepository,
     SemanticMemoryRepository,
     SummaryRepository,
@@ -112,9 +115,17 @@ async def get_process_chat_message_use_case(
         semantic_memory_repository=semantic_memory_repo,
     )
 
-    # Create Phase 1C services
+    # Create Phase 1C services - LLM Tool Calling
     domain_db_repo = DomainDatabaseRepository(db)
-    domain_augmentation_service = DomainAugmentationService(domain_db_port=domain_db_repo)
+    tool_usage_repo = PostgresToolUsageRepository(db)
+
+    # Create adaptive query orchestrator (replaces keyword-based augmentation)
+    query_orchestrator = AdaptiveQueryOrchestrator(
+        llm_service=llm_service,
+        domain_db=domain_db_repo,
+        usage_tracker=tool_usage_repo,
+    )
+
     llm_reply_generator = container.llm_reply_generator()
 
     # Create Phase 1D services
@@ -138,10 +149,11 @@ async def get_process_chat_message_use_case(
         conflict_detection_service=conflict_detection_service,
         conflict_resolution_service=conflict_resolution_service,  # Phase 2.1
         embedding_service=embedding_service,
+        canonical_entity_repository=entity_repo,  # Phase 3.3: for system entity creation
     )
 
     augment_with_domain_use_case = AugmentWithDomainUseCase(
-        domain_augmentation_service=domain_augmentation_service,
+        query_orchestrator=query_orchestrator,
     )
 
     score_memories_use_case = ScoreMemoriesUseCase(

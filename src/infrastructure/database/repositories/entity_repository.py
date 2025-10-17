@@ -201,19 +201,29 @@ class EntityRepository(IEntityRepository):
             matches: list[tuple[CanonicalEntity, float]] = []
             for row in result:
                 # Convert row to domain entity using from_dict to handle JSONB properly
-                entity_ref = EntityReference.from_dict(row.external_ref)
+                # Use dict-like access for raw SQL results
+                try:
+                    entity_ref = EntityReference.from_dict(row['external_ref'])
 
-                entity = CanonicalEntity(
-                    entity_id=row.entity_id,
-                    entity_type=row.entity_type,
-                    canonical_name=row.canonical_name,
-                    external_ref=entity_ref,
-                    properties=row.properties or {},
-                    created_at=row.created_at,
-                    updated_at=row.updated_at,
-                )
+                    entity = CanonicalEntity(
+                        entity_id=row['entity_id'],
+                        entity_type=row['entity_type'],
+                        canonical_name=row['canonical_name'],
+                        external_ref=entity_ref,
+                        properties=row['properties'] or {},
+                        created_at=row['created_at'],
+                        updated_at=row['updated_at'],
+                    )
 
-                matches.append((entity, float(row.score)))
+                    matches.append((entity, float(row['score'])))
+                except (KeyError, ValueError) as e:
+                    # Skip entities with invalid/legacy external_ref format
+                    logger.warning(
+                        "fuzzy_search_skipped_invalid_entity",
+                        entity_id=row['entity_id'],
+                        canonical_name=row['canonical_name'],
+                        error=str(e),
+                    )
 
             return matches
 
@@ -394,6 +404,57 @@ class EntityRepository(IEntityRepository):
         except Exception as e:
             logger.error("increment_alias_use_count_error", alias_id=alias_id, error=str(e))
             # Don't raise - this is not critical
+
+    async def get_or_create_user_entity(self, user_id: str) -> CanonicalEntity:
+        """Get or create a canonical entity for a user.
+
+        Used for first-person pronouns ("I", "me", "my") that refer to the user themselves.
+
+        Args:
+            user_id: User identifier (e.g., "demo-user")
+
+        Returns:
+            CanonicalEntity for the user
+        """
+        try:
+            entity_id = f"user_{user_id}"
+
+            # Try to find existing user entity
+            existing = await self.find_by_entity_id(entity_id)
+            if existing:
+                logger.debug("user_entity_found", entity_id=entity_id)
+                return existing
+
+            # Create new user entity
+            from src.domain.value_objects import EntityReference
+
+            entity = CanonicalEntity(
+                entity_id=entity_id,
+                entity_type="user",
+                canonical_name=user_id,
+                external_ref=EntityReference(
+                    table="app.users",
+                    primary_key="user_id",
+                    primary_value=user_id,
+                    display_name=user_id,
+                ),
+                properties={"user_id": user_id},
+            )
+
+            created = await self.create(entity)
+
+            logger.info(
+                "user_entity_created",
+                entity_id=entity_id,
+                user_id=user_id,
+            )
+
+            return created
+
+        except Exception as e:
+            logger.error("get_or_create_user_entity_error", user_id=user_id, error=str(e))
+            msg = f"Error getting or creating user entity: {e}"
+            raise RepositoryError(msg) from e
 
     def _to_domain_entity(self, model: CanonicalEntityModel) -> CanonicalEntity:
         """Convert ORM model to domain entity.
