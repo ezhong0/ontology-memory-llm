@@ -75,7 +75,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
 
             result = await self.session.execute(stmt, params)
             row = result.fetchone()
-            await self.session.commit()
+            # Transaction will be committed by session context manager
 
             logger.info(
                 "procedural_memory_created",
@@ -100,7 +100,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
             )
 
         except Exception as e:
-            await self.session.rollback()
+            # Transaction will be rolled back by session context manager
             logger.error(
                 "create_procedural_memory_error",
                 user_id=memory.user_id,
@@ -337,7 +337,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
 
             result = await self.session.execute(stmt, params)
             row = result.fetchone()
-            await self.session.commit()
+            # Transaction will be committed by session context manager
 
             if not row:
                 msg = f"Procedural memory {memory.memory_id} not found"
@@ -366,7 +366,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
             )
 
         except Exception as e:
-            await self.session.rollback()
+            # Transaction will be rolled back by session context manager
             logger.error(
                 "update_procedural_memory_error",
                 memory_id=memory.memory_id,
@@ -400,7 +400,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
             }
 
             result = await self.session.execute(stmt, params)
-            await self.session.commit()
+            # Transaction will be committed by session context manager
 
             deleted = result.rowcount > 0
 
@@ -420,7 +420,7 @@ class ProceduralMemoryRepository(IProceduralMemoryRepository):
             return deleted
 
         except Exception as e:
-            await self.session.rollback()
+            # Transaction will be rolled back by session context manager
             logger.error(
                 "delete_procedural_memory_error",
                 memory_id=memory_id,

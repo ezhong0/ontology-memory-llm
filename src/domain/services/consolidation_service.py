@@ -561,7 +561,7 @@ class ConsolidationService:
                 "interaction_patterns": summary_data.interaction_patterns,
                 "needs_validation": summary_data.needs_validation,
             },
-            confidence=0.8,  # Base confidence for LLM synthesis
+            confidence=heuristics.CONFIDENCE_LLM_SYNTHESIS,  # Base confidence for LLM synthesis
             created_at=datetime.now(UTC),
         )
 
@@ -650,7 +650,7 @@ class ConsolidationService:
         # Create basic key facts from high-confidence semantic memories
         key_facts = {}
         for memory in semantic:
-            if memory.confidence > 0.7:
+            if memory.confidence > heuristics.CONFIDENCE_FUZZY_LOW:
                 key_facts[memory.predicate] = {
                     "value": memory.object_value,
                     "confidence": memory.confidence,
@@ -674,7 +674,7 @@ class ConsolidationService:
                 "semantic_count": len(semantic),
                 "fallback": True,  # Flag that this is a fallback summary
             },
-            confidence=0.6,  # Lower confidence for fallback
+            confidence=heuristics.CONFIDENCE_FALLBACK,  # Lower confidence for fallback
             created_at=datetime.now(UTC),
         )
 

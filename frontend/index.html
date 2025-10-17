@@ -966,9 +966,9 @@
         .processing-steps {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 1px;
             margin-top: 0;
-            padding: 8px;
+            padding: 6px;
             background: var(--color-bg);
             border-radius: var(--radius-md);
             border: 1px solid var(--color-border);
@@ -987,32 +987,40 @@
         .processing-step {
             display: flex;
             align-items: flex-start;
-            gap: 6px;
-            padding: 4px 6px;
-            font-size: 12px;
+            gap: 4px;
+            padding: 2px 4px;
+            font-size: 11px;
             color: var(--color-text-secondary);
-            transition: all var(--transition);
+            transition: all 0.2s ease;
+            line-height: 1.3;
         }
 
         .processing-step.completed {
             color: var(--color-text-primary);
         }
 
+        .processing-step.completed .processing-step-icon {
+            color: var(--color-success);
+        }
+
         .processing-step-icon {
-            font-size: 16px;
-            min-width: 20px;
+            font-size: 14px;
+            min-width: 16px;
             text-align: center;
             flex-shrink: 0;
+            transition: color 0.2s ease;
         }
 
         .processing-step-text {
             flex: 1;
+            line-height: 1.4;
         }
 
         .processing-step-details {
-            font-size: 10px;
+            font-size: 9px;
             color: var(--color-text-tertiary);
-            margin-top: 2px;
+            margin-top: 1px;
+            opacity: 0.8;
         }
 
         .toggle-icon {
@@ -3411,12 +3419,14 @@
         function addProcessingSteps() {
             const container = document.getElementById('chatMessages');
             const processingId = 'processing-steps-' + Date.now();
+            const startTime = performance.now(); // Track start time for latency
 
             // Helper function to create a processing step
             function createProcessingStep(stepName, stepNumber, stepText) {
                 const step = document.createElement('div');
                 step.className = 'processing-step';
                 step.setAttribute('data-step', stepName);
+                step.setAttribute('data-start-time', startTime); // Store start time
 
                 const icon = document.createElement('div');
                 icon.className = 'processing-step-icon';
@@ -3462,14 +3472,14 @@
             const stepsContainer = document.createElement('div');
             stepsContainer.className = 'processing-steps';
 
-            // Add all 7 steps
+            // Add all 7 steps (updated to match current architecture)
             const steps = [
+                { name: 'pii', text: 'PII Detection & Redaction (Phase 3.1)' },
                 { name: 'store', text: 'Store chat event' },
-                { name: 'resolve', text: 'Resolve entities (Phase 1A)' },
+                { name: 'resolve', text: 'Resolve entities with LLM (Phase 1A)' },
                 { name: 'extract', text: 'Extract semantics (Phase 1B)' },
-                { name: 'augment', text: 'Augment with domain data (Phase 1C)' },
-                { name: 'detect', text: 'Detect conflicts' },
-                { name: 'score', text: 'Score memories (Phase 1D)' },
+                { name: 'augment', text: 'LLM Tool Calling (Phase 1C)' },
+                { name: 'score', text: 'Score & retrieve memories (Phase 1D)' },
                 { name: 'generate', text: 'Generate LLM reply' }
             ];
 
@@ -3492,130 +3502,115 @@
             const processingElement = document.getElementById(processingId);
             if (!processingElement) return;
 
-            // Step 1: Store (always completes first)
-            const storeStep = processingElement.querySelector('[data-step="store"]');
-            if (storeStep) {
-                const icon = storeStep.querySelector('.processing-step-icon');
-                const details = storeStep.querySelector('.processing-step-details');
+            // Helper function to complete a step with actual server timing
+            function completeStep(step, detailText, actualDuration) {
+                if (!step) return;
+
+                const icon = step.querySelector('.processing-step-icon');
+                const details = step.querySelector('.processing-step-details');
+
+                // Mark as completed (triggers CSS for green checkmark)
+                step.classList.add('completed');
+
                 if (icon) {
                     icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
                 }
-                storeStep.classList.add('completed');
+
                 if (details) {
-                    details.textContent = `Session: ${data.session_id ? data.session_id.substring(0, 8) + '...' : 'N/A'}`;
+                    const durationText = actualDuration !== undefined
+                        ? `(+${actualDuration.toFixed(3)}s)`
+                        : '';
+                    details.textContent = `${detailText} ${durationText}`;
                 }
             }
 
-            // Step 2: Resolve entities (Phase 1A)
-            const resolveStep = processingElement.querySelector('[data-step="resolve"]');
-            if (resolveStep) {
-                const icon = resolveStep.querySelector('.processing-step-icon');
-                const details = resolveStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
-                }
-                resolveStep.classList.add('completed');
-                if (details) {
-                    details.textContent = 'Entity resolution completed';
-                }
-            }
+            // Check if we have step_timings from the server
+            const stepTimings = data.step_timings || {};
 
-            // Step 3: Extract semantics (Phase 1B)
-            const extractStep = processingElement.querySelector('[data-step="extract"]');
-            if (extractStep) {
-                const icon = extractStep.querySelector('.processing-step-icon');
-                const details = extractStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
-                }
-                extractStep.classList.add('completed');
-                if (details) {
-                    details.textContent = 'Semantic extraction completed';
-                }
-            }
+            // Calculate cumulative delays for progressive display
+            const stepOrder = ['pii', 'store', 'resolve', 'extract', 'augment', 'score', 'generate'];
+            let cumulativeDelay = 0;
+            const delays = {};
 
-            // Step 4: Augment with domain data (Phase 1C)
-            const augmentStep = processingElement.querySelector('[data-step="augment"]');
-            if (augmentStep) {
-                const icon = augmentStep.querySelector('.processing-step-icon');
-                const details = augmentStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
+            // Calculate when each step should complete (based on cumulative server time)
+            stepOrder.forEach(stepName => {
+                delays[stepName] = cumulativeDelay;
+                if (stepTimings[stepName]) {
+                    cumulativeDelay += stepTimings[stepName] * 1000; // Convert to ms
                 }
-                augmentStep.classList.add('completed');
+            });
 
-                if (details) {
-                    if (data.debug && data.debug.domain_facts_used && data.debug.domain_facts_used.length > 0) {
-                        const facts = data.debug.domain_facts_used;
-                        const sources = [...new Set(facts.map(f => f.source))];
-                        details.textContent = `${facts.length} domain fact${facts.length !== 1 ? 's' : ''} from ${sources.join(', ')}`;
-                    } else {
-                        details.textContent = 'No domain facts retrieved';
-                    }
-                }
-            }
+            // Step 1: PII Detection & Redaction (Phase 3.1)
+            setTimeout(() => {
+                const piiStep = processingElement.querySelector('[data-step="pii"]');
+                completeStep(piiStep, 'No PII detected', stepTimings.pii);
+            }, delays.pii);
 
-            // Step 5: Detect conflicts
-            const detectStep = processingElement.querySelector('[data-step="detect"]');
-            if (detectStep) {
-                const icon = detectStep.querySelector('.processing-step-icon');
-                const details = detectStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
-                }
-                detectStep.classList.add('completed');
-                if (details) {
-                    details.textContent = 'No conflicts detected';
-                }
-            }
+            // Step 2: Store (always completes)
+            setTimeout(() => {
+                const storeStep = processingElement.querySelector('[data-step="store"]');
+                const sessionText = `Session: ${data.session_id ? data.session_id.substring(0, 8) + '...' : 'N/A'}`;
+                completeStep(storeStep, sessionText, stepTimings.store);
+            }, delays.store);
 
-            // Step 6: Score memories (Phase 1D)
-            const scoreStep = processingElement.querySelector('[data-step="score"]');
-            if (scoreStep) {
-                const icon = scoreStep.querySelector('.processing-step-icon');
-                const details = scoreStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
+            // Step 3: Resolve entities with LLM (Phase 1A)
+            setTimeout(() => {
+                const resolveStep = processingElement.querySelector('[data-step="resolve"]');
+                let resolveText = 'LLM mention extraction completed';
+                if (data.debug && data.debug.entities_resolved) {
+                    const count = data.debug.entities_resolved.length;
+                    resolveText = `${count} entit${count !== 1 ? 'ies' : 'y'} resolved via LLM`;
                 }
-                scoreStep.classList.add('completed');
+                completeStep(resolveStep, resolveText, stepTimings.resolve);
+            }, delays.resolve);
 
-                if (details) {
-                    if (data.debug && data.debug.memories_retrieved && data.debug.memories_retrieved.length > 0) {
-                        const memories = data.debug.memories_retrieved;
-                        const avgRelevance = memories.reduce((sum, m) => sum + (m.relevance || 0), 0) / memories.length;
-                        const avgConfidence = memories.reduce((sum, m) => sum + (m.confidence || 0), 0) / memories.length;
-                        details.textContent = `${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'} retrieved (relevance: ${avgRelevance.toFixed(2)}, confidence: ${avgConfidence.toFixed(2)})`;
-                    } else {
-                        details.textContent = 'No memories retrieved';
-                    }
+            // Step 4: Extract semantics (Phase 1B)
+            setTimeout(() => {
+                const extractStep = processingElement.querySelector('[data-step="extract"]');
+                let extractText = 'Semantic extraction completed';
+                if (data.debug && data.debug.memories_created) {
+                    const count = data.debug.memories_created.length;
+                    extractText = `${count} semantic memor${count !== 1 ? 'ies' : 'y'} created`;
                 }
-            }
+                completeStep(extractStep, extractText, stepTimings.extract);
+            }, delays.extract);
+
+            // Step 5: LLM Tool Calling (Phase 1C)
+            setTimeout(() => {
+                const augmentStep = processingElement.querySelector('[data-step="augment"]');
+                let augmentText = 'No domain facts retrieved';
+                if (data.debug && data.debug.domain_facts_used && data.debug.domain_facts_used.length > 0) {
+                    const facts = data.debug.domain_facts_used;
+                    const sources = [...new Set(facts.map(f => f.source))];
+                    augmentText = `${facts.length} fact${facts.length !== 1 ? 's' : ''} from ${sources.join(', ')}`;
+                }
+                completeStep(augmentStep, augmentText, stepTimings.augment);
+            }, delays.augment);
+
+            // Step 6: Score & retrieve memories (Phase 1D)
+            setTimeout(() => {
+                const scoreStep = processingElement.querySelector('[data-step="score"]');
+                let scoreText = 'No memories retrieved';
+                if (data.debug && data.debug.memories_retrieved && data.debug.memories_retrieved.length > 0) {
+                    const memories = data.debug.memories_retrieved;
+                    const avgRelevance = memories.reduce((sum, m) => sum + (m.relevance || 0), 0) / memories.length;
+                    const avgConfidence = memories.reduce((sum, m) => sum + (m.confidence || 0), 0) / memories.length;
+                    scoreText = `${memories.length} memor${memories.length !== 1 ? 'ies' : 'y'} (rel: ${avgRelevance.toFixed(2)}, conf: ${avgConfidence.toFixed(2)})`;
+                }
+                completeStep(scoreStep, scoreText, stepTimings.score);
+            }, delays.score);
 
             // Step 7: Generate LLM reply
-            const generateStep = processingElement.querySelector('[data-step="generate"]');
-            if (generateStep) {
-                const icon = generateStep.querySelector('.processing-step-icon');
-                const details = generateStep.querySelector('.processing-step-details');
-                if (icon) {
-                    icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
-                }
-                generateStep.classList.add('completed');
-
-                if (details && data.reply) {
+            setTimeout(() => {
+                const generateStep = processingElement.querySelector('[data-step="generate"]');
+                let generateText = 'Reply generation completed';
+                if (data.reply) {
                     const chars = data.reply.length;
-                    const tokens = Math.ceil(chars / 4); // Rough estimate
-                    details.textContent = `Reply generated (${chars} chars, ~${tokens} tokens)`;
-                } else if (details) {
-                    details.textContent = 'Reply generation completed';
+                    const tokens = Math.ceil(chars / 4);
+                    generateText = `${chars} chars, ~${tokens} tokens`;
                 }
-            }
+                completeStep(generateStep, generateText, stepTimings.generate);
+            }, delays.generate);
         }
 
         function removeProcessingSteps(id, replyContent, debugData) {
@@ -3631,9 +3626,8 @@
                 const icon = step.querySelector('.processing-step-icon');
                 if (icon && icon.textContent === '⏳') {
                     icon.textContent = '✓';
-                    icon.style.color = 'var(--color-success)';
-                    step.classList.add('completed');
                 }
+                step.classList.add('completed');
             });
 
             // Reorder content: move processing steps to bottom, add reply at top

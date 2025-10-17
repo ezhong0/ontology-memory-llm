@@ -160,6 +160,7 @@ class ProcessChatMessageOutput:
         domain_facts: List of domain facts retrieved (Phase 1C)
         retrieved_memories: List of memories retrieved from past conversations (Phase 1D)
         reply: Generated natural language reply (Phase 1C)
+        step_timings: Optional dict mapping step names to duration in seconds
     """
 
     event_id: int
@@ -173,3 +174,4 @@ class ProcessChatMessageOutput:
     domain_facts: list[DomainFactDTO]
     retrieved_memories: list[RetrievedMemoryDTO]
     reply: str
+    step_timings: dict[str, float] | None = None

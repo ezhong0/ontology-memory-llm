@@ -19,9 +19,10 @@ from src.domain.services import (
     LLMReplyGenerator,
     MemoryValidationService,
     MultiSignalScorer,
+    PIIRedactionService,
     SemanticExtractionService,
-    SimpleMentionExtractor,
 )
+from src.domain.services.llm_mention_extractor import LLMMentionExtractor
 from src.application.services.adaptive_query_orchestrator import (
     AdaptiveQueryOrchestrator,
 )
@@ -151,8 +152,10 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Domain Services
+    # Vision-aligned: LLM-based mention extraction (replaces SimpleMentionExtractor regex patterns)
     mention_extractor = providers.Singleton(
-        SimpleMentionExtractor,
+        LLMMentionExtractor,
+        llm_service=llm_service,
     )
 
     entity_resolution_service_factory = providers.Factory(
@@ -202,6 +205,12 @@ class Container(containers.DeclarativeContainer):
     # Phase 1D Services
     multi_signal_scorer = providers.Singleton(
         MultiSignalScorer,
+        validation_service=memory_validation_service,
+    )
+
+    # Phase 3.1 Services - PII Detection and Redaction
+    pii_redaction_service = providers.Singleton(
+        PIIRedactionService,
     )
 
     # Use Cases
@@ -247,7 +256,10 @@ class Container(containers.DeclarativeContainer):
         extract_semantics_use_case=extract_semantics_use_case_factory,
         augment_with_domain_use_case=augment_with_domain_use_case_factory,
         score_memories_use_case=score_memories_use_case_factory,
+        conflict_detection_service=conflict_detection_service,
+        conflict_resolution_service=conflict_resolution_service_factory,
         llm_reply_generator=llm_reply_generator,
+        pii_redaction_service=pii_redaction_service,
     )
 
 

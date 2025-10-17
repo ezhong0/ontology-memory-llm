@@ -40,8 +40,10 @@ CONFIDENCE_EXACT_MATCH = 1.0
 CONFIDENCE_USER_ALIAS = 0.95
 CONFIDENCE_FUZZY_HIGH = 0.85
 CONFIDENCE_FUZZY_LOW = 0.70
-CONFIDENCE_COREFERENCE = 0.60
+CONFIDENCE_COREFERENCE = 0.80  # LLM coreference resolution (Claude)
 CONFIDENCE_DISAMBIGUATION = 0.85  # After user selection
+CONFIDENCE_LLM_SYNTHESIS = 0.8  # LLM-based consolidation/synthesis
+CONFIDENCE_FALLBACK = 0.6  # Fallback summary without LLM
 
 # Fuzzy Matching
 FUZZY_MATCH_THRESHOLD = 0.65  # Minimum similarity to consider (allows "Kay" → "Kai" typos)

@@ -10,6 +10,7 @@ from typing import Any
 import structlog
 from anthropic import AsyncAnthropic
 
+from src.config import heuristics
 from src.domain.exceptions import LLMServiceError
 from src.domain.ports import ILLMService
 from src.domain.ports.llm_service import LLMToolResponse, ToolCall
@@ -130,23 +131,68 @@ class AnthropicLLMService(ILLMService):
     async def extract_entity_mentions(self, text: str) -> list[EntityMention]:
         """Extract entity mentions from text using LLM.
 
-        This is optional for Phase 1A - we use simple pattern matching initially.
-        Can be implemented in Phase 1B for better accuracy.
+        Uses Claude Haiku 4.5 for intelligent entity extraction that handles:
+        - Capitalized and lowercase entities
+        - Typos and variations
+        - Context-aware extraction
+        - Pronouns and identifiers
 
         Args:
             text: Text to extract mentions from
 
         Returns:
             List of entity mentions found in text
-
-        Raises:
-            NotImplementedError: Not implemented in Phase 1A
         """
-        msg = (
-            "LLM-based mention extraction not implemented in Phase 1A. "
-            "Use simple pattern-based extraction for now."
-        )
-        raise NotImplementedError(msg)
+        if not text or not text.strip():
+            logger.debug("empty_text_for_mention_extraction")
+            return []
+
+        try:
+            # Build extraction prompt
+            prompt = self._build_mention_extraction_prompt(text)
+
+            logger.debug(
+                "calling_anthropic_for_mention_extraction",
+                text_length=len(text),
+                model=self.MODEL,
+            )
+
+            # Call Anthropic
+            response = await self.client.messages.create(
+                model=self.MODEL,
+                max_tokens=self.MAX_TOKENS,
+                temperature=self.TEMPERATURE_EXTRACTION,
+                system="You are an expert at extracting entity mentions from text. "
+                "Extract all named entities, identifiers, and pronouns with precision. "
+                "Always respond with valid JSON only, no other text.",
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # Track usage
+            self._track_usage(response)
+
+            # Parse response
+            mentions = self._parse_mention_extraction_response(response, text)
+
+            logger.info(
+                "mention_extraction_success",
+                text_length=len(text),
+                mention_count=len(mentions),
+                tokens=response.usage.input_tokens + response.usage.output_tokens,
+            )
+
+            return mentions
+
+        except Exception as e:
+            logger.error(
+                "mention_extraction_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # Fallback to empty list rather than failing
+            # This allows graceful degradation
+            logger.warning("falling_back_to_empty_mentions_due_to_error")
+            return []
 
     async def extract_semantic_triples(
         self,
@@ -478,7 +524,7 @@ Response (entity_id or UNKNOWN):"""
         # Success!
         return ResolutionResult(
             entity_id=matching_entity[0],
-            confidence=0.80,  # Claude coreference has high confidence
+            confidence=heuristics.CONFIDENCE_COREFERENCE,  # Claude coreference confidence
             method=ResolutionMethod.COREFERENCE,
             mention_text=mention.text,
             canonical_name=matching_entity[1],
@@ -489,6 +535,241 @@ Response (entity_id or UNKNOWN):"""
                 "model": self.MODEL,
             },
         )
+
+    def _build_mention_extraction_prompt(self, text: str) -> str:
+        """Build prompt for entity mention extraction.
+
+        Args:
+            text: Text to extract mentions from
+
+        Returns:
+            Formatted prompt string
+        """
+        return f"""Extract all entity mentions from the text below.
+
+Text: "{text}"
+
+Entity Types to Extract:
+1. Named Entities: Companies, people, products (e.g., "Acme Corporation", "John Smith", "Widget X")
+2. Identifiers: Alphanumeric codes (e.g., "SO-1001", "INV-1009", "WO-123")
+3. First-Person Pronouns: "I", "me", "my", "mine", "myself"
+4. Third-Person Pronouns: "they", "them", "their", "it", "its", "he", "him", "she", "her"
+5. Demonstratives: "the customer", "the client", "the company", "the order", "the invoice"
+
+Instructions:
+1. Extract ALL mentions of entities (don't skip lowercase, typos, or variations)
+2. For each mention, provide:
+   - text: exact text as it appears
+   - position: character offset where it starts
+   - is_pronoun: true if it's a pronoun/demonstrative, false otherwise
+   - is_first_person: true only for I/me/my/mine/myself, false otherwise
+3. Skip common stopwords UNLESS they're clearly part of an entity name
+4. Skip action verbs at the start of sentences (e.g., "Reschedule" in "Reschedule Kai Media")
+
+Output Format (JSON):
+{{
+  "mentions": [
+    {{
+      "text": "Acme Corporation",
+      "position": 15,
+      "is_pronoun": false,
+      "is_first_person": false
+    }},
+    {{
+      "text": "I",
+      "position": 45,
+      "is_pronoun": true,
+      "is_first_person": true
+    }},
+    {{
+      "text": "SO-1001",
+      "position": 60,
+      "is_pronoun": false,
+      "is_first_person": false
+    }}
+  ]
+}}
+
+Respond with ONLY the JSON object. If no mentions found, return {{"mentions": []}}."""
+
+    def _parse_mention_extraction_response(
+        self,
+        response: Any,
+        text: str,
+    ) -> list[EntityMention]:
+        """Parse Anthropic response for mention extraction.
+
+        Args:
+            response: Anthropic API response
+            text: Original text
+
+        Returns:
+            List of EntityMention objects
+        """
+        if not response.content:
+            logger.warning("empty_mention_extraction_response")
+            return []
+
+        # Extract text from response
+        response_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                response_text += block.text
+
+        if not response_text:
+            logger.warning("no_text_in_mention_extraction_response")
+            return []
+
+        try:
+            # Strip markdown code blocks if present
+            response_text = response_text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+
+            # Parse JSON
+            parsed = json.loads(response_text)
+
+            if not isinstance(parsed, dict):
+                msg = "Response is not a JSON object"
+                raise ValueError(msg)
+
+            raw_mentions = parsed.get("mentions", [])
+
+            if not isinstance(raw_mentions, list):
+                msg = "mentions field is not a list"
+                raise ValueError(msg)
+
+            # Convert to EntityMention objects
+            mentions: list[EntityMention] = []
+            sentences = self._split_text_into_sentences(text)
+
+            for raw in raw_mentions:
+                try:
+                    mention_text = raw["text"]
+                    position = raw["position"]
+                    is_pronoun = raw.get("is_pronoun", False)
+                    is_first_person = raw.get("is_first_person", False)
+
+                    # Get sentence and context
+                    sentence = self._get_sentence_at_position(sentences, position)
+                    context_before, context_after = self._get_context(
+                        text, position, len(mention_text)
+                    )
+
+                    mention = EntityMention(
+                        text=mention_text,
+                        position=position,
+                        context_before=context_before,
+                        context_after=context_after,
+                        is_pronoun=is_pronoun,
+                        sentence=sentence,
+                        is_first_person=is_first_person,
+                    )
+                    mentions.append(mention)
+
+                except (KeyError, ValueError) as e:
+                    logger.warning(
+                        "invalid_mention_from_llm",
+                        error=str(e),
+                        raw_mention=raw,
+                    )
+                    continue
+
+            logger.debug(
+                "parsed_mention_extraction_response",
+                mention_count=len(mentions),
+            )
+
+            return mentions
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                "json_parse_error_in_mention_extraction",
+                response_text=response_text[:200],
+                error=str(e),
+            )
+            return []
+        except ValueError as e:
+            logger.error(
+                "invalid_mention_extraction_response_format",
+                error=str(e),
+            )
+            return []
+
+    def _split_text_into_sentences(self, text: str) -> list[tuple[str, int]]:
+        """Split text into sentences with positions.
+
+        Args:
+            text: Text to split
+
+        Returns:
+            List of (sentence, start_position) tuples
+        """
+        import re
+
+        sentence_pattern = re.compile(r"([^.!?]+[.!?])")
+        sentences: list[tuple[str, int]] = []
+        pos = 0
+
+        for match in sentence_pattern.finditer(text):
+            sentence = match.group().strip()
+            sentences.append((sentence, pos))
+            pos = match.end()
+
+        # Handle last sentence if no ending punctuation
+        if pos < len(text):
+            sentences.append((text[pos:].strip(), pos))
+
+        return sentences if sentences else [(text, 0)]
+
+    def _get_sentence_at_position(
+        self, sentences: list[tuple[str, int]], position: int
+    ) -> str:
+        """Get the sentence containing a position.
+
+        Args:
+            sentences: List of (sentence, start_pos) tuples
+            position: Character position
+
+        Returns:
+            Sentence text
+        """
+        for i, (sentence, start_pos) in enumerate(sentences):
+            if i + 1 < len(sentences):
+                next_start = sentences[i + 1][1]
+                if start_pos <= position < next_start:
+                    return sentence
+            else:
+                return sentence
+
+        return sentences[0][0] if sentences else ""
+
+    def _get_context(
+        self, text: str, position: int, mention_length: int, window: int = 50
+    ) -> tuple[str, str]:
+        """Get context before and after a mention.
+
+        Args:
+            text: Full text
+            position: Mention start position
+            mention_length: Length of mention
+            window: Context window size in characters
+
+        Returns:
+            (context_before, context_after) tuple
+        """
+        start = max(0, position - window)
+        end = min(len(text), position + mention_length + window)
+
+        context_before = text[start:position].strip()
+        context_after = text[position + mention_length : end].strip()
+
+        return context_before, context_after
 
     def _track_usage(self, response: Any) -> None:
         """Track token usage and costs.

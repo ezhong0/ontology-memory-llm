@@ -4,6 +4,7 @@ Refactored from 683-line god object to lean orchestrator pattern.
 Coordinates specialized use cases for each phase of chat processing.
 """
 
+import time
 from typing import Any
 
 import structlog
@@ -111,8 +112,13 @@ class ProcessChatMessageUseCase:
             content_length=len(input_dto.content),
         )
 
+        # Initialize timing tracker
+        step_timings: dict[str, float] = {}
+        step_start = time.perf_counter()
+
         # Phase 3.1: Detect and redact PII before storing (privacy-by-design)
         redaction_result = self.pii_redaction_service.redact_with_metadata(input_dto.content)
+        step_timings["pii"] = time.perf_counter() - step_start
 
         content_to_store = redaction_result.redacted_text
         pii_was_detected = redaction_result.was_redacted
@@ -126,6 +132,7 @@ class ProcessChatMessageUseCase:
             )
 
         # Step 1: Store chat message (with redacted content if PII was found)
+        step_start = time.perf_counter()
         message = ChatMessage(
             session_id=input_dto.session_id,
             user_id=input_dto.user_id,
@@ -144,13 +151,17 @@ class ProcessChatMessageUseCase:
             "chat_message_stored",
             event_id=stored_message.event_id,
         )
+        step_timings["store"] = time.perf_counter() - step_start
 
         # Step 2: Resolve entities (Phase 1A)
+        step_start = time.perf_counter()
         entities_result = await self.resolve_entities.execute(
             message_content=input_dto.content,
             user_id=input_dto.user_id,
             session_id=input_dto.session_id,
         )
+
+        step_timings["resolve"] = time.perf_counter() - step_start
 
         # Task 1.2.1: Check for ambiguous entities and propagate to API
         # If entity resolution found ambiguities, raise exception for API to handle
@@ -176,6 +187,7 @@ class ProcessChatMessageUseCase:
         # Step 3: Extract semantics (Phase 1B)
         # Always call semantic extraction even if no entities are resolved,
         # because policy detection (Phase 3.3) needs to run regardless of entities
+        step_start = time.perf_counter()
         semantics_result = await self.extract_semantics.execute(
             message=stored_message,
             resolved_entities=entities_result.resolved_entities,
@@ -247,7 +259,10 @@ class ProcessChatMessageUseCase:
                 pii_types=pii_types,
             )
 
+        step_timings["extract"] = time.perf_counter() - step_start
+
         # Step 4: Augment with domain facts (Phase 1C) - LLM Tool Calling
+        step_start = time.perf_counter()
         domain_fact_dtos = await self.augment_with_domain.execute(
             resolved_entities=entities_result.resolved_entities,
             query_text=input_dto.content,
@@ -297,7 +312,10 @@ class ProcessChatMessageUseCase:
                             predicate=conflict.predicate,
                         )
 
+        step_timings["augment"] = time.perf_counter() - step_start
+
         # Step 5: Score and retrieve memories (Phase 1D)
+        step_start = time.perf_counter()
         retrieved_memories, semantic_memory_map = await self.score_memories.execute(
             semantic_memory_entities=semantics_result.semantic_memory_entities,
             resolved_entities=entities_result.resolved_entities,
@@ -364,7 +382,10 @@ class ProcessChatMessageUseCase:
                         error=str(e),
                     )
 
+        step_timings["score"] = time.perf_counter() - step_start
+
         # Step 6: Generate reply
+        step_start = time.perf_counter()
         reply = await self._generate_reply(
             input_dto=input_dto,
             domain_fact_dtos=domain_fact_dtos,
@@ -373,6 +394,7 @@ class ProcessChatMessageUseCase:
             pii_detected=pii_was_detected,
             pii_types=[r["type"] for r in redaction_result.redactions] if pii_was_detected else None,
         )
+        step_timings["generate"] = time.perf_counter() - step_start
 
         # Step 7: Assemble final response
         # Convert RetrievedMemory to RetrievedMemoryDTO
@@ -446,6 +468,7 @@ class ProcessChatMessageUseCase:
             domain_facts=domain_fact_dtos,
             retrieved_memories=retrieved_memory_dtos,
             reply=reply,
+            step_timings=step_timings,
         )
 
     async def _generate_reply_without_entities(

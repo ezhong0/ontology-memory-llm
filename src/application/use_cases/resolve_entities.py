@@ -13,7 +13,8 @@ from src.application.dtos.chat_dtos import (
 )
 from src.domain.exceptions import AmbiguousEntityError
 from src.domain.ports import IChatEventRepository, IEntityRepository
-from src.domain.services import EntityResolutionService, SimpleMentionExtractor
+from src.domain.services import EntityResolutionService
+from src.domain.services.llm_mention_extractor import LLMMentionExtractor
 from src.domain.value_objects import ConversationContext
 
 logger = structlog.get_logger(__name__)
@@ -63,7 +64,7 @@ class ResolveEntitiesUseCase:
         entity_repository: IEntityRepository,
         chat_repository: IChatEventRepository,
         entity_resolution_service: EntityResolutionService,
-        mention_extractor: SimpleMentionExtractor,
+        mention_extractor: LLMMentionExtractor,
     ):
         """Initialize use case.
 
@@ -102,7 +103,7 @@ class ResolveEntitiesUseCase:
         )
 
         # Step 1: Extract entity mentions from current message
-        mentions = self.mention_extractor.extract_mentions(message_content)
+        mentions = await self.mention_extractor.extract_mentions(message_content)
 
         logger.info(
             "entity_mentions_extracted",
@@ -290,7 +291,7 @@ class ResolveEntitiesUseCase:
 
         for recent_message in prior_messages:
             # Extract mentions from this recent message
-            mentions = self.mention_extractor.extract_mentions(recent_message)
+            mentions = await self.mention_extractor.extract_mentions(recent_message)
 
             if not mentions:
                 continue

@@ -70,6 +70,7 @@ class ChatMessageResponse(BaseModel):
     session_id: str  # Return session ID for conversation continuity
     debug: dict
     traces: dict | None = None  # Debug traces for visualization
+    step_timings: dict[str, float] | None = None  # Step timings in seconds for UI
 
 
 # ============================================================================
@@ -189,7 +190,8 @@ async def send_chat_message(
             reply=output.reply,
             session_id=str(session_id),
             debug=debug_info,
-            traces=None  # Traces not needed for demo
+            traces=None,  # Traces not needed for demo
+            step_timings=output.step_timings,  # Include step timings for UI
         )
 
     except Exception as e:
