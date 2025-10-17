@@ -169,37 +169,29 @@ class ProcessChatMessageUseCase:
             # Re-raise the original exception with all details intact
             raise ambiguous_error
 
-        # Early exit if no entities found
-        # Phase 2.2: With session-aware entity resolution, implicit entities from context
-        # are resolved automatically, so this early exit is safe
-        if not entities_result.resolved_entities:
-            logger.debug("no_entities_resolved_generating_reply_without_context")
-            reply = await self._generate_reply_without_entities(
-                input_dto,
-                pii_detected=pii_was_detected,
-                pii_types=[r["type"] for r in redaction_result.redactions] if pii_was_detected else None,
-            )
-
-            return ProcessChatMessageOutput(
-                event_id=stored_message.event_id,
-                session_id=input_dto.session_id,
-                resolved_entities=[],
-                mention_count=entities_result.mention_count,
-                resolution_success_rate=entities_result.resolution_success_rate,
-                semantic_memories=[],
-                conflict_count=0,
-                conflicts_detected=[],
-                domain_facts=[],
-                retrieved_memories=[],
-                reply=reply,
-            )
+        # Phase 3.3: No longer early exit when no entities - allow general queries
+        # General queries like "What invoices do we have?" should proceed to domain augmentation
+        # even without specific entities
 
         # Step 3: Extract semantics (Phase 1B)
-        semantics_result = await self.extract_semantics.execute(
-            message=stored_message,
-            resolved_entities=entities_result.resolved_entities,
-            user_id=input_dto.user_id,
-        )
+        # Only extract semantics if entities were resolved
+        if not entities_result.resolved_entities:
+            logger.debug("no_entities_resolved_skipping_semantic_extraction")
+            # Create empty result for semantic extraction
+            from src.application.use_cases.extract_semantics import ExtractSemanticsResult
+            semantics_result = ExtractSemanticsResult(
+                semantic_memory_dtos=[],
+                semantic_memory_entities=[],
+                conflict_count=0,
+                conflicts_detected=[],
+            )
+        else:
+            # Step 3: Extract semantics (Phase 1B)
+            semantics_result = await self.extract_semantics.execute(
+                message=stored_message,
+                resolved_entities=entities_result.resolved_entities,
+                user_id=input_dto.user_id,
+            )
 
         # Phase 3.1: Create policy memory when PII was detected
         # This enables transparency and audit trail for privacy compliance
@@ -246,6 +238,13 @@ class ProcessChatMessageUseCase:
         domain_fact_dtos = await self.augment_with_domain.execute(
             resolved_entities=entities_result.resolved_entities,
             query_text=input_dto.content,
+        )
+
+        # Step 4.3: Phase 3.3 - Evaluate reminder triggers (Procedural Memory)
+        # Check if domain facts trigger any reminder policies
+        triggered_reminders = await self._evaluate_reminder_triggers(
+            domain_facts=domain_fact_dtos,
+            user_id=input_dto.user_id,
         )
 
         # Step 4.5: Detect memory-vs-DB conflicts (Phase 1C Epistemic Humility)
@@ -356,6 +355,7 @@ class ProcessChatMessageUseCase:
             input_dto=input_dto,
             domain_fact_dtos=domain_fact_dtos,
             retrieved_memories=retrieved_memories,
+            triggered_reminders=triggered_reminders,
             pii_detected=pii_was_detected,
             pii_types=[r["type"] for r in redaction_result.redactions] if pii_was_detected else None,
         )
@@ -467,6 +467,7 @@ class ProcessChatMessageUseCase:
         input_dto: ProcessChatMessageInput,
         domain_fact_dtos: list[DomainFactDTO],
         retrieved_memories: list[Any],
+        triggered_reminders: list[dict[str, Any]] | None = None,
         pii_detected: bool = False,
         pii_types: list[str] | None = None,
     ) -> str:
@@ -476,6 +477,7 @@ class ProcessChatMessageUseCase:
             input_dto: Input data with message content
             domain_fact_dtos: Domain facts retrieved
             retrieved_memories: Scored and ranked memories
+            triggered_reminders: Phase 3.3 - Proactive reminders triggered by domain facts
 
         Returns:
             Generated reply string
@@ -516,6 +518,7 @@ class ProcessChatMessageUseCase:
             recent_chat_events=recent_chat_events,
             user_id=input_dto.user_id,
             session_id=input_dto.session_id,
+            triggered_reminders=triggered_reminders or [],
             pii_detected=pii_detected,
             pii_types=pii_types,
         )
@@ -632,3 +635,123 @@ class ProcessChatMessageUseCase:
             # The extract_semantics use case has a semantic_memory_repo attribute
             # Access repository through there
             await self.extract_semantics.semantic_memory_repo.update(memory)
+
+    async def _evaluate_reminder_triggers(
+        self,
+        domain_facts: list[DomainFactDTO],
+        user_id: str,
+    ) -> list[dict[str, Any]]:
+        """Evaluate reminder triggers against domain facts.
+
+        Phase 3.3: Proactive Intelligence
+
+        Retrieves reminder policies from semantic memory and checks domain facts
+        against policy conditions. Returns triggered reminders for LLM context.
+
+        Args:
+            domain_facts: Domain facts retrieved in this turn
+            user_id: User identifier
+
+        Returns:
+            List of triggered reminders with details for natural language generation
+        """
+        from datetime import date
+
+        triggered_reminders: list[dict[str, Any]] = []
+
+        # Step 1: Retrieve reminder policies from semantic memory
+        reminder_policies = await self.extract_semantics.semantic_memory_repo.find_by_subject_predicate(
+            subject_entity_id="system",
+            predicate="reminder_policy",
+            user_id=user_id,
+            status_filter="active",
+        )
+
+        if not reminder_policies:
+            logger.debug("no_reminder_policies_found")
+            return []
+
+        logger.info(
+            "evaluating_reminder_triggers",
+            policy_count=len(reminder_policies),
+            fact_count=len(domain_facts),
+        )
+
+        # Step 2: Check each domain fact against each policy
+        for policy in reminder_policies:
+            policy_data = policy.object_value
+
+            # Currently only support invoice reminder policies
+            if policy_data.get("entity_type") != "invoice":
+                continue
+
+            threshold_days = policy_data.get("threshold_days", 0)
+            condition = policy_data.get("condition", "")
+
+            # Step 3: Find invoice facts and evaluate triggers
+            for fact in domain_facts:
+                # Check if this is an invoice fact
+                if "invoice" not in fact.fact_type.lower():
+                    continue
+
+                # Extract invoice details from metadata
+                metadata = fact.metadata or {}
+                invoice_status = metadata.get("status", "")
+                due_date_str = metadata.get("due_date")
+                invoice_number = metadata.get("invoice_number", "unknown")
+
+                if not due_date_str:
+                    continue
+
+                # Parse due date and calculate days until due
+                from datetime import datetime
+                try:
+                    if isinstance(due_date_str, str):
+                        due_date = datetime.fromisoformat(due_date_str).date()
+                    else:
+                        due_date = due_date_str
+                except (ValueError, AttributeError):
+                    logger.warning(
+                        "invalid_due_date_format",
+                        due_date_str=due_date_str,
+                        invoice=invoice_number,
+                    )
+                    continue
+
+                today = date.today()
+                days_until_due = (due_date - today).days
+
+                # Step 4: Evaluate trigger condition
+                # Policy: "If invoice is open X days before due, remind me"
+                # Trigger: invoice.days_until_due <= policy.threshold_days AND invoice.status == "open"
+                matches_condition = (
+                    condition == "status_open" and invoice_status == "open"
+                )
+                within_threshold = days_until_due <= threshold_days
+
+                if matches_condition and within_threshold:
+                    # TRIGGER!
+                    triggered_reminders.append({
+                        "type": "invoice_due_reminder",
+                        "invoice_number": invoice_number,
+                        "days_until_due": days_until_due,
+                        "due_date": str(due_date),
+                        "status": invoice_status,
+                        "threshold_days": threshold_days,
+                        "message": f"Invoice {invoice_number} is due in {days_until_due} days and still open",
+                    })
+
+                    logger.info(
+                        "reminder_triggered",
+                        invoice=invoice_number,
+                        days_until_due=days_until_due,
+                        threshold=threshold_days,
+                        status=invoice_status,
+                    )
+
+        logger.info(
+            "reminder_evaluation_complete",
+            triggered_count=len(triggered_reminders),
+        )
+
+        return triggered_reminders

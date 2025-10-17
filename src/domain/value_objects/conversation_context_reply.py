@@ -4,7 +4,7 @@ Separate from the existing ConversationContext (used for entity resolution).
 This context is specifically for building LLM prompts from domain facts and memories.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -71,6 +71,9 @@ class ReplyContext:
     pii_types: list[str] | None = None
     """Types of PII detected (e.g., ['phone', 'email']) if pii_detected=True"""
 
+    triggered_reminders: list[dict[str, Any]] = field(default_factory=list)
+    """Phase 3.3: Proactive reminders triggered by domain facts (procedural memory)"""
+
     def to_system_prompt(self) -> str:
         """Build system prompt from context.
 
@@ -116,6 +119,33 @@ class ReplyContext:
                 "Use phrases like 'I've redacted the sensitive information', "
                 "'For privacy, I've masked the [type]', or 'Your [type] has been protected'. "
                 "This demonstrates epistemic humility and security practices."
+            )
+            sections.append("")
+
+        # Section 1.7: Proactive Reminders (Phase 3.3 - Procedural Memory)
+        if self.triggered_reminders:
+            sections.append("⚠️  PROACTIVE REMINDERS - ACTION REQUIRED:")
+            sections.append(
+                "The following reminders have been triggered based on your policies and current data. "
+                "You MUST mention these proactively in your response to demonstrate awareness and helpfulness:"
+            )
+            sections.append("")
+            for reminder in self.triggered_reminders:
+                reminder_type = reminder.get("type", "unknown")
+                if reminder_type == "invoice_due_reminder":
+                    invoice_num = reminder.get("invoice_number", "unknown")
+                    days_until = reminder.get("days_until_due", 0)
+                    sections.append(
+                        f"📌 REMINDER: Invoice {invoice_num} is due in {days_until} days and still open. "
+                        f"This triggers your reminder policy (threshold: {reminder.get('threshold_days')} days before due)."
+                    )
+                else:
+                    sections.append(f"📌 REMINDER: {reminder.get('message', 'Unknown reminder')}")
+            sections.append("")
+            sections.append(
+                "Include these reminders naturally in your response. For example: "
+                "'I notice Invoice INV-3001 is due in 2 days and still open' or "
+                "'By the way, INV-3001 is approaching its due date (2 days)'"
             )
             sections.append("")
 

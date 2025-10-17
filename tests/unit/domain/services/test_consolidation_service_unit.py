@@ -32,7 +32,8 @@ def mock_repos():
     episodic_repo = AsyncMock()
     semantic_repo = AsyncMock()
     summary_repo = AsyncMock()
-    return episodic_repo, semantic_repo, summary_repo
+    chat_repo = AsyncMock()
+    return episodic_repo, semantic_repo, summary_repo, chat_repo
 
 
 @pytest.fixture
@@ -74,19 +75,21 @@ def mock_embedding_service():
 @pytest.fixture
 def consolidation_service(mock_repos, mock_llm_service, mock_embedding_service):
     """Create ConsolidationService with mocked dependencies."""
-    episodic_repo, semantic_repo, summary_repo = mock_repos
+    episodic_repo, semantic_repo, summary_repo, chat_repo = mock_repos
 
     return (
         ConsolidationService(
             episodic_repo=episodic_repo,
             semantic_repo=semantic_repo,
             summary_repo=summary_repo,
+            chat_repo=chat_repo,
             llm_service=mock_llm_service,
             embedding_service=mock_embedding_service,
         ),
         episodic_repo,
         semantic_repo,
         summary_repo,
+        chat_repo,
         mock_llm_service,
     )
 
@@ -101,7 +104,7 @@ class TestConsolidateEntity:
 
     async def test_consolidate_entity_success(self, consolidation_service):
         """Should successfully consolidate entity memories."""
-        service, episodic_repo, semantic_repo, summary_repo, llm_service = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, llm_service = (
             consolidation_service
         )
 
@@ -155,7 +158,7 @@ class TestConsolidateEntity:
         self, consolidation_service
     ):
         """Should proceed with consolidation even below threshold (manual trigger)."""
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 
@@ -192,7 +195,7 @@ class TestConsolidateEntity:
         self, consolidation_service
     ):
         """Should include semantic memories in consolidation."""
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 
@@ -230,7 +233,7 @@ class TestConsolidateTopic:
 
     async def test_consolidate_topic_not_implemented(self, consolidation_service):
         """Should raise DomainError for topic consolidation (Phase 1)."""
-        service, _, _, _, _ = consolidation_service
+        service, _, _, _, _, _ = consolidation_service
 
         user_id = "test_user"
         topic_pattern = "delivery_*"
@@ -247,22 +250,133 @@ class TestConsolidateTopic:
 class TestConsolidateSessionWindow:
     """Test consolidate_session_window() public method."""
 
-    async def test_consolidate_session_window_not_implemented(
-        self, consolidation_service
-    ):
-        """Should raise DomainError for session window consolidation (Phase 1)."""
-        service, _, _, _, _ = consolidation_service
+    async def test_consolidate_session_window_success(self, consolidation_service):
+        """Should successfully consolidate memories from recent sessions."""
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
+            consolidation_service
+        )
 
         user_id = "test_user"
-        num_sessions = 5
+        num_sessions = 3
 
-        # Phase 1: Session window consolidation not implemented
-        from src.domain.exceptions import DomainError
+        # Mock chat messages from 3 different sessions
+        session_1 = uuid4()
+        session_2 = uuid4()
+        session_3 = uuid4()
 
-        with pytest.raises(DomainError, match="not yet implemented"):
-            await service.consolidate_session_window(
-                user_id=user_id, num_sessions=num_sessions
+        chat_messages = [
+            type("ChatMessage", (), {"session_id": session_3, "created_at": datetime.now(UTC)})(),
+            type("ChatMessage", (), {"session_id": session_3, "created_at": datetime.now(UTC) - timedelta(hours=1)})(),
+            type("ChatMessage", (), {"session_id": session_2, "created_at": datetime.now(UTC) - timedelta(hours=2)})(),
+            type("ChatMessage", (), {"session_id": session_2, "created_at": datetime.now(UTC) - timedelta(hours=3)})(),
+            type("ChatMessage", (), {"session_id": session_1, "created_at": datetime.now(UTC) - timedelta(hours=4)})(),
+            type("ChatMessage", (), {"session_id": session_1, "created_at": datetime.now(UTC) - timedelta(hours=5)})(),
+        ]
+
+        # Mock chat repository to return recent messages
+        chat_repo.get_recent_for_user = AsyncMock(return_value=chat_messages)
+
+        # Mock episodic memories for each session
+        episodic_memories_s1 = [
+            MemoryCandidate(
+                memory_id=i,
+                memory_type="episodic",
+                content=f"Session 1 episode {i}",
+                entities=[],
+                embedding=np.random.rand(1536),
+                created_at=datetime.now(UTC) - timedelta(hours=5),
+                importance=0.6,
             )
+            for i in range(3)
+        ]
+        episodic_memories_s2 = [
+            MemoryCandidate(
+                memory_id=i + 3,
+                memory_type="episodic",
+                content=f"Session 2 episode {i}",
+                entities=[],
+                embedding=np.random.rand(1536),
+                created_at=datetime.now(UTC) - timedelta(hours=3),
+                importance=0.6,
+            )
+            for i in range(3)
+        ]
+        episodic_memories_s3 = [
+            MemoryCandidate(
+                memory_id=i + 6,
+                memory_type="episodic",
+                content=f"Session 3 episode {i}",
+                entities=[],
+                embedding=np.random.rand(1536),
+                created_at=datetime.now(UTC),
+                importance=0.6,
+            )
+            for i in range(3)
+        ]
+
+        # Setup episodic repo to return different memories for each session
+        async def mock_find_recent(user_id, limit, session_id=None):
+            if session_id == session_1:
+                return episodic_memories_s1
+            elif session_id == session_2:
+                return episodic_memories_s2
+            elif session_id == session_3:
+                return episodic_memories_s3
+            return []
+
+        episodic_repo.find_recent = AsyncMock(side_effect=mock_find_recent)
+
+        # Mock summary creation
+        summary_repo.create = AsyncMock(
+            side_effect=lambda s: type("Summary", (), {**s.__dict__, "summary_id": 100})()
+        )
+
+        # Execute
+        result = await service.consolidate_session_window(
+            user_id=user_id, num_sessions=num_sessions
+        )
+
+        # Assertions
+        assert result.summary_id == 100
+        assert result.user_id == user_id
+        assert result.scope_type == "session_window"
+        assert result.scope_identifier == str(num_sessions)
+        assert result.confidence == 0.8  # Default LLM success confidence
+
+        # Verify chat repository was called to get recent messages
+        chat_repo.get_recent_for_user.assert_called_once()
+
+        # Verify episodic repo was called for each session
+        assert episodic_repo.find_recent.call_count == 3
+
+        # Verify summary was created
+        summary_repo.create.assert_called_once()
+
+    async def test_consolidate_session_window_no_sessions(self, consolidation_service):
+        """Should handle case with no recent sessions gracefully."""
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
+            consolidation_service
+        )
+
+        user_id = "test_user"
+        num_sessions = 3
+
+        # Mock no chat messages
+        chat_repo.get_recent_for_user = AsyncMock(return_value=[])
+
+        # Mock summary creation for fallback
+        summary_repo.create = AsyncMock(
+            side_effect=lambda s: type("Summary", (), {**s.__dict__, "summary_id": 101})()
+        )
+
+        # Execute - should complete with fallback summary
+        result = await service.consolidate_session_window(
+            user_id=user_id, num_sessions=num_sessions
+        )
+
+        # Should create fallback summary with 0 episodes
+        assert result.summary_id == 101
+        assert result.scope_type == "session_window"
 
 
 # ============================================================================
@@ -283,7 +397,7 @@ class TestConfidenceBoosting:
 
     async def test_boost_confirmed_facts_success(self, consolidation_service):
         """Should boost confidence of confirmed semantic memories."""
-        service, _, semantic_repo, _, _ = consolidation_service
+        service, _, semantic_repo, _, _, _ = consolidation_service
 
         confirmed_ids = [10, 20, 30]
 
@@ -309,7 +423,7 @@ class TestConfidenceBoosting:
 
     async def test_boost_confirmed_facts_empty_list(self, consolidation_service):
         """Should handle empty confirmed list gracefully."""
-        service, _, semantic_repo, _, _ = consolidation_service
+        service, _, semantic_repo, _, _, _ = consolidation_service
 
         # Should not raise error
         await service._boost_confirmed_facts([])
@@ -320,7 +434,7 @@ class TestConfidenceBoosting:
 
     async def test_boost_confirmed_facts_not_found(self, consolidation_service):
         """Should handle missing memory gracefully."""
-        service, _, semantic_repo, _, _ = consolidation_service
+        service, _, semantic_repo, _, _, _ = consolidation_service
 
         # Mock memory not found
         semantic_repo.find_by_id = AsyncMock(return_value=None)
@@ -343,7 +457,7 @@ class TestEdgeCases:
 
     async def test_consolidate_with_no_memories(self, consolidation_service):
         """Should handle consolidation with no memories gracefully."""
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 
@@ -379,7 +493,7 @@ class TestVisionPrinciples:
 
         Consolidated confidence should be ≤ source confidence.
         """
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 
@@ -436,7 +550,7 @@ class TestVisionPrinciples:
 
         Summary text should be shorter than concatenated episodes.
         """
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 
@@ -481,7 +595,7 @@ class TestVisionPrinciples:
 
         Summary should have structured source_data tracking episodic sources.
         """
-        service, episodic_repo, semantic_repo, summary_repo, _ = (
+        service, episodic_repo, semantic_repo, summary_repo, chat_repo, _ = (
             consolidation_service
         )
 

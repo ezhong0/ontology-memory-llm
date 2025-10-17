@@ -120,6 +120,18 @@ class ExtractSemanticsUseCase:
                 conflicts_detected=[],
             )
 
+        # Phase 3.3: Check for policy statements (e.g., reminder policies)
+        # "If invoice is X days before due, remind me"
+        policy_memory = await self._detect_and_create_policy(message, user_id)
+        if policy_memory:
+            logger.info("policy_detected_and_stored", policy_type="reminder")
+            return ExtractSemanticsResult(
+                semantic_memory_dtos=[self._memory_to_dto(policy_memory)],
+                semantic_memory_entities=[policy_memory],
+                conflict_count=0,
+                conflicts_detected=[],
+            )
+
         # Skip semantic extraction for questions (only extract from statements)
         if self._is_question(message.content):
             logger.debug(
@@ -438,3 +450,82 @@ class ExtractSemanticsUseCase:
             confidence=memory.confidence,
             status=memory.status,
         )
+
+    async def _detect_and_create_policy(
+        self, message: ChatMessage, user_id: str
+    ) -> SemanticMemory | None:
+        """Detect policy statements and create policy memories.
+
+        Phase 3.3: Simple pattern matching for reminder policies.
+        Pattern: "If [entity_type] is [condition] [threshold], remind me"
+
+        Args:
+            message: Chat message to analyze
+            user_id: User identifier
+
+        Returns:
+            SemanticMemory if policy detected, None otherwise
+        """
+        import re
+        from datetime import UTC, datetime
+
+        content_lower = message.content.lower()
+
+        # Pattern: "if [an] invoice is [still] open X days before due, remind me"
+        # Capture: threshold (number of days)
+        pattern = r"if.*invoice.*(?:still\s+)?open\s+(\d+)\s+days?\s+before\s+due.*remind"
+
+        match = re.search(pattern, content_lower)
+        if not match:
+            return None
+
+        # Extract threshold
+        threshold_days = int(match.group(1))
+
+        logger.info(
+            "reminder_policy_detected",
+            entity_type="invoice",
+            condition="open",
+            threshold_days=threshold_days,
+        )
+
+        # Create policy memory
+        # Subject: system (user-specific policy)
+        # Predicate: reminder_policy
+        # Object: structured policy data
+        policy_data = {
+            "trigger_type": "time_based",
+            "entity_type": "invoice",
+            "condition": "status_open",
+            "threshold_days": threshold_days,
+            "threshold_type": "days_before_due",
+            "action": "remind_user",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
+        # Generate embedding for policy (for future retrieval)
+        embedding_text = f"Reminder policy: notify user when invoices are open {threshold_days} days before due date"
+        embedding = await self.embedding_service.generate_embedding(embedding_text)
+
+        # Create semantic memory
+        policy_memory = SemanticMemory(
+            user_id=user_id,
+            subject_entity_id="system",  # System-level policy
+            predicate="reminder_policy",
+            predicate_type=PredicateType.ACTION,
+            object_value=policy_data,
+            confidence=0.95,  # Explicit statement = high confidence
+            source_event_ids=[message.event_id],
+            embedding=embedding,
+        )
+
+        # Store in database
+        stored_memory = await self.semantic_memory_repo.create(policy_memory)
+
+        logger.info(
+            "policy_memory_created",
+            memory_id=stored_memory.memory_id,
+            threshold_days=threshold_days,
+        )
+
+        return stored_memory

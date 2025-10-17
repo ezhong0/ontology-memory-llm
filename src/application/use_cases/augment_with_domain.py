@@ -49,13 +49,13 @@ class AugmentWithDomainUseCase:
         Returns:
             List of domain facts retrieved from database
         """
-        if not resolved_entities:
-            logger.debug("no_resolved_entities_for_domain_augmentation")
-            return []
+        # Phase 3.3: Allow general queries without entities (e.g., "What invoices do we have?")
+        entity_count = len(resolved_entities) if resolved_entities else 0
 
         logger.info(
             "starting_domain_augmentation",
-            entity_count=len(resolved_entities),
+            entity_count=entity_count,
+            general_query=not resolved_entities,
         )
 
         # Convert DTOs to EntityInfo for augmentation service
@@ -66,9 +66,9 @@ class AugmentWithDomainUseCase:
                 canonical_name=e.canonical_name,
             )
             for e in resolved_entities
-        ]
+        ] if resolved_entities else []
 
-        # Query domain database
+        # Query domain database (now supports general queries without entities)
         domain_facts = await self.domain_augmentation_service.augment(
             entities=entities_for_augmentation,
             query_text=query_text,

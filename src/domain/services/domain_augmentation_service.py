@@ -74,16 +74,19 @@ class DomainAugmentationService:
         Returns:
             List of domain facts from database
         """
-        if not entities:
-            logger.debug("domain_augmentation_skipped_no_entities")
-            return []
-
         # Determine intent (simple heuristics or can be LLM-based in Phase 2)
         if intent is None:
             intent = self._classify_intent(query_text)
 
-        # Select relevant queries based on intent and entities
-        queries_to_run = self._select_queries(entities, intent)
+        # Phase 3.3: Support general queries without entities (e.g., "What invoices do we have?")
+        if not entities:
+            queries_to_run = self._select_general_queries(intent, query_text)
+            if not queries_to_run:
+                logger.debug("domain_augmentation_skipped_no_entities_no_general_queries")
+                return []
+        else:
+            # Select relevant queries based on intent and entities
+            queries_to_run = self._select_queries(entities, intent)
 
         if not queries_to_run:
             logger.debug(
@@ -106,6 +109,9 @@ class DomainAugmentationService:
                 tasks.append(self.domain_db.get_work_orders_for_customer(**params))
             elif query_type == "tasks":
                 tasks.append(self.domain_db.get_tasks_for_customer(**params))
+            elif query_type == "all_invoices":
+                # Phase 3.3: General invoice query (no specific customer)
+                tasks.append(self.domain_db.get_all_invoices(**params))
             else:
                 # Extensibility: custom queries
                 tasks.append(self.domain_db.execute_custom_query(query_type, params))
@@ -245,5 +251,37 @@ class DomainAugmentationService:
                             {"sales_order_number": so_number},
                         )
                     )
+
+        return queries
+
+    def _select_general_queries(
+        self,
+        intent: str,
+        query_text: str,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Select general queries (without entities).
+
+        Phase 3.3: Support queries like "What invoices do we have?"
+
+        Args:
+            intent: Query intent
+            query_text: Original query text
+
+        Returns:
+            List of (query_type, params) tuples
+        """
+        queries: list[tuple[str, dict[str, Any]]] = []
+        query_lower = query_text.lower()
+
+        # General invoice query (e.g., "What invoices do we have?")
+        if intent == "financial" or any(
+            word in query_lower for word in ["invoice", "invoices"]
+        ):
+            queries.append(
+                (
+                    "all_invoices",
+                    {"status_filter": None, "limit": 50},
+                )
+            )
 
         return queries

@@ -85,6 +85,22 @@ class DomainDatabasePort(ABC):
         """
 
     @abstractmethod
+    async def get_all_invoices(
+        self, status_filter: str | None = None, limit: int = 50
+    ) -> list[DomainFact]:
+        """Get all invoices (general query, not customer-specific).
+
+        Phase 3.3: Support for general queries like "What invoices do we have?"
+
+        Args:
+            status_filter: Optional status filter (e.g., "open", "paid")
+            limit: Maximum number of invoices to return (default: 50)
+
+        Returns:
+            List of domain facts about invoices
+        """
+
+    @abstractmethod
     async def execute_custom_query(
         self, query_name: str, params: dict[str, Any]
     ) -> list[DomainFact]:

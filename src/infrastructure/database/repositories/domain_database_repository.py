@@ -36,6 +36,101 @@ class DomainDatabaseRepository(DomainDatabasePort):
         # Registry of custom query handlers
         self._custom_queries: dict[str, Any] = {}
 
+    async def get_all_invoices(self, status_filter: str | None = None, limit: int = 50) -> list[DomainFact]:
+        """Get all invoices (general query, not customer-specific).
+
+        Phase 3.3: Support for general queries like "What invoices do we have?"
+
+        Args:
+            status_filter: Optional filter by status ('open', 'paid', etc.)
+            limit: Maximum number of invoices to return
+
+        Returns:
+            List of invoice facts
+        """
+        query_sql = """
+            SELECT
+                i.invoice_id,
+                i.invoice_number,
+                i.amount,
+                i.due_date,
+                i.status,
+                i.issued_at,
+                COALESCE(SUM(p.amount), 0) as paid_amount,
+                i.amount - COALESCE(SUM(p.amount), 0) as balance,
+                c.name as customer_name,
+                c.customer_id
+            FROM domain.invoices i
+            LEFT JOIN domain.payments p ON i.invoice_id = p.invoice_id
+            LEFT JOIN domain.sales_orders so ON i.so_id = so.so_id
+            LEFT JOIN domain.customers c ON so.customer_id = c.customer_id
+        """
+
+        if status_filter:
+            query_sql += " WHERE i.status = :status"
+
+        query_sql += """
+            GROUP BY i.invoice_id, i.invoice_number, i.amount, i.due_date, i.status, i.issued_at, c.name, c.customer_id
+            ORDER BY i.due_date ASC
+            LIMIT :limit
+        """
+
+        query = text(query_sql)
+
+        try:
+            params: dict[str, Any] = {"limit": limit}
+            if status_filter:
+                params["status"] = status_filter
+
+            result = await self.session.execute(query, params)
+            rows = result.fetchall()
+
+            facts = []
+            for row in rows:
+                # Build human-readable fact
+                status_desc = f"${float(row.amount):.2f} due {row.due_date} (status: {row.status})"
+                if row.paid_amount > 0:
+                    status_desc += (
+                        f" - ${float(row.paid_amount):.2f} paid, "
+                        f"${float(row.balance):.2f} remaining"
+                    )
+
+                facts.append(
+                    DomainFact(
+                        fact_type="invoice_status",
+                        entity_id=f"invoice_{row.invoice_id}",  # Use invoice as primary entity
+                        content=f"Invoice {row.invoice_number} ({row.customer_name}): {status_desc}",
+                        metadata={
+                            "invoice_number": row.invoice_number,
+                            "amount": float(row.amount),
+                            "paid": float(row.paid_amount),
+                            "balance": float(row.balance),
+                            "due_date": row.due_date.isoformat(),
+                            "status": row.status,
+                            "invoice_id": str(row.invoice_id),
+                            "customer_name": row.customer_name,
+                            "customer_id": str(row.customer_id),
+                        },
+                        source_table="domain.invoices",
+                        source_rows=[str(row.invoice_id)],
+                        retrieved_at=datetime.now(UTC),
+                    )
+                )
+
+            logger.debug(
+                "all_invoices_query_executed",
+                status_filter=status_filter,
+                facts_retrieved=len(facts),
+            )
+
+            return facts
+
+        except Exception as e:
+            logger.error(
+                "all_invoices_query_failed", status_filter=status_filter, error=str(e)
+            )
+            return []
+
     async def get_invoice_status(self, customer_id: str) -> list[DomainFact]:
         """Get all invoices for customer with payment details."""
         query = text("""
